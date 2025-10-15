@@ -55,6 +55,3 @@ venv/
 extraction/working/
 *.jsonld
 !extraction/working/README.md
-
-# Pre-commit
-.secrets.baseline
