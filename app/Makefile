@@ -181,7 +181,7 @@ deploy-ephemeral-local: build-local ## Build and deploy locally to ephemeral nam
 	@for i in 1 2 3 4 5 6; do \
 		ROUTE_HOST=$$(oc get route -l app=kartograph -o jsonpath='{.items[0].spec.host}' 2>/dev/null); \
 		if [ -n "$$ROUTE_HOST" ]; then \
-			ROUTE_URL="https://$$ROUTE_HOST"; \
+			ROUTE_URL="https://$$ROUTE_HOST/api/kartograph"; \
 			echo "Detected route URL: $$ROUTE_URL"; \
 			if [ "$$ROUTE_URL" != "$(APP_PUBLIC_URL)" ]; then \
 				echo "Updating ClowdApp with correct URLs..."; \
@@ -192,7 +192,7 @@ deploy-ephemeral-local: build-local ## Build and deploy locally to ephemeral nam
 				}, { \
 					\"op\": \"replace\", \
 					\"path\": \"/spec/deployments/0/podSpec/env/6/value\", \
-					\"value\": \"$$ROUTE_URL/api/kartograph\" \
+					\"value\": \"$$ROUTE_URL\" \
 				}, { \
 					\"op\": \"replace\", \
 					\"path\": \"/spec/deployments/0/podSpec/env/7/value\", \
