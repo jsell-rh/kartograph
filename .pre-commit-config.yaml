@@ -1,0 +1,88 @@
+# Pre-commit hooks for Kartograph
+# Install: pip install pre-commit
+# Setup: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ["--unsafe"] # Allow custom YAML tags (for Kubernetes)
+      - id: check-json
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: mixed-line-ending
+      - id: detect-private-key
+
+  # Python formatting and linting
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+        language_version: python3
+        files: '^extraction/.*\.py$'
+
+  # Security checks
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          [
+            "--baseline",
+            ".secrets.baseline",
+            "--exclude-files",
+            'package-lock\.json',
+          ]
+        exclude: '\.secrets\.baseline'
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.45.0
+    hooks:
+      - id: markdownlint
+        args: ["--fix", "--config", ".markdownlint.json"]
+        exclude: '^app/(\.nuxt|\.output|node_modules)/.*'
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args:
+          [
+            "-d",
+            "{extends: default, rules: {line-length: {max: 120}, document-start: disable}}",
+          ]
+        exclude: '^app/(\.nuxt|\.output|node_modules)/.*'
+
+  # TypeScript/JavaScript formatting and linting (local hooks using project dependencies)
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Prettier
+        entry: bash -c 'cd app && npx prettier --write --ignore-unknown'
+        language: system
+        files: '^app/.*\.(ts|vue|js|json|yaml|yml|md)$'
+        exclude: '^app/(\.nuxt|\.output|node_modules|dist)/.*'
+        pass_filenames: true
+
+      - id: tsc
+        name: TypeScript type check
+        entry: bash -c 'cd app && npx tsc --noEmit'
+        language: system
+        files: '^app/.*\.(ts|vue)$'
+        exclude: '^app/(\.nuxt|\.output|node_modules|dist)/.*'
+        pass_filenames: false
