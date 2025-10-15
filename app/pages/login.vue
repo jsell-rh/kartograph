@@ -205,6 +205,7 @@ definePageMeta({
   layout: false,
 });
 
+const config = useRuntimeConfig();
 const authStore = useAuthStore();
 
 const activeTab = ref<"signin" | "signup">("signin");
@@ -239,8 +240,8 @@ async function handleSignIn() {
       });
     }
 
-    // Redirect to home on success
-    await navigateTo("/");
+    // Redirect to home on success (respects baseURL configuration)
+    await navigateTo(config.public.baseURL);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to sign in";
   } finally {
@@ -268,8 +269,8 @@ async function handleSignUp() {
       });
     }
 
-    // Redirect to home on success
-    await navigateTo("/");
+    // Redirect to home on success (respects baseURL configuration)
+    await navigateTo(config.public.baseURL);
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to create account";
@@ -285,7 +286,7 @@ async function handleGitHubSignIn() {
   try {
     await authClient.signIn.social({
       provider: "github",
-      callbackURL: "/",
+      callbackURL: config.public.baseURL,
     });
   } catch (err) {
     error.value =
