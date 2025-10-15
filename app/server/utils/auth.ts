@@ -114,10 +114,10 @@ export async function requireAuth(event: H3Event) {
  * @returns Error message if validation fails, null if passes
  */
 export function validateEmailDomain(email: string): string | null {
-  const allowedDomainsEnv = process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "";
+  const allowedDomainsEnv = process.env.NUXT_AUTH_ALLOWED_EMAIL_DOMAINS || process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "";
 
   console.log("[validateEmailDomain] Input email:", email);
-  console.log("[validateEmailDomain] AUTH_ALLOWED_EMAIL_DOMAINS:", allowedDomainsEnv);
+  console.log("[validateEmailDomain] ALLOWED_EMAIL_DOMAINS:", allowedDomainsEnv);
 
   // If no domains configured, allow all
   if (!allowedDomainsEnv || allowedDomainsEnv.trim() === "") {
