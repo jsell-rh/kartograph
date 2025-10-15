@@ -81,8 +81,9 @@ export default defineNuxtConfig({
 
     // Authentication Configuration
     authPasswordEnabled:
-      process.env.AUTH_PASSWORD_ENABLED !== "false", // pragma: allowlist secret
-    authAllowedEmailDomains: process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "", // Comma-separated list (e.g., "redhat.com,ibm.com")
+      (process.env.NUXT_AUTH_PASSWORD_ENABLED || process.env.AUTH_PASSWORD_ENABLED) !== "false", // pragma: allowlist secret
+    authAllowedEmailDomains:
+      process.env.NUXT_AUTH_ALLOWED_EMAIL_DOMAINS || process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "", // Comma-separated list (e.g., "redhat.com,ibm.com")
 
     public: {
       appName: "Kartograph",
@@ -91,9 +92,9 @@ export default defineNuxtConfig({
       baseURL: process.env.NUXT_APP_BASE_URL || "/",
       version: fullVersion,
       gitCommit: gitCommit,
-      // Expose auth config to client
+      // Expose auth config to client - NUXT_PUBLIC_ prefix for runtime override
       authPasswordEnabled:
-        process.env.AUTH_PASSWORD_ENABLED !== "false", // pragma: allowlist secret
+        (process.env.NUXT_PUBLIC_AUTH_PASSWORD_ENABLED || process.env.AUTH_PASSWORD_ENABLED) !== "false", // pragma: allowlist secret
     },
   },
 });

@@ -38,15 +38,14 @@ const envTrustedOrigins = process.env.BETTER_AUTH_TRUSTED_ORIGINS
   : [];
 
 // Check if password auth is enabled
-const passwordAuthEnabled = process.env.AUTH_PASSWORD_ENABLED !== "false"; // pragma: allowlist secret
+const passwordAuthEnabled = (process.env.NUXT_AUTH_PASSWORD_ENABLED || process.env.AUTH_PASSWORD_ENABLED) !== "false"; // pragma: allowlist secret
 
 // Get the app base path for post-OAuth redirects
 const appBasePath = process.env.NUXT_APP_BASE_URL || "/";
 
 // Check if email domain validation is enabled
-const hasEmailDomainRestrictions =
-  process.env.AUTH_ALLOWED_EMAIL_DOMAINS &&
-  process.env.AUTH_ALLOWED_EMAIL_DOMAINS.trim() !== "";
+const allowedDomainsEnv = process.env.NUXT_AUTH_ALLOWED_EMAIL_DOMAINS || process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "";
+const hasEmailDomainRestrictions = allowedDomainsEnv.trim() !== "";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
