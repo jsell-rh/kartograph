@@ -1,0 +1,12 @@
+# Gitleaks ignore file
+# Add patterns for false positives here
+[allowlist]
+    description="Global Allowlist"
+    paths=[
+        ".env.example", # Example .env files (not real secrets)
+        "app/pages/settings/index.vue" # Vue event handlers are not secrets
+    ]
+    regexes = [
+        '''@revoke-''', # Vue event handler
+        '''@[a-z]+-[a-z]+''' # Vue event handlers pattern
+    ]

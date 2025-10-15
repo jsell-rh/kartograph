@@ -1,0 +1,139 @@
+---
+# Standalone Dgraph deployments - NOT managed by Clowder
+# These are pure Kubernetes resources that bypass Clowder entirely
+
+# Dgraph Zero Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kartograph-dgraph-zero
+  labels:
+    app: kartograph
+    component: dgraph-zero
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kartograph
+      component: dgraph-zero
+  template:
+    metadata:
+      labels:
+        app: kartograph
+        component: dgraph-zero
+        pod: kartograph-dgraph-zero
+    spec:
+      containers:
+        - name: dgraph-zero
+          image: dgraph/dgraph:v23.1.1
+          command:
+            - dgraph
+          args:
+            - zero
+            - --my=kartograph-dgraph-zero:5080
+            - --replicas=1
+            - --raft=idx=1
+          ports:
+            - name: grpc
+              containerPort: 5080
+              protocol: TCP
+            - name: http
+              containerPort: 6080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          volumeMounts:
+            - name: dgraph-zero-data
+              mountPath: /dgraph
+      volumes:
+        - name: dgraph-zero-data
+          persistentVolumeClaim:
+            claimName: dgraph-zero-pvc
+
+---
+# Dgraph Alpha Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kartograph-dgraph-alpha
+  labels:
+    app: kartograph
+    component: dgraph-alpha
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kartograph
+      component: dgraph-alpha
+  template:
+    metadata:
+      labels:
+        app: kartograph
+        component: dgraph-alpha
+        pod: kartograph-dgraph-alpha
+    spec:
+      containers:
+        - name: dgraph-alpha
+          image: dgraph/dgraph:v23.1.1
+          command:
+            - dgraph
+          args:
+            - alpha
+            - --my=kartograph-dgraph-alpha:7080
+            - --zero=kartograph-dgraph-zero:5080
+          env:
+            - name: DGRAPH_ALPHA_WHITELIST
+              value: "0.0.0.0/0"
+          ports:
+            - name: grpc
+              containerPort: 7080
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: grpc-internal
+              containerPort: 9080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health?live=1
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 200m
+              memory: 1Gi
+          volumeMounts:
+            - name: dgraph-alpha-data
+              mountPath: /dgraph
+      volumes:
+        - name: dgraph-alpha-data
+          persistentVolumeClaim:
+            claimName: dgraph-alpha-pvc
