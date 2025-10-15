@@ -48,8 +48,6 @@ export default defineEventHandler(async (event) => {
 
     const data = await response.json();
 
-    log.debug({ data }, "Raw Dgraph response");
-
     // Extract total count
     const totalCount = data.data?.total?.[0]?.count || 0;
 

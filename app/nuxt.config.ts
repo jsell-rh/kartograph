@@ -79,6 +79,11 @@ export default defineNuxtConfig({
     apiTokenDefaultExpiryDays:
       Number(process.env.API_TOKEN_DEFAULT_EXPIRY_DAYS) || 90,
 
+    // Authentication Configuration
+    authPasswordEnabled:
+      process.env.AUTH_PASSWORD_ENABLED !== "false", // pragma: allowlist secret
+    authAllowedEmailDomains: process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "", // Comma-separated list (e.g., "redhat.com,ibm.com")
+
     public: {
       appName: "Kartograph",
       appDescription: "Knowledge Graph Query Interface",
@@ -86,6 +91,9 @@ export default defineNuxtConfig({
       baseURL: process.env.NUXT_APP_BASE_URL || "/",
       version: fullVersion,
       gitCommit: gitCommit,
+      // Expose auth config to client
+      authPasswordEnabled:
+        process.env.AUTH_PASSWORD_ENABLED !== "false", // pragma: allowlist secret
     },
   },
 });

@@ -106,3 +106,53 @@ export async function requireAuth(event: H3Event) {
 
   return session;
 }
+
+/**
+ * Validate email domain against allowed domains configuration
+ *
+ * @param email - Email address to validate
+ * @returns Error message if validation fails, null if passes
+ */
+export function validateEmailDomain(email: string): string | null {
+  const allowedDomainsEnv = process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "";
+
+  console.log("[validateEmailDomain] Input email:", email);
+  console.log("[validateEmailDomain] AUTH_ALLOWED_EMAIL_DOMAINS:", allowedDomainsEnv);
+
+  // If no domains configured, allow all
+  if (!allowedDomainsEnv || allowedDomainsEnv.trim() === "") {
+    console.log("[validateEmailDomain] No restrictions configured - allowing all");
+    return null;
+  }
+
+  const allowedDomains = allowedDomainsEnv
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter((d) => d.length > 0);
+
+  console.log("[validateEmailDomain] Allowed domains:", allowedDomains);
+
+  if (allowedDomains.length === 0) {
+    console.log("[validateEmailDomain] No valid domains after parsing - allowing all");
+    return null;
+  }
+
+  const emailLower = email.toLowerCase();
+  const emailDomain = emailLower.split("@")[1];
+
+  console.log("[validateEmailDomain] Email domain extracted:", emailDomain);
+
+  if (!emailDomain) {
+    return "Invalid email address format";
+  }
+
+  const isAllowed = allowedDomains.some((domain) => emailDomain === domain);
+
+  console.log("[validateEmailDomain] Is allowed?", isAllowed);
+
+  if (!isAllowed) {
+    return `Emails ending in @${emailDomain} are not permitted to access this application.`;
+  }
+
+  return null;
+}

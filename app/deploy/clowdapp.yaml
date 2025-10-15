@@ -94,6 +94,19 @@ objects:
                 value: ${APP_PUBLIC_URL}
               - name: ENABLE_RH_IDENTITY_HEADER
                 value: "false"
+              # Authentication Configuration
+              - name: AUTH_PASSWORD_ENABLED
+                valueFrom:
+                  secretKeyRef:
+                    name: kartograph-auth-config
+                    key: password-enabled
+                    optional: true
+              - name: AUTH_ALLOWED_EMAIL_DOMAINS
+                valueFrom:
+                  secretKeyRef:
+                    name: kartograph-auth-config
+                    key: allowed-domains
+                    optional: true
               # GitHub OAuth configuration
               - name: NUXT_GITHUB_CLIENT_ID
                 valueFrom:
