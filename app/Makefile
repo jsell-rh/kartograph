@@ -29,6 +29,10 @@ VERTEX_REGION ?= us-central1
 GITHUB_CLIENT_ID ?=
 GITHUB_CLIENT_SECRET ?=
 
+# Authentication configuration (optional - can be set via environment or command line)
+AUTH_PASSWORD_ENABLED ?= true
+AUTH_ALLOWED_EMAIL_DOMAINS ?=
+
 # Version info for Docker builds
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 APP_VERSION ?= $(shell node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
@@ -102,6 +106,12 @@ deploy: ## Deploy using oc apply (requires IMAGE_TAG)
 		echo "No GitHub OAuth credentials provided (GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET is empty)"; \
 		echo "GitHub SSO will not be available. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to enable."; \
 	fi
+	@echo "Creating authentication configuration secret..."
+	@oc create secret generic kartograph-auth-config \
+		--from-literal=password-enabled=$(AUTH_PASSWORD_ENABLED) \
+		--from-literal=allowed-domains=$(AUTH_ALLOWED_EMAIL_DOMAINS) \
+		--dry-run=client -o yaml | oc apply -f -
+	@echo "Auth config: PASSWORD_ENABLED=$(AUTH_PASSWORD_ENABLED), ALLOWED_DOMAINS=$(AUTH_ALLOWED_EMAIL_DOMAINS)"
 	oc process -f deploy/clowdapp.yaml \
 		-p ENV_NAME=$(ENV_NAME) \
 		-p IMAGE=$(IMAGE) \
@@ -160,6 +170,12 @@ deploy-ephemeral-local: build-local ## Build and deploy locally to ephemeral nam
 		echo "No GitHub OAuth credentials provided (GITHUB_CLIENT_ID or GITHUB_CLIENT_SECRET is empty)"; \
 		echo "GitHub SSO will not be available. Set GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to enable."; \
 	fi
+	@echo "Creating authentication configuration secret..."
+	@oc create secret generic kartograph-auth-config \
+		--from-literal=password-enabled=$(AUTH_PASSWORD_ENABLED) \
+		--from-literal=allowed-domains=$(AUTH_ALLOWED_EMAIL_DOMAINS) \
+		--dry-run=client -o yaml | oc apply -f -
+	@echo "Auth config: PASSWORD_ENABLED=$(AUTH_PASSWORD_ENABLED), ALLOWED_DOMAINS=$(AUTH_ALLOWED_EMAIL_DOMAINS)"
 	@echo "Deploying standalone dgraph (bypassing Clowder)..."
 	@oc apply -f deploy/dgraph-standalone.yaml
 	@oc apply -f deploy/dgraph-services.yaml

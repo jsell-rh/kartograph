@@ -9,8 +9,11 @@
 
       <!-- Auth card -->
       <div class="bg-card border rounded-lg shadow-lg p-6">
-        <!-- Tabs -->
-        <div class="flex gap-2 mb-6 bg-muted p-1 rounded-lg">
+        <!-- Tabs (only show if password auth is enabled) -->
+        <div
+          v-if="config.public.authPasswordEnabled"
+          class="flex gap-2 mb-6 bg-muted p-1 rounded-lg"
+        >
           <button
             @click="activeTab = 'signin'"
             :class="[
@@ -65,8 +68,8 @@
           <span v-else>Continue with GitHub</span>
         </button>
 
-        <!-- Divider -->
-        <div class="relative mb-6">
+        <!-- Divider (only show if password auth is enabled) -->
+        <div v-if="config.public.authPasswordEnabled" class="relative mb-6">
           <div class="absolute inset-0 flex items-center">
             <div class="w-full border-t border-border"></div>
           </div>
@@ -77,9 +80,9 @@
           </div>
         </div>
 
-        <!-- Sign In Form -->
+        <!-- Sign In Form (only show if password auth is enabled) -->
         <form
-          v-if="activeTab === 'signin'"
+          v-if="config.public.authPasswordEnabled && activeTab === 'signin'"
           @submit.prevent="handleSignIn"
           class="space-y-4"
         >
@@ -125,9 +128,9 @@
           </button>
         </form>
 
-        <!-- Sign Up Form -->
+        <!-- Sign Up Form (only show if password auth is enabled) -->
         <form
-          v-if="activeTab === 'signup'"
+          v-if="config.public.authPasswordEnabled && activeTab === 'signup'"
           @submit.prevent="handleSignUp"
           class="space-y-4"
         >
@@ -207,10 +210,18 @@ definePageMeta({
 
 const config = useRuntimeConfig();
 const authStore = useAuthStore();
+const route = useRoute();
 
 const activeTab = ref<"signin" | "signup">("signin");
 const loading = ref(false);
 const error = ref("");
+
+// Check for error in query params (from OAuth redirect)
+onMounted(() => {
+  if (route.query.error) {
+    error.value = route.query.error as string;
+  }
+});
 
 // Sign in form
 const signInEmail = ref("");
@@ -284,6 +295,7 @@ async function handleGitHubSignIn() {
   error.value = "";
 
   try {
+    // Redirect to baseURL after OAuth completes
     await authClient.signIn.social({
       provider: "github",
       callbackURL: config.public.baseURL,

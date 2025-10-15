@@ -38,6 +38,10 @@ export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
 # (Optional) Configure GitHub OAuth
 # export GITHUB_CLIENT_ID=your_client_id
 # export GITHUB_CLIENT_SECRET=your_client_secret
+
+# (Optional) Configure authentication restrictions
+# export AUTH_PASSWORD_ENABLED=false  # Set to "false" to disable password auth (OAuth only)
+# export AUTH_ALLOWED_EMAIL_DOMAINS=redhat.com,ibm.com  # Restrict to specific domains
 ```
 
 **Critical**: The Makefile and deployment scripts read these variables from your shell environment at runtime. If they're not exported in your current shell session, deployment will fail.
@@ -54,6 +58,10 @@ export BETTER_AUTH_SECRET=your-generated-secret
 # (Optional) Configure GitHub OAuth
 # export GITHUB_CLIENT_ID=your_client_id
 # export GITHUB_CLIENT_SECRET=your_client_secret
+
+# (Optional) Configure authentication restrictions
+# export AUTH_PASSWORD_ENABLED=false  # Disable password auth (OAuth only)
+# export AUTH_ALLOWED_EMAIL_DOMAINS=redhat.com  # Restrict to specific domains
 
 # Then source it before running make:
 # source setenv.sh
