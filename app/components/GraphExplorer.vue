@@ -13,26 +13,47 @@
             • {{ selectedEntity.displayName }}
           </span>
         </div>
-        <button
-          @click="resetGraph"
-          class="px-3 py-1.5 hover:bg-muted rounded-lg transition-colors flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          title="Clear all nodes and edges"
-        >
-          <svg
-            class="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+        <div class="flex items-center gap-2">
+          <button
+            @click="resetGraph"
+            class="px-3 py-1.5 hover:bg-muted rounded-lg transition-colors flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            title="Clear all nodes and edges"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-            />
-          </svg>
-          <span class="font-medium">Clear Graph</span>
-        </button>
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+            <span class="font-medium">Clear Graph</span>
+          </button>
+          <button
+            @click="emit('closeExplorer')"
+            class="p-2 hover:bg-muted rounded-lg transition-colors"
+            title="Hide graph explorer"
+          >
+            <svg
+              class="w-5 h-5 text-muted-foreground hover:text-foreground"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <!-- Stats -->
@@ -170,6 +191,59 @@
     <div class="flex-1 relative bg-background/50 min-h-0">
       <!-- Cytoscape canvas -->
       <div ref="cytoscapeContainer" class="absolute inset-0"></div>
+
+      <!-- Empty state overlay - shown when no nodes -->
+      <div
+        v-if="nodeCount === 0"
+        class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none"
+      >
+        <div class="text-center max-w-md px-8">
+          <div
+            class="mx-auto w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center mb-6"
+          >
+            <svg
+              class="w-12 h-12 text-primary/60"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+              />
+            </svg>
+          </div>
+          <h3 class="text-lg font-semibold text-foreground mb-2">
+            Graph Explorer Ready
+          </h3>
+          <p class="text-sm text-muted-foreground mb-4">
+            Click on any entity in a conversation response to visualize its
+            relationships
+          </p>
+          <div
+            class="inline-flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg text-xs text-muted-foreground"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span
+              >Entities appear as clickable tags in assistant responses</span
+            >
+          </div>
+        </div>
+      </div>
 
       <!-- Loading overlay -->
       <div
@@ -624,6 +698,10 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+
+const emit = defineEmits<{
+  closeExplorer: [];
+}>();
 
 const cytoscapeContainer = ref<HTMLElement | null>(null);
 let cy: cytoscape.Core | null = null;
