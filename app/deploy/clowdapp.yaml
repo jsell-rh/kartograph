@@ -161,16 +161,20 @@ objects:
                 readOnly: true
             livenessProbe:
               httpGet:
-                path: /
+                path: /api/health
                 port: 8000
               initialDelaySeconds: 10
               periodSeconds: 30
+              timeoutSeconds: 5
+              failureThreshold: 3
             readinessProbe:
               httpGet:
-                path: /
+                path: /api/health
                 port: 8000
               initialDelaySeconds: 5
               periodSeconds: 10
+              timeoutSeconds: 5
+              failureThreshold: 3
             resources:
               limits:
                 cpu: ${APP_CPU_LIMIT}
