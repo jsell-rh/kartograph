@@ -1,5 +1,5 @@
 <template>
-  <div class="h-screen bg-background flex flex-col overflow-hidden">
+  <div class="h-full bg-background flex flex-col overflow-hidden">
     <!-- Header with glass-morphism -->
     <header
       class="fixed top-0 left-0 right-0 z-50 border-b border-border/40 bg-background/60 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 shadow-lg shadow-background/5"
@@ -134,7 +134,7 @@
     </header>
 
     <!-- Main content - Split panel layout -->
-    <main class="flex-1 flex overflow-hidden absolute inset-0 top-[73px]">
+    <main class="flex-1 flex overflow-hidden absolute inset-0 top-[73px] bottom-10">
       <!-- Conversation sidebar -->
       <Transition name="slide-sidebar">
         <div
