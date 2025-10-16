@@ -58,38 +58,18 @@
         </button>
       </div>
     </div>
-
-    <!-- Example queries -->
-    <Transition name="slide-fade">
-      <div
-        v-if="!loading && query.length === 0"
-        class="overflow-hidden pt-4 border-t"
-      >
-        <p class="text-sm font-medium text-muted-foreground mb-3">
-          Try these examples:
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <button
-            v-for="example in examples"
-            :key="example"
-            class="text-sm px-3.5 py-2 rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 hover:shadow-sm transition-all border border-border/50"
-            @click="query = example"
-          >
-            {{ example }}
-          </button>
-        </div>
-      </div>
-    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 interface Props {
   loading?: boolean;
+  initialQuery?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
+  initialQuery: "",
 });
 
 const emit = defineEmits<{
@@ -100,13 +80,16 @@ const emit = defineEmits<{
 const query = ref("");
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
-const examples = [
-  "Which service does /upload point to?",
-  "Show me all services owned by the SRE team",
-  "What are the SLOs for acs-fleet-manager?",
-  "Find all namespaces running on cluster appsrep09ue1",
-  "Who has access to the telemeter service?",
-];
+// Watch for initialQuery changes and update query
+watch(() => props.initialQuery, (newQuery) => {
+  if (newQuery) {
+    query.value = newQuery;
+    // Focus the textarea after setting the query
+    nextTick(() => {
+      textareaRef.value?.focus();
+    });
+  }
+});
 
 function handleSubmit() {
   if (query.value.trim() && !props.loading) {
@@ -127,38 +110,3 @@ onMounted(() => {
   textareaRef.value?.focus();
 });
 </script>
-
-<style scoped>
-/* Smooth slide-fade transition for examples */
-.slide-fade-enter-active {
-  transition: all 0.3s ease-out;
-}
-
-.slide-fade-leave-active {
-  transition: all 0.2s ease-in;
-}
-
-.slide-fade-enter-from {
-  transform: translateY(-10px);
-  opacity: 0;
-  max-height: 0;
-}
-
-.slide-fade-enter-to {
-  transform: translateY(0);
-  opacity: 1;
-  max-height: 500px;
-}
-
-.slide-fade-leave-from {
-  transform: translateY(0);
-  opacity: 1;
-  max-height: 500px;
-}
-
-.slide-fade-leave-to {
-  transform: translateY(-10px);
-  opacity: 0;
-  max-height: 0;
-}
-</style>
