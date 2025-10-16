@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.2](https://github.com/jsell-rh/kartograph/compare/v0.1.1...v0.1.2) (2025-10-16)
+
+
+### Features
+
+* Add conversation management improvements ([e408a4d](https://github.com/jsell-rh/kartograph/commit/e408a4df4fc4528413e4223895bace169f332f05))
+* Add GITHUB_URL environment variable support to Makefile ([8b5fa60](https://github.com/jsell-rh/kartograph/commit/8b5fa6012411a19dd057b2a486484eab931757b3))
+* Add interactive onboarding tour and automated changelog ([ba1e293](https://github.com/jsell-rh/kartograph/commit/ba1e293c83fd3b0a1e52f97bbf200af755add386))
+* Add optional GitHub link button in footer ([578b8bf](https://github.com/jsell-rh/kartograph/commit/578b8bf5a661a07999287e4f814a6876bb490281))
+* Improve link behavior and metadata sorting ([7e6bd65](https://github.com/jsell-rh/kartograph/commit/7e6bd65d06c165b2cfa95ffebd2ad0372616035b))
+* Improve sidebar and graph explorer UX ([cd8dc30](https://github.com/jsell-rh/kartograph/commit/cd8dc30ad3bcc43f4afe4f41dfddee43ac6f39e6))
+* Move example queries to empty state ([30f2fbf](https://github.com/jsell-rh/kartograph/commit/30f2fbf4c701651cfe106fefe6c0989e151d339c))
+
+
+### Bug Fixes
+
+* Add trailing slash to homeUrl for OAuth redirect compatibility ([3762e79](https://github.com/jsell-rh/kartograph/commit/3762e7977fea8bee65ecd7ffa8cbb03aa65b06ca))
+* Add unauthenticated health check endpoint for K8s probes ([d4f795a](https://github.com/jsell-rh/kartograph/commit/d4f795a09b61a3bb438b7671706f886512682ec0))
+* **app:** Fix deployment health + liveness paths ([af28fbe](https://github.com/jsell-rh/kartograph/commit/af28fbec1a0eb917d9c569413340353e6b1f0785))
+* Correct deployment URL patching and auth client configuration ([a937eff](https://github.com/jsell-rh/kartograph/commit/a937eff0d411e8ec342db6bbd60ce058df687671))
+* Don't regenerate changelog during build (no .git in Docker) ([4eda0ec](https://github.com/jsell-rh/kartograph/commit/4eda0ec3c345488ada5ba80898f217be6cc7d389))
+* Generate changelog as TypeScript module for proper bundling ([641fae6](https://github.com/jsell-rh/kartograph/commit/641fae62fdc40ae44a81e1b08f4bdf1abfc620ff))
+* Import changelog.json directly instead of fetching ([43ba80d](https://github.com/jsell-rh/kartograph/commit/43ba80d78348d1c75a5b4ed906fdda8462d48224))
+* Make footer always visible without scrolling ([a129e11](https://github.com/jsell-rh/kartograph/commit/a129e11c504839bad4730c2d9a0b084ec0e3d06c))
+* Move changelog.json to project root and commit it ([63d6ff7](https://github.com/jsell-rh/kartograph/commit/63d6ff7413b6c90782031802a36a49d1f80e2ebd))
+* Prioritize app.baseURL over public.baseURL for runtime config ([5878dec](https://github.com/jsell-rh/kartograph/commit/5878dec8ff03b2fd81033af7f4167148cfd75b33))
+* Read baseURL from server-rendered config instead of build-time config ([b317153](https://github.com/jsell-rh/kartograph/commit/b3171532fe9df8c07360ce2ba2086b8f0422e2f4))
+* Update URL tests to expect trailing slash on homeUrl ([4e8d2f1](https://github.com/jsell-rh/kartograph/commit/4e8d2f125c9d47a3b86acd1c0c111ddefac57875))
+* Use route-relative path for logout redirect ([c0e75f3](https://github.com/jsell-rh/kartograph/commit/c0e75f33c54e38d733f6a1aca50b9a4c00e849a9))
+* Use route-relative paths to avoid base path duplication ([d2c6a99](https://github.com/jsell-rh/kartograph/commit/d2c6a99e6b28e85f3adecc29b050c4ce9c7a2d8c))
+* Use runtime base URL for changelog.json fetch ([f26e0a6](https://github.com/jsell-rh/kartograph/commit/f26e0a605d545e73e6b50bd9f7a4fe4432ceeaee))
+* Use runtime baseURL in useAppUrls composable for OAuth redirects ([9a84e99](https://github.com/jsell-rh/kartograph/commit/9a84e99561b16cf4b0c343571db8b0d00695f85f))
+
+
+### Chores
+
+* Merge branch 'main' of github.com:jsell-rh/kartograph ([c9f3e4a](https://github.com/jsell-rh/kartograph/commit/c9f3e4ac43078a0307bfaab89bf5375a89f71d73))
+
 ### 0.1.1 (2025-10-16)
 
 
