@@ -16,8 +16,14 @@ import { getAppUrls } from "~/utils/urls";
 export function useAppUrls(): AppUrls {
   const config = useRuntimeConfig();
 
+  // Priority: app.baseURL (server-rendered) > public.baseURL (can be build-time)
+  // This matches the logic in plugins/auth-config.client.ts
+  const basePath = config.app?.baseURL ||
+                  (config.public.baseURL !== "/" ? config.public.baseURL : null) ||
+                  "/";
+
   return getAppUrls({
-    appOrigin: config.public.appOrigin,
-    basePath: config.public.baseURL,
+    appOrigin: config.public.appOrigin || (typeof window !== "undefined" ? window.location.origin : ""),
+    basePath,
   });
 }
