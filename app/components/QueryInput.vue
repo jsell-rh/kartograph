@@ -65,30 +65,44 @@
 interface Props {
   loading?: boolean;
   initialQuery?: string;
+  modelValue?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   initialQuery: "",
+  modelValue: "",
 });
 
 const emit = defineEmits<{
   submit: [query: string];
   stop: [];
+  "update:modelValue": [value: string];
 }>();
 
-const query = ref("");
+const query = ref(props.modelValue);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 
 // Watch for initialQuery changes and update query
 watch(() => props.initialQuery, (newQuery) => {
   if (newQuery) {
     query.value = newQuery;
+    emit("update:modelValue", newQuery);
     // Focus the textarea after setting the query
     nextTick(() => {
       textareaRef.value?.focus();
     });
   }
+});
+
+// Watch for modelValue changes from parent
+watch(() => props.modelValue, (newValue) => {
+  query.value = newValue;
+});
+
+// Watch query changes and emit to parent
+watch(query, (newValue) => {
+  emit("update:modelValue", newValue);
 });
 
 function handleSubmit() {

@@ -353,14 +353,14 @@ find-free-port:
 	echo $$PORT
 
 load-data: ## Load graph data into remote dgraph (use GRAPH_FILE=path/to/file.jsonld)
-	@echo "This will port-forward dgraph-alpha and load data from ../$(GRAPH_FILE)"
+	@echo "This will port-forward dgraph-alpha and load data from $(GRAPH_FILE)"
 	@echo "Make sure the graph data file exists before continuing."
 	@echo ""
-	@if [ ! -f ../$(GRAPH_FILE) ]; then \
-		echo "ERROR: ../$(GRAPH_FILE) not found"; \
+	@if [ ! -f $(GRAPH_FILE) ]; then \
+		echo "ERROR: $(GRAPH_FILE) not found"; \
 		echo ""; \
 		echo "Available graph files:"; \
-		find .. -name "*.jsonld" -type f 2>/dev/null | sed 's|^\.\./||' | head -10; \
+		find .. -name "*.jsonld" -type f 2>/dev/null |  head -10; \
 		echo ""; \
 		echo "Use: make load-data GRAPH_FILE=path/to/file.jsonld"; \
 		exit 1; \
@@ -407,7 +407,7 @@ load-data: ## Load graph data into remote dgraph (use GRAPH_FILE=path/to/file.js
 		rm -f $$PF_LOG; \
 		echo ""; \
 		echo "Loading data with dgraph live..."; \
-		cd .. && python load_dgraph.py --input $(GRAPH_FILE) --dgraph-url http://localhost:$$HTTP_PORT; \
+		cd .. && python extraction/load_dgraph.py --input $(GRAPH_FILE) --dgraph-url http://localhost:$$HTTP_PORT; \
 		LOAD_EXIT=$$?; \
 		echo ""; \
 		echo "Stopping port-forwards..."; \
