@@ -78,7 +78,7 @@ objects:
                 value: "http://kartograph-dgraph-alpha:8080"
               - name: NUXT_APP_BASE_URL
                 value: "/api/kartograph/"
-              - name: NUXT_PUBLIC_SITE_URL
+              - name: NUXT_PUBLIC_ORIGIN
                 value: ${APP_PUBLIC_URL}
               - name: DATABASE_URL
                 value: "/data/kartograph.db"
@@ -88,8 +88,6 @@ objects:
                   secretKeyRef:
                     name: kartograph-secrets
                     key: auth-secret
-              - name: BETTER_AUTH_URL
-                value: ${APP_PUBLIC_URL}/api/kartograph
               - name: BETTER_AUTH_TRUSTED_ORIGINS
                 value: ${APP_PUBLIC_URL}
               - name: ENABLE_RH_IDENTITY_HEADER

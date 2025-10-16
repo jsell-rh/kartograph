@@ -257,6 +257,7 @@ const isResizing = ref(false);
 // Stores
 const authStore = useAuthStore();
 const conversationStore = useConversationStore();
+const urls = useAppUrls();
 
 // User session from store
 const userName = computed(() => authStore.user?.name || "User");
@@ -385,9 +386,7 @@ async function handleSubmit(query: string) {
     }));
 
     // Make POST request to query endpoint with history
-    const config = useRuntimeConfig();
-    const baseURL = config.app.baseURL || "/";
-    const apiUrl = baseURL === "/" ? "/api/query" : `${baseURL}/api/query`;
+    const apiUrl = urls.getAppPath("/api/query");
 
     const response = await fetch(apiUrl, {
       method: "POST",
@@ -701,7 +700,7 @@ function startResize(e: MouseEvent) {
  */
 async function handleSignOut() {
   await authStore.signOut();
-  await navigateTo("/login");
+  await navigateTo(urls.loginPath);
 }
 
 // Watch for active conversation changes (e.g., deletion, archiving)
