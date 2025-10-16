@@ -88,7 +88,10 @@
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex-1 min-w-0">
-                <h3 class="text-sm font-medium text-foreground truncate">
+                <h3
+                  class="text-sm font-medium text-foreground truncate"
+                  :title="conv.title"
+                >
                   {{ conv.title }}
                 </h3>
                 <div class="flex items-center gap-2 mt-1">
@@ -276,7 +279,10 @@
           >
             <div class="flex items-start justify-between gap-2">
               <div class="flex-1 min-w-0">
-                <h3 class="text-sm font-medium text-foreground truncate">
+                <h3
+                  class="text-sm font-medium text-foreground truncate"
+                  :title="conv.title"
+                >
                   {{ conv.title }}
                 </h3>
                 <p class="text-xs text-muted-foreground mt-1">

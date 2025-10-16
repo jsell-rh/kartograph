@@ -139,7 +139,7 @@
       <Transition name="slide-sidebar">
         <div
           v-if="showSidebar"
-          class="conversation-sidebar w-64 flex-shrink-0 border-r border-border bg-card"
+          class="conversation-sidebar w-80 flex-shrink-0 border-r border-border bg-card"
         >
           <ConversationSidebar
             @select-conversation="loadConversation"
@@ -218,10 +218,13 @@
         <div
           v-if="showGraphExplorer"
           :style="{ width: `${graphPanelWidth}%` }"
-          class="flex-shrink-0 min-w-[400px] max-w-[70vw] h-full pt-[73px]"
+          class="flex-shrink-0 min-w-[400px] max-w-[70vw] h-full"
         >
           <div class="h-full">
-            <GraphExplorer :selected-entity="selectedEntity" />
+            <GraphExplorer
+              :selected-entity="selectedEntity"
+              @close-explorer="showGraphExplorer = false"
+            />
           </div>
         </div>
       </Transition>
