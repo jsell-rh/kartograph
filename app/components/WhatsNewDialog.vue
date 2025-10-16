@@ -101,6 +101,7 @@
 
 <script setup lang="ts">
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "~/components/ui/dialog";
+import changelog from "~/utils/changelog";
 
 interface Props {
   version: string;
@@ -122,25 +123,10 @@ watch(() => props.open, (newVal) => {
   isOpen.value = newVal;
 });
 
-// Load changelog from generated JSON file (imported directly, not fetched)
-const features = ref<string[]>([]);
-const improvements = ref<string[]>([]);
-const bugFixes = ref<string[]>([]);
-
-// Import and load changelog when component mounts
-onMounted(async () => {
-  try {
-    // Import the changelog from project root (generated at build time)
-    // This is bundled with the app and works regardless of base URL
-    const changelog = await import("~/changelog.json");
-    features.value = changelog.default?.features || changelog.features || [];
-    improvements.value = changelog.default?.improvements || changelog.improvements || [];
-    bugFixes.value = changelog.default?.bugFixes || changelog.bugFixes || [];
-  } catch (error) {
-    console.error("Failed to load changelog:", error);
-    // Fallback to empty arrays
-  }
-});
+// Load changelog data (generated at build time as TypeScript module)
+const features = ref<string[]>(changelog.features || []);
+const improvements = ref<string[]>(changelog.improvements || []);
+const bugFixes = ref<string[]>(changelog.bugFixes || []);
 
 function handleClose() {
   isOpen.value = false;

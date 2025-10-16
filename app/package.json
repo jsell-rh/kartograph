@@ -15,10 +15,10 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "release": "npm run changelog && standard-version && git add changelog.json && git commit --amend --no-edit",
-    "release:minor": "npm run changelog && standard-version --release-as minor && git add changelog.json && git commit --amend --no-edit",
-    "release:major": "npm run changelog && standard-version --release-as major && git add changelog.json && git commit --amend --no-edit",
-    "release:patch": "npm run changelog && standard-version --release-as patch && git add changelog.json && git commit --amend --no-edit"
+    "release": "npm run changelog && standard-version && git add utils/changelog.ts && git commit --amend --no-edit",
+    "release:minor": "npm run changelog && standard-version --release-as minor && git add utils/changelog.ts && git commit --amend --no-edit",
+    "release:major": "npm run changelog && standard-version --release-as major && git add utils/changelog.ts && git commit --amend --no-edit",
+    "release:patch": "npm run changelog && standard-version --release-as patch && git add utils/changelog.ts && git commit --amend --no-edit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
