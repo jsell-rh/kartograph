@@ -94,6 +94,8 @@ export default defineNuxtConfig({
       baseURL: process.env.NUXT_APP_BASE_URL || "/",
       version: fullVersion,
       gitCommit: gitCommit,
+      // GitHub repository URL (optional) - if set, shows GitHub button in footer
+      githubUrl: process.env.NUXT_PUBLIC_GITHUB_URL || "",
       // Expose auth config to client - NUXT_PUBLIC_ prefix for runtime override
       authPasswordEnabled:
         (process.env.NUXT_PUBLIC_AUTH_PASSWORD_ENABLED || process.env.AUTH_PASSWORD_ENABLED) !== "false", // pragma: allowlist secret

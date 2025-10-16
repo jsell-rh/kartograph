@@ -80,6 +80,8 @@ objects:
                 value: "/api/kartograph/"
               - name: NUXT_PUBLIC_ORIGIN
                 value: ${APP_PUBLIC_URL}
+              - name: NUXT_PUBLIC_GITHUB_URL
+                value: ${GITHUB_URL}
               - name: DATABASE_URL
                 value: "/data/kartograph.db"
               # Nuxt runtime config overrides for Better Auth
@@ -217,6 +219,9 @@ parameters:
   - name: APP_PUBLIC_URL
     description: Public URL for the app
     required: true
+  - name: GITHUB_URL
+    description: GitHub repository URL (optional, shows button in footer if set)
+    value: ""
 
   # Dgraph Zero parameters
   - name: DGRAPH_ZERO_REPLICAS
