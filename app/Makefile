@@ -198,22 +198,34 @@ deploy-ephemeral-local: build-local ## Build and deploy locally to ephemeral nam
 		ROUTE_HOST=$$(oc get route -l app=kartograph -o jsonpath='{.items[0].spec.host}' 2>/dev/null); \
 		if [ -n "$$ROUTE_HOST" ]; then \
 			ROUTE_URL="https://$$ROUTE_HOST/api/kartograph"; \
+			ROUTE_ORIGIN="https://$$ROUTE_HOST"; \
 			echo "Detected route URL: $$ROUTE_URL"; \
+			echo "Detected route origin: $$ROUTE_ORIGIN"; \
 			if [ "$$ROUTE_URL" != "$(APP_PUBLIC_URL)" ]; then \
 				echo "Updating ClowdApp with correct URLs..."; \
-				oc patch clowdapp kartograph --type=json -p="[{ \
-					\"op\": \"replace\", \
-					\"path\": \"/spec/deployments/0/podSpec/env/3/value\", \
-					\"value\": \"$$ROUTE_URL\" \
-				}, { \
-					\"op\": \"replace\", \
-					\"path\": \"/spec/deployments/0/podSpec/env/6/value\", \
-					\"value\": \"$$ROUTE_URL\" \
-				}, { \
-					\"op\": \"replace\", \
-					\"path\": \"/spec/deployments/0/podSpec/env/7/value\", \
-					\"value\": \"$$ROUTE_URL\" \
-				}]"; \
+				echo "Finding environment variable indices dynamically..."; \
+				ORIGIN_INDEX=$$(oc get clowdapp kartograph -o json | jq -r '.spec.deployments[0].podSpec.env | to_entries | .[] | select(.value.name == "NUXT_PUBLIC_ORIGIN") | .key'); \
+				TRUSTED_INDEX=$$(oc get clowdapp kartograph -o json | jq -r '.spec.deployments[0].podSpec.env | to_entries | .[] | select(.value.name == "BETTER_AUTH_TRUSTED_ORIGINS") | .key'); \
+				if [ -z "$$ORIGIN_INDEX" ] || [ -z "$$TRUSTED_INDEX" ]; then \
+					echo "ERROR: Could not find env var indices in ClowdApp"; \
+					echo "ORIGIN_INDEX=$$ORIGIN_INDEX, TRUSTED_INDEX=$$TRUSTED_INDEX"; \
+					echo "Falling back to direct deployment env update..."; \
+					oc set env deployment/kartograph-app \
+						NUXT_PUBLIC_ORIGIN="$$ROUTE_ORIGIN" \
+						BETTER_AUTH_TRUSTED_ORIGINS="$$ROUTE_URL" 2>/dev/null || true; \
+				else \
+					echo "Found NUXT_PUBLIC_ORIGIN at index $$ORIGIN_INDEX"; \
+					echo "Found BETTER_AUTH_TRUSTED_ORIGINS at index $$TRUSTED_INDEX"; \
+					oc patch clowdapp kartograph --type=json -p="[{ \
+						\"op\": \"replace\", \
+						\"path\": \"/spec/deployments/0/podSpec/env/$$ORIGIN_INDEX/value\", \
+						\"value\": \"$$ROUTE_ORIGIN\" \
+					}, { \
+						\"op\": \"replace\", \
+						\"path\": \"/spec/deployments/0/podSpec/env/$$TRUSTED_INDEX/value\", \
+						\"value\": \"$$ROUTE_URL\" \
+					}]"; \
+				fi; \
 				echo "Waiting for Clowder to reconcile..."; \
 				sleep 10; \
 			fi; \
