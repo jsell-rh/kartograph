@@ -150,6 +150,11 @@ export function getAppUrls(options?: {
 
   const homePath = basePath;
 
+  // homeUrl needs trailing slash for proper routing
+  const homeUrl = basePath === "/"
+    ? `${appOrigin}/`
+    : `${appOrigin}${basePath}/`;
+
   return {
     // Base
     appOrigin,
@@ -163,7 +168,7 @@ export function getAppUrls(options?: {
     loginPath,
     loginUrl: `${appOrigin}${loginPath}`,
     homePath,
-    homeUrl: `${appOrigin}${homePath}`,
+    homeUrl,
 
     // API
     apiPath,
