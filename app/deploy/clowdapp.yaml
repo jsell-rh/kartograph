@@ -163,7 +163,7 @@ objects:
                 readOnly: true
             livenessProbe:
               httpGet:
-                path: /api/health
+                path: /api/kartograph/api/health
                 port: 8000
               initialDelaySeconds: 10
               periodSeconds: 30
@@ -171,7 +171,7 @@ objects:
               failureThreshold: 3
             readinessProbe:
               httpGet:
-                path: /api/health
+                path: /api/kartograph/api/health
                 port: 8000
               initialDelaySeconds: 5
               periodSeconds: 10
