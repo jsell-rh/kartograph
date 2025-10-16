@@ -1,0 +1,75 @@
+name: Release
+
+"on":
+  push:
+    branches: [main, master]
+    # Don't run on tag pushes to avoid infinite loop
+    tags-ignore:
+      - "**"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # Skip if commit message contains [skip-release] or is a version bump
+    if: >-
+      !contains(github.event.head_commit.message, '[skip-release]') &&
+      !contains(github.event.head_commit.message, 'chore(release)')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Use default GITHUB_TOKEN
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "./app/package-lock.json"
+
+      - name: Install dependencies
+        run: |
+          cd app
+          npm ci
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run standard-version
+        run: |
+          cd app
+          npm run release
+        env:
+          # Ensure we're using the repo's standard-version
+          NODE_ENV: production
+
+      - name: Get new version
+        id: version
+        run: |
+          VERSION=$(node -p "require('./app/package.json').version")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Push changes and tags
+        run: |
+          git push --follow-tags origin main
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: Release ${{ steps.version.outputs.tag }}
+          body: |
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/app/CHANGELOG.md) for details.
+          draft: false
+          prerelease: false

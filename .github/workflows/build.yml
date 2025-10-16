@@ -46,6 +46,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Extract app version
+        id: app_version
+        run: |
+          VERSION=$(node -p "require('./app/package.json').version")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "App version: ${VERSION}"
+
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -65,6 +72,7 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix={{branch}}-
+            type=raw,value=${{ steps.app_version.outputs.version }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Set up Docker Buildx
