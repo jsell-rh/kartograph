@@ -64,7 +64,7 @@ describe("getAppUrls", () => {
       expect(urls.loginPath).toBe("/api/kartograph/login");
       expect(urls.loginUrl).toBe("https://example.com/api/kartograph/login");
       expect(urls.homePath).toBe("/api/kartograph");
-      expect(urls.homeUrl).toBe("https://example.com/api/kartograph");
+      expect(urls.homeUrl).toBe("https://example.com/api/kartograph/");
       expect(urls.apiPath).toBe("/api/kartograph/api");
       expect(urls.mcpPath).toBe("/api/kartograph/api/mcp");
       expect(urls.mcpUrl).toBe("https://example.com/api/kartograph/api/mcp");
@@ -166,7 +166,7 @@ describe("getAppUrls", () => {
 
         expect(urls.appOrigin).toBe("https://example.com");
         expect(urls.basePath).toBe("/api/kartograph");
-        expect(urls.homeUrl).toBe("https://example.com/api/kartograph");
+        expect(urls.homeUrl).toBe("https://example.com/api/kartograph/");
         // Should not have double slashes
         expect(urls.homeUrl).not.toContain("//api");
       });
@@ -177,7 +177,7 @@ describe("getAppUrls", () => {
           basePath: "/api/kartograph",
         });
 
-        expect(urls.homeUrl).toBe("https://example.com/api/kartograph");
+        expect(urls.homeUrl).toBe("https://example.com/api/kartograph/");
         expect(urls.mcpUrl).toBe("https://example.com/api/kartograph/api/mcp");
       });
 
@@ -187,7 +187,7 @@ describe("getAppUrls", () => {
           basePath: "/api/kartograph",
         });
 
-        expect(urls.homeUrl).toBe("https://example.com/api/kartograph");
+        expect(urls.homeUrl).toBe("https://example.com/api/kartograph/");
         expect(urls.mcpUrl).toBe("https://example.com/api/kartograph/api/mcp");
       });
 
@@ -197,7 +197,7 @@ describe("getAppUrls", () => {
           basePath: "/api/kartograph/",
         });
 
-        expect(urls.homeUrl).toBe("https://example.com/api/kartograph");
+        expect(urls.homeUrl).toBe("https://example.com/api/kartograph/");
         expect(urls.mcpUrl).toBe("https://example.com/api/kartograph/api/mcp");
       });
     });
