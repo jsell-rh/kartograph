@@ -19,6 +19,7 @@ BONFIRE_NAMESPACE ?= $(shell bonfire namespace list --mine 2>/dev/null | awk 'NR
 
 # ClowdApp parameters
 APP_PUBLIC_URL ?= https://cloud.redhat.com
+GITHUB_URL ?=
 
 # Vertex AI configuration (optional - can be set via environment or command line)
 VERTEX_CREDENTIALS_FILE ?= $(GOOGLE_APPLICATION_CREDENTIALS)
@@ -117,6 +118,7 @@ deploy: ## Deploy using oc apply (requires IMAGE_TAG)
 		-p IMAGE=$(IMAGE) \
 		-p IMAGE_TAG=$(IMAGE_TAG) \
 		-p APP_PUBLIC_URL=$(APP_PUBLIC_URL) \
+		-p GITHUB_URL=$(GITHUB_URL) \
 		| oc apply -f -
 	@echo ""
 	@echo "Deployment complete! Waiting for rollout..."
@@ -187,6 +189,7 @@ deploy-ephemeral-local: build-local ## Build and deploy locally to ephemeral nam
 		-p IMAGE=$(LOCAL_IMAGE) \
 		-p IMAGE_TAG=$(LOCAL_IMAGE_TAG) \
 		-p APP_PUBLIC_URL=$(APP_PUBLIC_URL) \
+		-p GITHUB_URL=$(GITHUB_URL) \
 		| oc apply -f -
 	@echo ""
 	@echo "Deployment complete! Waiting for resources to be ready..."
