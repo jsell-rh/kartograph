@@ -121,8 +121,8 @@ export function getAppUrls(options?: {
     }
   }
 
-  // Ensure appOrigin doesn't have trailing slash
-  appOrigin = appOrigin.replace(/\/$/, "");
+  // Ensure appOrigin doesn't have trailing slashes
+  appOrigin = appOrigin.replace(/\/+$/, "");
 
   // Determine basePath (Nuxt standard config)
   let basePath = options?.basePath;
@@ -217,7 +217,9 @@ export function parseBetterAuthUrl(): { baseURL: string; basePath: string } {
       // If the URL includes a path (e.g., /api/kartograph), combine it with /api/auth
       let basePath = "/api/auth";
       if (url.pathname && url.pathname !== "/") {
-        basePath = normalizePath(`${url.pathname}/api/auth`, false);
+        // Normalize pathname to remove trailing slashes before combining
+        const normalizedPathname = url.pathname.replace(/\/+$/, "");
+        basePath = normalizePath(`${normalizedPathname}/api/auth`, false);
       }
 
       return { baseURL, basePath };
