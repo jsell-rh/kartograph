@@ -291,6 +291,10 @@ const isResizing = ref(false);
 // Example query state (for populating input from empty state examples)
 const exampleQuery = ref("");
 
+// Per-conversation draft storage
+const conversationDrafts = ref<Map<string, string>>(new Map());
+const currentDraft = ref("");
+
 // Stores
 const authStore = useAuthStore();
 const conversationStore = useConversationStore();
@@ -752,7 +756,8 @@ function startResize(e: MouseEvent) {
  */
 async function handleSignOut() {
   await authStore.signOut();
-  await navigateTo(urls.loginPath);
+  // Use route-relative path - Nuxt router handles base path automatically
+  await navigateTo('/login');
 }
 
 /**
