@@ -130,7 +130,12 @@ const bugFixes = ref<string[]>([]);
 // Fetch changelog when component mounts
 onMounted(async () => {
   try {
-    const response = await fetch("/changelog.json");
+    // Use runtime config to get the correct base URL
+    const config = useRuntimeConfig();
+    const baseURL = config.app?.baseURL || config.public.baseURL || "/";
+    const changelogPath = baseURL === "/" ? "/changelog.json" : `${baseURL}changelog.json`;
+
+    const response = await fetch(changelogPath);
     if (response.ok) {
       const changelog = await response.json();
       features.value = changelog.features || [];
