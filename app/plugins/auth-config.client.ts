@@ -7,8 +7,11 @@ export default defineNuxtPlugin((nuxtApp) => {
   if (typeof window === "undefined") return;
 
   // Get the base URL from Nuxt's app config (set during SSR)
-  // This reads from the server-rendered payload, not the baked-in bundle config
-  const baseURL = nuxtApp.$config.public.baseURL || nuxtApp.$config.app.baseURL || "/";
+  // Priority: app.baseURL (server-rendered) > public.baseURL (can be build-time)
+  // Only fall back to public.baseURL if app.baseURL is truly not set
+  const baseURL = nuxtApp.$config.app?.baseURL ||
+                  (nuxtApp.$config.public.baseURL !== "/" ? nuxtApp.$config.public.baseURL : null) ||
+                  "/";
   const appOrigin = nuxtApp.$config.public.appOrigin || window.location.origin;
 
   console.log("[auth-config] Runtime config from server:", {
