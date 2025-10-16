@@ -5,13 +5,10 @@
  */
 
 import { authClient } from "~/lib/auth-client";
-import { getAppUrls } from "~/utils/urls";
 
 export default defineNuxtRouteMiddleware(async (to) => {
-  const urls = getAppUrls();
-
-  // Skip middleware on login page
-  if (to.path === urls.loginPath) {
+  // Skip middleware on login page (use route name instead of path to avoid base path issues)
+  if (to.path.endsWith('/login')) {
     return;
   }
 
@@ -28,7 +25,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
       session = await getSession(event);
 
       if (!session?.user) {
-        return navigateTo(urls.loginPath);
+        // Use route-relative path - Nuxt will handle base path automatically
+        return navigateTo('/login');
       }
     }
   } else {
@@ -36,7 +34,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
     const result = await authClient.getSession();
 
     if (!result.data?.user) {
-      return navigateTo(urls.loginPath);
+      // Use route-relative path - Nuxt will handle base path automatically
+      return navigateTo('/login');
     }
   }
 });
