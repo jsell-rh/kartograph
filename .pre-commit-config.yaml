@@ -94,4 +94,4 @@ repos:
         files: '^app/.*\.(ts|vue|test\.ts)$'
         exclude: '^app/(\.nuxt|\.output|node_modules|dist)/.*'
         pass_filenames: false
-        stages: [push]
+        stages: [pre-push]
