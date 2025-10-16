@@ -32,13 +32,27 @@
             GitHub
           </a>
         </div>
-        <span class="font-mono">v{{ config.public.version }}</span>
+        <button
+          @click="showWhatsNew = true"
+          class="font-mono hover:text-gray-700 dark:hover:text-gray-300 transition-colors cursor-pointer"
+          title="View changelog"
+        >
+          v{{ config.public.version }}
+        </button>
       </div>
     </footer>
     <ToastContainer />
+
+    <!-- What's New Dialog -->
+    <WhatsNewDialog
+      :open="showWhatsNew"
+      :version="config.public.version"
+      @close="showWhatsNew = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 const config = useRuntimeConfig();
+const showWhatsNew = ref(false);
 </script>

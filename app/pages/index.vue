@@ -40,7 +40,7 @@
           <div class="relative" ref="userMenuRef">
             <button
               @click="showUserMenu = !showUserMenu"
-              class="w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium hover:opacity-90 transition-all shadow-sm"
+              class="user-menu-button w-10 h-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center font-medium hover:opacity-90 transition-all shadow-sm"
               title="User menu"
             >
               {{ userInitials }}
@@ -88,6 +88,25 @@
                     Settings
                   </NuxtLink>
                   <button
+                    @click="handleTakeTour"
+                    class="w-full px-4 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-foreground"
+                  >
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Take Tour
+                  </button>
+                  <button
                     @click="handleSignOut"
                     class="w-full px-4 py-2 text-left text-sm hover:bg-muted transition-colors flex items-center gap-2 text-muted-foreground hover:text-destructive"
                   >
@@ -120,7 +139,7 @@
       <Transition name="slide-sidebar">
         <div
           v-if="showSidebar"
-          class="w-64 flex-shrink-0 border-r border-border bg-card"
+          class="conversation-sidebar w-64 flex-shrink-0 border-r border-border bg-card"
         >
           <ConversationSidebar
             @select-conversation="loadConversation"
@@ -170,7 +189,7 @@
 
         <!-- Query input - sticky at bottom with glass-morphism -->
         <div
-          class="border-t border-border/40 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]"
+          class="query-input-container border-t border-border/40 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 p-4 shadow-[0_-4px_12px_rgba(0,0,0,0.05)]"
         >
           <div class="max-w-4xl mx-auto">
             <QueryInput
@@ -207,12 +226,22 @@
         </div>
       </Transition>
     </main>
+
+    <!-- What's New Dialog -->
+    <WhatsNewDialog
+      :open="showWhatsNew"
+      :version="config.public.version"
+      @close="showWhatsNew = false"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { useAuthStore } from "~/stores/auth";
 import { useConversationStore } from "~/stores/conversation";
+import { useOnboarding } from "~/composables/useOnboarding";
+
+const config = useRuntimeConfig();
 
 interface ThinkingStep {
   type: "thinking" | "tool_call" | "retry";
@@ -266,6 +295,10 @@ const userInitials = computed(() => authStore.userInitials);
 
 // Sidebar state
 const showSidebar = ref(true);
+
+// Onboarding and What's New
+const { startTour, hasCompletedOnboarding, hasVersionChanged, updateLastVersion } = useOnboarding();
+const showWhatsNew = ref(false);
 
 // Click outside directive
 const vClickOutside = {
@@ -703,6 +736,28 @@ async function handleSignOut() {
   await navigateTo(urls.loginPath);
 }
 
+/**
+ * Handle take tour
+ */
+function handleTakeTour() {
+  showUserMenu.value = false;
+  // Small delay to let menu close animation finish
+  setTimeout(() => {
+    startTour(undefined, {
+      showGraphExplorer: (show: boolean, entity?: any) => {
+        if (show && entity) {
+          selectedEntity.value = entity;
+          showGraphExplorer.value = true;
+        } else {
+          showGraphExplorer.value = false;
+          selectedEntity.value = null;
+        }
+      },
+      githubUrl: config.public.githubUrl,
+    });
+  }, 300);
+}
+
 // Watch for active conversation changes (e.g., deletion, archiving)
 watch(
   () => conversationStore.activeConversationId,
@@ -738,6 +793,45 @@ onMounted(async () => {
 
   // Add click-outside listener for user menu
   document.addEventListener("click", handleClickOutside);
+
+  // Onboarding and what's new logic
+  const currentVersion = config.public.version;
+
+  // Check if this is a first-time user
+  if (!hasCompletedOnboarding()) {
+    // Start tour after a short delay to let the page render
+    // Show what's new after tour completes
+    setTimeout(() => {
+      startTour(
+        () => {
+          // Show what's new after tour for first-time users
+          setTimeout(() => {
+            showWhatsNew.value = true;
+          }, 500);
+        },
+        {
+          showGraphExplorer: (show: boolean, entity?: any) => {
+            if (show && entity) {
+              selectedEntity.value = entity;
+              showGraphExplorer.value = true;
+            } else {
+              showGraphExplorer.value = false;
+              selectedEntity.value = null;
+            }
+          },
+          githubUrl: config.public.githubUrl,
+        }
+      );
+    }, 1000);
+  }
+  // Check if version has changed since last visit
+  else if (hasVersionChanged(currentVersion)) {
+    // Show what's new dialog for returning users
+    showWhatsNew.value = true;
+  }
+
+  // Update last seen version
+  updateLastVersion(currentVersion);
 });
 
 onUnmounted(() => {

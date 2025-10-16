@@ -1,0 +1,241 @@
+/**
+ * Custom Driver.js styling matching Kartograph's design system
+ * Reference: https://driverjs.com/docs/theming
+ */
+
+/* ===== OVERLAY ===== */
+.driver-overlay {
+  background-color: hsl(var(--background) / 0.75) !important;
+}
+
+/* ===== POPOVER CONTAINER ===== */
+.driver-popover {
+  /* Glass-morphic design matching app */
+  background: hsl(var(--card) / 0.95) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid hsl(var(--border) / 0.4) !important;
+  box-shadow: 0 8px 32px hsl(var(--background) / 0.2) !important;
+  border-radius: 12px !important;
+  padding: 0 !important;
+  min-width: 300px !important;
+  max-width: 380px !important;
+}
+
+/* Reset font family for all popover children */
+.driver-popover * {
+  font-family: inherit !important;
+}
+
+/* ===== TITLE ===== */
+.driver-popover-title {
+  font-size: 1.125rem !important;
+  font-weight: 700 !important;
+  color: hsl(var(--foreground)) !important;
+  line-height: 1.5 !important;
+  padding: 20px 24px 12px 24px !important;
+  border-bottom: 1px solid hsl(var(--border) / 0.4) !important;
+  border-radius: 12px 12px 0 0 !important;
+  margin: 0 !important;
+}
+
+/* ===== DESCRIPTION ===== */
+.driver-popover-description {
+  font-size: 0.9375rem !important;
+  line-height: 1.6 !important;
+  color: hsl(var(--muted-foreground)) !important;
+  padding: 16px 24px !important;
+  margin: 0 !important;
+}
+
+/* Support HTML in description */
+.driver-popover-description br {
+  display: block !important;
+  content: "" !important;
+  margin-top: 0.5em !important;
+}
+
+.driver-popover-description em {
+  font-style: italic !important;
+}
+
+.driver-popover-description a {
+  color: hsl(var(--primary)) !important;
+  text-decoration: none !important;
+  transition: opacity 0.2s ease !important;
+}
+
+.driver-popover-description a:hover {
+  opacity: 0.8 !important;
+  text-decoration: underline !important;
+}
+
+/* ===== FOOTER ===== */
+.driver-popover-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  padding: 16px 24px 20px 24px !important;
+  border-top: 1px solid hsl(var(--border) / 0.4) !important;
+  border-radius: 0 0 12px 12px !important;
+}
+
+/* ===== PROGRESS TEXT ===== */
+.driver-popover-progress-text {
+  font-size: 0.8125rem !important;
+  color: hsl(var(--muted-foreground)) !important;
+  font-weight: 500 !important;
+}
+
+/* ===== NAVIGATION BUTTONS CONTAINER ===== */
+.driver-popover-navigation-btns {
+  display: flex !important;
+  gap: 8px !important;
+}
+
+/* ===== ALL BUTTONS - BASE STYLES ===== */
+.driver-popover-prev-btn,
+.driver-popover-next-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  /* Size - match app buttons */
+  padding: 10px 20px !important;
+  height: 40px !important;
+  min-width: 80px !important;
+
+  /* Typography */
+  font-size: 0.875rem !important;
+  font-weight: 600 !important;
+  line-height: 1.5 !important;
+  text-align: center !important;
+
+  /* Shape - match app buttons (8px radius) */
+  border-radius: 0.5rem !important;
+  border: 1px solid transparent !important;
+
+  /* Interaction */
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+
+  /* Remove default button styles */
+  outline: none !important;
+  text-decoration: none !important;
+  text-shadow: none !important;
+}
+
+/* ===== PREVIOUS BUTTON ===== */
+.driver-popover-prev-btn {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-color: hsl(var(--border) / 0.4) !important;
+}
+
+.driver-popover-prev-btn:hover {
+  background: hsl(var(--muted) / 0.8) !important;
+}
+
+/* ===== NEXT BUTTON & DONE BUTTON ===== */
+.driver-popover-next-btn {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  box-shadow: 0 1px 3px hsl(var(--primary) / 0.3) !important;
+
+  /* Ensure crisp text rendering */
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: optimizeLegibility !important;
+}
+
+.driver-popover-next-btn:hover {
+  background: hsl(var(--primary) / 0.9) !important;
+  box-shadow: 0 2px 6px hsl(var(--primary) / 0.4) !important;
+  /* Removed transform to prevent text blur */
+}
+
+/* ===== CLOSE BUTTON ===== */
+.driver-popover-close-btn {
+  position: absolute !important;
+  top: 16px !important;
+  right: 16px !important;
+
+  width: 28px !important;
+  height: 28px !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  border-radius: 6px !important;
+  background: hsl(var(--muted) / 0.5) !important;
+  color: hsl(var(--muted-foreground)) !important;
+  border: none !important;
+
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.driver-popover-close-btn:hover {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* ===== ARROW - HIDE IT ===== */
+.driver-popover-arrow {
+  display: none !important;
+}
+
+/* ===== HIGHLIGHTED ELEMENT - KEY FIX FOR WHITE WASH ===== */
+/* Driver.js adds inline styles that can make elements hard to read */
+.driver-active-element,
+.driver-highlighted-element {
+  /* Base styling for all highlighted elements */
+  outline: 2px solid hsl(var(--primary)) !important;
+  outline-offset: 4px !important;
+  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1) !important;
+  border-radius: 8px !important;
+
+  /* Critical: Ensure element is fully visible */
+  opacity: 1 !important;
+  filter: none !important;
+
+  /* Ensure element is above overlay */
+  position: relative !important;
+  z-index: 10000000001 !important;
+}
+
+/* For container elements (query input, sidebar) - make background transparent */
+.query-input-container.driver-active-element,
+.query-input-container.driver-highlighted-element,
+.conversation-sidebar.driver-active-element,
+.conversation-sidebar.driver-highlighted-element {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* For button elements (user menu) - preserve original background */
+.user-menu-button.driver-active-element,
+.user-menu-button.driver-highlighted-element {
+  /* Don't override background - keep the button's original styling */
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+/* Ensure all children of highlighted element are also fully visible */
+.driver-active-element *,
+.driver-highlighted-element * {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+/* ===== GRAPH EXPLORER INTERACTIVITY ===== */
+/* Allow graph to be interactive during the tour step */
+.graph-explorer canvas {
+  pointer-events: auto !important;
+}
+
+.graph-explorer * {
+  pointer-events: auto !important;
+}
