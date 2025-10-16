@@ -122,26 +122,20 @@ watch(() => props.open, (newVal) => {
   isOpen.value = newVal;
 });
 
-// Load changelog from generated JSON file
+// Load changelog from generated JSON file (imported directly, not fetched)
 const features = ref<string[]>([]);
 const improvements = ref<string[]>([]);
 const bugFixes = ref<string[]>([]);
 
-// Fetch changelog when component mounts
+// Import and load changelog when component mounts
 onMounted(async () => {
   try {
-    // Use runtime config to get the correct base URL
-    const config = useRuntimeConfig();
-    const baseURL = config.app?.baseURL || config.public.baseURL || "/";
-    const changelogPath = baseURL === "/" ? "/changelog.json" : `${baseURL}changelog.json`;
-
-    const response = await fetch(changelogPath);
-    if (response.ok) {
-      const changelog = await response.json();
-      features.value = changelog.features || [];
-      improvements.value = changelog.improvements || [];
-      bugFixes.value = changelog.bugFixes || [];
-    }
+    // Import the changelog directly so it works regardless of base URL
+    // This is bundled with the app rather than fetched from public/
+    const changelog = await import("~/public/changelog.json");
+    features.value = changelog.default?.features || changelog.features || [];
+    improvements.value = changelog.default?.improvements || changelog.improvements || [];
+    bugFixes.value = changelog.default?.bugFixes || changelog.bugFixes || [];
   } catch (error) {
     console.error("Failed to load changelog:", error);
     // Fallback to empty arrays
