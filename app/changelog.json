@@ -1,0 +1,22 @@
+{
+  "features": [
+    "Add interactive onboarding tour and automated changelog",
+    "Add GITHUB_URL environment variable support to Makefile",
+    "Add optional GitHub link button in footer"
+  ],
+  "improvements": [],
+  "bugFixes": [
+    "Update URL tests to expect trailing slash on homeUrl",
+    "Import changelog.json directly instead of fetching",
+    "Make footer always visible without scrolling",
+    "Use runtime base URL for changelog.json fetch",
+    "Add trailing slash to homeUrl for OAuth redirect compatibility",
+    "Use runtime baseURL in useAppUrls composable for OAuth redirects",
+    "Use route-relative paths to avoid base path duplication",
+    "Prioritize app.baseURL over public.baseURL for runtime config",
+    "Read baseURL from server-rendered config instead of build-time config",
+    "Correct deployment URL patching and auth client configuration",
+    "Fix deployment health + liveness paths",
+    "Add unauthenticated health check endpoint for K8s probes"
+  ]
+}

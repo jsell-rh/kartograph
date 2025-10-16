@@ -130,9 +130,9 @@ const bugFixes = ref<string[]>([]);
 // Import and load changelog when component mounts
 onMounted(async () => {
   try {
-    // Import the changelog directly so it works regardless of base URL
-    // This is bundled with the app rather than fetched from public/
-    const changelog = await import("~/public/changelog.json");
+    // Import the changelog from project root (generated at build time)
+    // This is bundled with the app and works regardless of base URL
+    const changelog = await import("~/changelog.json");
     features.value = changelog.default?.features || changelog.features || [];
     improvements.value = changelog.default?.improvements || changelog.improvements || [];
     bugFixes.value = changelog.default?.bugFixes || changelog.bugFixes || [];

@@ -148,8 +148,9 @@ function main() {
         `${changelog.bugFixes.length} bug fixes`,
     );
 
-    // Write to public directory so it can be imported
-    const outputPath = join(__dirname, "..", "public", "changelog.json");
+    // Write to project root so it can be imported as a module
+    // (files in public/ are for static serving, not imports)
+    const outputPath = join(__dirname, "..", "changelog.json");
     writeFileSync(outputPath, JSON.stringify(changelog, null, 2));
     console.log(`✓ Changelog written to ${outputPath}`);
   } catch (error) {
@@ -160,7 +161,7 @@ function main() {
       improvements: [],
       bugFixes: [],
     };
-    const outputPath = join(__dirname, "..", "public", "changelog.json");
+    const outputPath = join(__dirname, "..", "changelog.json");
     writeFileSync(outputPath, JSON.stringify(emptyChangelog, null, 2));
   }
 }
