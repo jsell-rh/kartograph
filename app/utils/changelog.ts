@@ -12,12 +12,19 @@ export interface ChangelogData {
 
 export const changelog: ChangelogData = {
   "features": [
+    "Add conversation management improvements",
+    "Move example queries to empty state",
+    "Improve link behavior and metadata sorting",
+    "Improve sidebar and graph explorer UX",
     "Add interactive onboarding tour and automated changelog",
     "Add GITHUB_URL environment variable support to Makefile",
     "Add optional GitHub link button in footer"
   ],
   "improvements": [],
   "bugFixes": [
+    "Use route-relative path for logout redirect",
+    "Don't regenerate changelog during build (no .git in Docker)",
+    "Generate changelog as TypeScript module for proper bundling",
     "Move changelog.json to project root and commit it",
     "Update URL tests to expect trailing slash on homeUrl",
     "Import changelog.json directly instead of fetching",
