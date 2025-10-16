@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
     "/api/auth", // Better-auth endpoints (local dev only)
     "/api/stats", // Public stats endpoint
     "/api/mcp", // MCP server (uses token auth middleware)
+    "/api/health", // Health check for Kubernetes probes
   ];
 
   // Skip auth check if:
