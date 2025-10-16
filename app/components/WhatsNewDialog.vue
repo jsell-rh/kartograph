@@ -123,7 +123,7 @@ watch(() => props.open, (newVal) => {
   isOpen.value = newVal;
 });
 
-// Load changelog data (generated at build time as TypeScript module)
+// Load changelog data (from committed TypeScript module)
 const features = ref<string[]>(changelog.features || []);
 const improvements = ref<string[]>(changelog.improvements || []);
 const bugFixes = ref<string[]>(changelog.bugFixes || []);

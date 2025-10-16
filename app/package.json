@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "node scripts/generate-changelog.js && nuxt build",
+    "build": "nuxt build",
     "dev": "npx nuxt dev --dotenv .env --port 3000",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
