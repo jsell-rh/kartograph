@@ -88,7 +88,9 @@ export default defineNuxtConfig({
     public: {
       appName: "Kartograph",
       appDescription: "Knowledge Graph Query Interface",
-      siteUrl: process.env.NUXT_PUBLIC_SITE_URL || "http://localhost:3003",
+      // App origin (e.g., "https://example.com") - custom config for OAuth, etc.
+      appOrigin: process.env.NUXT_PUBLIC_ORIGIN || "",
+      // Base URL path (e.g., "/api/kartograph") - Nuxt standard, auto-prefixes routes
       baseURL: process.env.NUXT_APP_BASE_URL || "/",
       version: fullVersion,
       gitCommit: gitCommit,

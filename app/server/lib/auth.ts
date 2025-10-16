@@ -8,7 +8,11 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "../db/client";
 import * as schema from "../db/schema";
 import { validateEmailDomain } from "../utils/auth";
+import { parseBetterAuthUrl, getAppUrls } from "~/utils/urls";
+import { createLogger } from "./logger";
 import { eq } from "drizzle-orm";
+
+const log = createLogger("auth");
 
 // GitHub OAuth configuration
 const githubClientId =
@@ -16,21 +20,13 @@ const githubClientId =
 const githubClientSecret =
   process.env.NUXT_GITHUB_CLIENT_SECRET || process.env.GITHUB_CLIENT_SECRET;
 
-// Parse the full URL to extract origin and path
-const fullAuthUrl = process.env.BETTER_AUTH_URL || "http://localhost:3000";
-let baseURL = fullAuthUrl;
-let basePath = "/api/auth";
+// Get Better Auth configuration from centralized utility
+const { baseURL, basePath } = parseBetterAuthUrl();
+log.info({ baseURL, basePath }, "Better Auth configuration loaded");
 
-try {
-  const url = new URL(fullAuthUrl);
-  baseURL = url.origin; // e.g., https://kartograph-abc123.apps.openshift.example.com
-  // If the URL includes a path (e.g., /api/kartograph), combine it with /api/auth
-  if (url.pathname && url.pathname !== "/") {
-    basePath = `${url.pathname}/api/auth`.replace(/\/+/g, "/"); // e.g., /api/kartograph/api/auth
-  }
-} catch (e) {
-  console.warn("Unable to parse BETTER_AUTH_URL, using defaults");
-}
+// Get app URLs for redirects
+const appUrls = getAppUrls();
+log.info({ loginPath: appUrls.loginPath, homePath: appUrls.homePath }, "App URLs configured");
 
 // Parse additional trusted origins from environment variable
 const envTrustedOrigins = process.env.BETTER_AUTH_TRUSTED_ORIGINS
@@ -39,9 +35,6 @@ const envTrustedOrigins = process.env.BETTER_AUTH_TRUSTED_ORIGINS
 
 // Check if password auth is enabled
 const passwordAuthEnabled = (process.env.NUXT_AUTH_PASSWORD_ENABLED || process.env.AUTH_PASSWORD_ENABLED) !== "false"; // pragma: allowlist secret
-
-// Get the app base path for post-OAuth redirects
-const appBasePath = process.env.NUXT_APP_BASE_URL || "/";
 
 // Check if email domain validation is enabled
 const allowedDomainsEnv = process.env.NUXT_AUTH_ALLOWED_EMAIL_DOMAINS || process.env.AUTH_ALLOWED_EMAIL_DOMAINS || "";
@@ -105,67 +98,52 @@ export const auth = betterAuth({
         }
       }),
       after: createAuthMiddleware(async (ctx) => {
+        // Only validate on OAuth callback - skip session checks
+        if (!ctx.path.startsWith("/callback/")) {
+          return;
+        }
+
         // Validate email domain after OAuth callback (when user is created/logged in)
-        console.log("[EMAIL VALIDATION] After hook triggered, path:", ctx.path);
+        log.debug({ path: ctx.path }, "Email validation hook triggered");
 
-        // OAuth callback path is /callback/:id (where :id is the provider like github)
-        if (ctx.path.startsWith("/callback/")) {
-          console.log("[EMAIL VALIDATION] OAuth callback path matched");
+        // After OAuth, newSession contains the session with user data
+        const newSession = (ctx.context as any)?.newSession;
+        const session = (ctx.context as any)?.session;
 
-          // After OAuth, newSession contains the session with user data
-          const newSession = (ctx.context as any)?.newSession;
-          const session = (ctx.context as any)?.session;
+        // Extract email from session
+        let email: string | undefined;
+        let userId: string | undefined;
 
-          console.log("[EMAIL VALIDATION] newSession exists?", !!newSession);
-          console.log("[EMAIL VALIDATION] session exists?", !!session);
+        if (newSession?.user) {
+          email = newSession.user.email;
+          userId = newSession.user.id;
+          log.debug({ userId, email }, "Found user in newSession");
+        } else if (session?.user) {
+          email = session.user.email;
+          userId = session.user.id;
+          log.debug({ userId, email }, "Found user in session");
+        }
 
-          // Extract email from session
-          let email: string | undefined;
-          let userId: string | undefined;
+        if (email) {
+          const validationError = validateEmailDomain(email);
 
-          if (newSession?.user) {
-            email = newSession.user.email;
-            userId = newSession.user.id;
-            console.log("[EMAIL VALIDATION] Found user in newSession");
-          } else if (session?.user) {
-            email = session.user.email;
-            userId = session.user.id;
-            console.log("[EMAIL VALIDATION] Found user in session");
-          }
+          if (validationError) {
+            log.warn({ userId, email, error: validationError }, "Blocking user - email domain not allowed");
 
-          console.log("[EMAIL VALIDATION] Email extracted:", email);
-          console.log("[EMAIL VALIDATION] User ID:", userId);
-
-          if (email) {
-            const validationError = validateEmailDomain(email);
-            console.log("[EMAIL VALIDATION] Validation result:", validationError);
-
-            if (validationError) {
-              console.log(
-                "[EMAIL VALIDATION] BLOCKING USER - deleting account and redirecting to login",
-              );
-
-              // Delete the just-created user if email domain is not allowed
-              if (userId) {
-                console.log("[EMAIL VALIDATION] Deleting user:", userId);
-                await db.delete(schema.users).where(eq(schema.users.id, userId));
-              }
-
-              // Redirect to login page with error message instead of throwing
-              const loginUrl = `${appBasePath}login?error=${encodeURIComponent(validationError)}`;
-              console.log("[EMAIL VALIDATION] Redirecting to:", loginUrl);
-
-              return ctx.redirect(loginUrl);
-            } else {
-              console.log(
-                "[EMAIL VALIDATION] Email domain allowed - user can proceed",
-              );
+            // Delete the just-created user if email domain is not allowed
+            if (userId) {
+              await db.delete(schema.users).where(eq(schema.users.id, userId));
+              log.info({ userId }, "Deleted disallowed user account");
             }
+
+            // Redirect to login page with error message instead of throwing
+            const loginUrl = `${appUrls.loginPath}?error=${encodeURIComponent(validationError)}`;
+            return ctx.redirect(loginUrl);
           } else {
-            console.log(
-              "[EMAIL VALIDATION] WARNING: No email found in OAuth callback",
-            );
+            log.debug({ userId, email }, "Email domain validation passed");
           }
+        } else {
+          log.warn({ path: ctx.path }, "No email found in OAuth callback");
         }
       }),
     },

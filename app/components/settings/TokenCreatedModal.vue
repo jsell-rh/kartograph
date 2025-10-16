@@ -204,16 +204,10 @@ const acknowledged = ref(false);
 const tokenCopied = ref(false);
 const configCopied = ref(false);
 
-const config = useRuntimeConfig();
+const urls = useAppUrls();
 
 const claudeConfig = computed(() => {
-  // Get the current URL for the MCP endpoint
-  const baseUrl =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : config.public.siteUrl || "https://your-domain.com";
-
-  return `claude mcp add --transport http kartograph ${baseUrl}/api/mcp \\
+  return `claude mcp add --transport http kartograph ${urls.mcpUrl} \\
   --header "Authorization: Bearer ${props.token}"`;
 });
 

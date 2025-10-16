@@ -211,6 +211,7 @@ definePageMeta({
 const config = useRuntimeConfig();
 const authStore = useAuthStore();
 const route = useRoute();
+const urls = useAppUrls();
 
 const activeTab = ref<"signin" | "signup">("signin");
 const loading = ref(false);
@@ -252,7 +253,7 @@ async function handleSignIn() {
     }
 
     // Redirect to home on success (respects baseURL configuration)
-    await navigateTo(config.public.baseURL);
+    await navigateTo(urls.homePath);
   } catch (err) {
     error.value = err instanceof Error ? err.message : "Failed to sign in";
   } finally {
@@ -281,7 +282,7 @@ async function handleSignUp() {
     }
 
     // Redirect to home on success (respects baseURL configuration)
-    await navigateTo(config.public.baseURL);
+    await navigateTo(urls.homePath);
   } catch (err) {
     error.value =
       err instanceof Error ? err.message : "Failed to create account";
@@ -296,9 +297,12 @@ async function handleGitHubSignIn() {
 
   try {
     // Redirect to baseURL after OAuth completes
+    // Better Auth requires a full URL for callbackURL, not just a path
+    console.log("[LOGIN] GitHub OAuth callbackURL:", urls.homeUrl);
+
     await authClient.signIn.social({
       provider: "github",
-      callbackURL: config.public.baseURL,
+      callbackURL: urls.homeUrl,
     });
   } catch (err) {
     error.value =
