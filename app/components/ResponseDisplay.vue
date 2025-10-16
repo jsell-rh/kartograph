@@ -48,19 +48,57 @@
     <!-- Empty state -->
     <div
       v-else-if="messages.length === 0"
-      class="text-center py-16 text-muted-foreground"
+      class="text-center py-12 text-muted-foreground max-w-3xl mx-auto"
     >
       <div class="text-5xl mb-6">🗺️</div>
       <p class="text-xl font-medium text-foreground">
         Ask a question to explore the knowledge graph
       </p>
-      <p v-if="graphStats" class="text-sm mt-3 text-muted-foreground/80">
+      <p v-if="graphStats" class="text-sm mt-3 text-muted-foreground/80 mb-8">
         {{ graphStats.totalEntities.toLocaleString() }} entities •
         {{ graphStats.typeCount }} types • Real-time querying
       </p>
-      <p v-else class="text-sm mt-3 text-muted-foreground/80">
+      <p v-else class="text-sm mt-3 text-muted-foreground/80 mb-8">
         Loading graph statistics...
       </p>
+
+      <!-- Example queries -->
+      <div class="mt-8">
+        <p class="text-sm font-semibold text-foreground mb-4 uppercase tracking-wide">
+          Try these examples
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            v-for="(example, index) in examples"
+            :key="index"
+            @click="emit('exampleClick', example)"
+            class="group relative overflow-hidden text-left px-5 py-4 rounded-lg bg-card/60 backdrop-blur-sm border border-border/40 hover:border-primary/50 hover:bg-card/80 transition-all shadow-sm hover:shadow-md"
+          >
+            <div class="flex items-start gap-3">
+              <div class="flex-shrink-0 mt-0.5">
+                <svg
+                  class="w-5 h-5 text-primary/70 group-hover:text-primary transition-colors"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+              </div>
+              <span
+                class="text-sm font-medium text-foreground/90 group-hover:text-foreground transition-colors"
+              >
+                {{ example }}
+              </span>
+            </div>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Messages -->
@@ -265,7 +303,17 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   entityClick: [entity: Entity];
+  exampleClick: [example: string];
 }>();
+
+// Example queries for empty state
+const examples = [
+  "Which service does /upload point to?",
+  "Show me all services owned by the SRE team",
+  "What are the SLOs for acs-fleet-manager?",
+  "Find all namespaces running on cluster appsrep09ue1",
+  "Who has access to the telemeter service?",
+];
 
 // Track copy state for each message (by index)
 const copiedStates = ref<Map<string, boolean>>(new Map());

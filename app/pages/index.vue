@@ -182,6 +182,7 @@
                 :loading-conversation="loadingConversation"
                 :current-thinking-steps="currentThinkingSteps"
                 @entity-click="handleEntityClick"
+                @example-click="handleExampleClick"
               />
             </div>
           </div>
@@ -194,6 +195,7 @@
           <div class="max-w-4xl mx-auto">
             <QueryInput
               :loading="isLoading"
+              :initial-query="exampleQuery"
               @submit="handleSubmit"
               @stop="stopQuery"
             />
@@ -285,6 +287,9 @@ const showGraphExplorer = ref(false);
 // Resizable panel state
 const graphPanelWidth = ref(50); // percentage
 const isResizing = ref(false);
+
+// Example query state (for populating input from empty state examples)
+const exampleQuery = ref("");
 
 // Stores
 const authStore = useAuthStore();
@@ -699,6 +704,17 @@ function handleEntityClick(entity: Entity) {
   selectedEntity.value = entity;
   showGraphExplorer.value = true;
   console.log("Entity clicked:", entity);
+}
+
+/**
+ * Handle example click - populate the query input
+ */
+function handleExampleClick(example: string) {
+  exampleQuery.value = example;
+  // Clear it after a moment so it can be set again if needed
+  setTimeout(() => {
+    exampleQuery.value = "";
+  }, 100);
 }
 
 /**
