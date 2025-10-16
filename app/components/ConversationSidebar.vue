@@ -340,6 +340,7 @@ const currentRenamingConv = ref<Conversation | null>(null);
 const emit = defineEmits<{
   selectConversation: [id: string];
   toggleSidebar: [];
+  conversationDeleted: [conversationId: string, wasActive: boolean];
 }>();
 
 function selectConversation(id: string) {
@@ -404,7 +405,11 @@ async function unarchiveConversation(conv: Conversation) {
 }
 
 async function confirmDelete(conv: Conversation) {
+  const wasActive = conversationStore.activeConversationId === conv.id;
   await conversationStore.deleteConversation(conv.id);
   conversationToDelete.value = null;
+
+  // Notify parent that a conversation was deleted
+  emit("conversationDeleted", conv.id, wasActive);
 }
 </script>

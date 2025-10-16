@@ -144,6 +144,7 @@
           <ConversationSidebar
             @select-conversation="loadConversation"
             @toggle-sidebar="showSidebar = false"
+            @conversation-deleted="handleConversationDeleted"
           />
         </div>
       </Transition>
@@ -194,6 +195,7 @@
         >
           <div class="max-w-4xl mx-auto">
             <QueryInput
+              v-model="currentDraft"
               :loading="isLoading"
               :initial-query="exampleQuery"
               @submit="handleSubmit"
@@ -722,6 +724,28 @@ function handleExampleClick(example: string) {
 }
 
 /**
+ * Handle conversation deletion
+ */
+async function handleConversationDeleted(conversationId: string, wasActive: boolean) {
+  if (wasActive) {
+    // The active conversation was deleted
+    // Preserve the current draft text
+    const draftToPreserve = currentDraft.value;
+
+    // Create a new conversation
+    const newConv = await conversationStore.createConversation();
+
+    if (newConv) {
+      // Restore the draft text to the new conversation
+      currentDraft.value = draftToPreserve;
+      if (draftToPreserve) {
+        conversationDrafts.value.set(newConv.id, draftToPreserve);
+      }
+    }
+  }
+}
+
+/**
  * Start resizing graph panel
  */
 function startResize(e: MouseEvent) {
@@ -782,17 +806,26 @@ function handleTakeTour() {
   }, 300);
 }
 
-// Watch for active conversation changes (e.g., deletion, archiving)
+// Watch for active conversation changes to manage drafts
 watch(
   () => conversationStore.activeConversationId,
   (newId, oldId) => {
-    // If active conversation was cleared (deleted/archived), clear the display
-    if (oldId && !newId) {
+    // Save draft for old conversation
+    if (oldId && currentDraft.value) {
+      conversationDrafts.value.set(oldId, currentDraft.value);
+    }
+
+    // Load draft for new conversation (or clear if no draft)
+    if (newId) {
+      currentDraft.value = conversationDrafts.value.get(newId) || "";
+    } else {
+      // If active conversation was cleared (deleted/archived), clear the display
       messages.value = [];
       entities.value = [];
       currentThinkingSteps.value = [];
       selectedEntity.value = null;
       showGraphExplorer.value = false;
+      // currentDraft persists for potential new conversation creation
     }
   },
 );
@@ -810,9 +843,24 @@ function handleClickOutside(event: MouseEvent) {
 onMounted(async () => {
   await conversationStore.initializeConversations();
 
-  // If there's an active conversation, load it
+  // Validate that the active conversation actually exists
   if (conversationStore.activeConversationId) {
-    await loadConversation(conversationStore.activeConversationId);
+    const activeExists = conversationStore.conversations.some(
+      (c) => c.id === conversationStore.activeConversationId
+    );
+
+    if (activeExists) {
+      // Load the active conversation
+      await loadConversation(conversationStore.activeConversationId);
+    } else {
+      // Active conversation doesn't exist (was deleted elsewhere)
+      // Clear it and create a new one
+      conversationStore.setActiveConversation(null);
+      await conversationStore.createConversation();
+    }
+  } else {
+    // No active conversation, create one
+    await conversationStore.createConversation();
   }
 
   // Add click-outside listener for user menu
