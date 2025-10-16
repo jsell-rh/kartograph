@@ -438,7 +438,7 @@
             </h4>
             <div class="space-y-3">
               <div
-                v-for="prop in selectedNodeDetails.scalars"
+                v-for="prop in sortedScalars"
                 :key="prop.name"
                 class="bg-muted/30 rounded-lg p-3 border border-border/50"
               >
@@ -736,6 +736,33 @@ interface NodeDetails {
 const selectedNodeDetails = ref<NodeDetails | null>(null);
 const showLegend = ref(false);
 const hasSelectedNode = ref(false);
+
+/**
+ * Sorted scalar properties with description first, then alphabetically
+ */
+const sortedScalars = computed(() => {
+  if (!selectedNodeDetails.value?.scalars) return [];
+
+  const scalars = [...selectedNodeDetails.value.scalars];
+
+  // Find description property (case-insensitive)
+  const descriptionIndex = scalars.findIndex(s =>
+    s.name.toLowerCase().includes('description')
+  );
+
+  let description = null;
+  if (descriptionIndex >= 0) {
+    description = scalars.splice(descriptionIndex, 1)[0];
+  }
+
+  // Sort remaining properties alphabetically by display name
+  const sortedOthers = scalars.sort((a, b) =>
+    a.displayName.localeCompare(b.displayName)
+  );
+
+  // Return with description first if it exists
+  return description ? [description, ...sortedOthers] : sortedOthers;
+});
 
 /**
  * Legend items computed from color map

@@ -275,10 +275,19 @@ const graphStats = ref<{ totalEntities: number; typeCount: number } | null>(
   null,
 );
 
-// Configure marked for inline rendering
+// Configure marked for inline rendering with custom renderer
+const renderer = new marked.Renderer();
+
+// Override link renderer to add target="_blank" and rel attributes
+renderer.link = ({ href, title, text }) => {
+  const titleAttr = title ? ` title="${title}"` : '';
+  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+};
+
 marked.setOptions({
   breaks: true,
   gfm: true,
+  renderer,
 });
 
 /**
