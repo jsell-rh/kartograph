@@ -86,8 +86,11 @@ export default defineEventHandler(async (event) => {
   return {
     feedback: paginatedFeedback.map((row) => ({
       ...row.feedback,
-      userName: row.user?.name ?? "Unknown User",
-      userEmail: row.user?.email ?? "unknown@email.com",
+      user: {
+        id: row.user?.id ?? "",
+        name: row.user?.name ?? "Unknown User",
+        email: row.user?.email ?? "unknown@email.com",
+      },
     })),
     total,
     hasMore: offset + limit < total,

@@ -23,8 +23,9 @@
       <AdminStatsCards :stats="dashboardStats" :loading="statsLoading" />
     </div>
 
-    <!-- User Management Table -->
-    <div class="flex-1 overflow-auto px-6 py-6">
+    <!-- Content Area with Tabs or Sections -->
+    <div class="flex-1 overflow-auto px-6 py-6 space-y-6">
+      <!-- User Management Table -->
       <AdminUserTable
         :users="users"
         :loading="usersLoading"
@@ -33,6 +34,9 @@
         @delete-user="handleDeleteUser"
         @refresh="fetchUsers"
       />
+
+      <!-- Feedback Panel -->
+      <AdminFeedbackPanel />
     </div>
   </div>
 </template>
