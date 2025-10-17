@@ -73,11 +73,27 @@ export default defineNuxtConfig({
       process.env.BETTER_AUTH_SECRET || "your-secret-key-change-in-production",
 
     // MCP Server Configuration
-    auditLogRetentionDays: Number(process.env.AUDIT_LOG_RETENTION_DAYS) || 90,
-    apiTokenRateLimit: Number(process.env.API_TOKEN_RATE_LIMIT) || 100,
-    apiTokenMaxExpiryDays: Number(process.env.API_TOKEN_MAX_EXPIRY_DAYS) || 365,
+    // Support both NUXT_ prefixed (for runtime override in deployment) and unprefixed versions
+    auditLogRetentionDays:
+      Number(
+        process.env.NUXT_AUDIT_LOG_RETENTION_DAYS ||
+          process.env.AUDIT_LOG_RETENTION_DAYS,
+      ) || 90,
+    apiTokenRateLimit:
+      Number(
+        process.env.NUXT_API_TOKEN_RATE_LIMIT ||
+          process.env.API_TOKEN_RATE_LIMIT,
+      ) || 100,
+    apiTokenMaxExpiryDays:
+      Number(
+        process.env.NUXT_API_TOKEN_MAX_EXPIRY_DAYS ||
+          process.env.API_TOKEN_MAX_EXPIRY_DAYS,
+      ) || 365,
     apiTokenDefaultExpiryDays:
-      Number(process.env.API_TOKEN_DEFAULT_EXPIRY_DAYS) || 90,
+      Number(
+        process.env.NUXT_API_TOKEN_DEFAULT_EXPIRY_DAYS ||
+          process.env.API_TOKEN_DEFAULT_EXPIRY_DAYS,
+      ) || 90,
 
     // Authentication Configuration
     authPasswordEnabled:

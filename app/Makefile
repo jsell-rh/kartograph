@@ -35,6 +35,12 @@ AUTH_PASSWORD_ENABLED ?= true
 AUTH_ALLOWED_EMAIL_DOMAINS ?=
 ADMIN_EMAILS ?=
 
+# MCP Server Configuration (optional - can be set via environment or command line)
+API_TOKEN_RATE_LIMIT ?= 100
+API_TOKEN_MAX_EXPIRY_DAYS ?= 365
+API_TOKEN_DEFAULT_EXPIRY_DAYS ?= 90
+AUDIT_LOG_RETENTION_DAYS ?= 90
+
 # Version info for Docker builds
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 APP_VERSION ?= $(shell node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0")
