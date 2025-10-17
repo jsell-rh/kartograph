@@ -341,10 +341,62 @@ make logs                    # View application logs
 
 ## Git Workflow
 
-- **Branching**: Feature branches from `main`
-- **Commits**: Descriptive messages, atomic changes. Use conventional commits.
-- **PRs**: GitHub Actions builds container on PR
-- **Releases**: Tag with `v*` to trigger versioned build
+### Before Starting Work
+
+**IMPORTANT**: Before implementing any feature or fix, follow this workflow:
+
+1. **Create a GitHub Issue** (if you have GitHub access)
+   - Ask the user if they can provide GitHub access for issue creation
+   - If yes, create an issue via GitHub API or ask them to create one
+   - Use a descriptive title (e.g., "Add rate limiting to feedback API")
+   - Include relevant details: problem statement, requirements
+   - Note the issue number (e.g., `#42`)
+   - If no GitHub access, skip to step 2
+
+2. **Create an Associated Branch**
+   - Create a branch from `main` with a descriptive name
+   - If you have an issue number, include it in the branch name
+   - Use format: `<type>/<issue-number>-<description>` or `<type>/<description>`
+   - Examples:
+     - `feat/42-add-rate-limiting` (with issue)
+     - `feat/add-rate-limiting` (without issue)
+     - `fix/auth-redirect-loop`
+     - `docs/update-deployment-guide`
+
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b feat/42-add-rate-limiting
+   ```
+
+### During Development
+
+- **Commits**: Use conventional commits format
+  - `feat:` - New features
+  - `fix:` - Bug fixes
+  - `docs:` - Documentation changes
+  - `refactor:` - Code refactoring
+  - `test:` - Test additions/modifications
+  - Examples: `feat: add rate limiting to feedback endpoint`
+
+- **Atomic Changes**: Each commit should represent a single logical change
+
+- **Reference Issues**: Include issue number in commit messages when relevant
+  - Example: `feat: add rate limiting (#42)`
+
+### Creating Pull Requests
+
+- **PRs**: Create PR against `main` branch
+- **Title**: Use conventional commit format
+- **Description**: Reference the issue with `Closes #42` or `Fixes #42` if applicable
+- **CI**: GitHub Actions automatically builds container on PR (does not push to registry)
+- **Reviews**: Wait for review before merging
+
+### Releases & Versioning
+
+- **Automated**: Versioning happens automatically via CI/CD when merging to `main`
+- **No Manual Tags**: Do not manually create version tags - CI/CD handles this
+- **Container Images**: Built and pushed automatically on merge to `main`
 
 ## Need Help?
 
