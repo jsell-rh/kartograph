@@ -81,8 +81,8 @@ export const auth = betterAuth({
     "http://localhost:3020",
     ...envTrustedOrigins,
   ],
-  ...(hasEmailDomainRestrictions && {
-    hooks: {
+  hooks: {
+    ...(hasEmailDomainRestrictions && {
       before: createAuthMiddleware(async (ctx) => {
         // Apply email domain validation to sign-up (password) and sign-in (OAuth)
         if (ctx.path === "/sign-up/email") {
@@ -97,55 +97,61 @@ export const auth = betterAuth({
           }
         }
       }),
-      after: createAuthMiddleware(async (ctx) => {
-        // Only validate on OAuth callback - skip session checks
-        if (!ctx.path.startsWith("/callback/")) {
-          return;
-        }
+    }),
+    after: createAuthMiddleware(async (ctx) => {
+      // Update lastLoginAt on successful login (sign-in or OAuth callback)
+      const isLoginPath = ctx.path === "/sign-in/email" || ctx.path.startsWith("/callback/");
 
-        // Validate email domain after OAuth callback (when user is created/logged in)
-        log.debug({ path: ctx.path }, "Email validation hook triggered");
-
-        // After OAuth, newSession contains the session with user data
+      if (isLoginPath) {
         const newSession = (ctx.context as any)?.newSession;
         const session = (ctx.context as any)?.session;
 
-        // Extract email from session
-        let email: string | undefined;
         let userId: string | undefined;
+        let email: string | undefined;
 
         if (newSession?.user) {
-          email = newSession.user.email;
           userId = newSession.user.id;
-          log.debug({ userId, email }, "Found user in newSession");
+          email = newSession.user.email;
         } else if (session?.user) {
-          email = session.user.email;
           userId = session.user.id;
-          log.debug({ userId, email }, "Found user in session");
+          email = session.user.email;
         }
 
-        if (email) {
-          const validationError = validateEmailDomain(email);
+        // Update lastLoginAt for the user
+        if (userId) {
+          await db
+            .update(schema.users)
+            .set({ lastLoginAt: new Date() })
+            .where(eq(schema.users.id, userId));
 
-          if (validationError) {
-            log.warn({ userId, email, error: validationError }, "Blocking user - email domain not allowed");
+          log.debug({ userId }, "Updated lastLoginAt");
+        }
 
-            // Delete the just-created user if email domain is not allowed
-            if (userId) {
-              await db.delete(schema.users).where(eq(schema.users.id, userId));
-              log.info({ userId }, "Deleted disallowed user account");
+        // Email domain validation (if enabled)
+        if (hasEmailDomainRestrictions && ctx.path.startsWith("/callback/")) {
+          if (email) {
+            const validationError = validateEmailDomain(email);
+
+            if (validationError) {
+              log.warn({ userId, email, error: validationError }, "Blocking user - email domain not allowed");
+
+              // Delete the just-created user if email domain is not allowed
+              if (userId) {
+                await db.delete(schema.users).where(eq(schema.users.id, userId));
+                log.info({ userId }, "Deleted disallowed user account");
+              }
+
+              // Redirect to login page with error message instead of throwing
+              const loginUrl = `${appUrls.loginPath}?error=${encodeURIComponent(validationError)}`;
+              return ctx.redirect(loginUrl);
+            } else {
+              log.debug({ userId, email }, "Email domain validation passed");
             }
-
-            // Redirect to login page with error message instead of throwing
-            const loginUrl = `${appUrls.loginPath}?error=${encodeURIComponent(validationError)}`;
-            return ctx.redirect(loginUrl);
           } else {
-            log.debug({ userId, email }, "Email domain validation passed");
+            log.warn({ path: ctx.path }, "No email found in OAuth callback");
           }
-        } else {
-          log.warn({ path: ctx.path }, "No email found in OAuth callback");
         }
-      }),
-    },
-  }),
+      }
+    }),
+  },
 });

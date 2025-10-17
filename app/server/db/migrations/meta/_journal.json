@@ -43,6 +43,13 @@
       "when": 1760476697797,
       "tag": "0005_melted_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1760717405431,
+      "tag": "0006_chunky_ego",
+      "breakpoints": true
     }
   ]
 }
