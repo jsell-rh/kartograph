@@ -4,11 +4,9 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### [0.1.5](https://github.com/jsell-rh/kartograph/compare/v0.1.4...v0.1.5) (2025-10-17)
 
-
 ### Features
 
 * Add API usage dashboard and admin enhancements ([#6](https://github.com/jsell-rh/kartograph/issues/6)) ([6f33096](https://github.com/jsell-rh/kartograph/commit/6f330963dc57f6af8f7299eb1c6c53ef97fc91ef)), closes [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4)
-
 
 ### Chores
 
