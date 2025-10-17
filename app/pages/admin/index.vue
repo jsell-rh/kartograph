@@ -23,20 +23,61 @@
       <AdminStatsCards :stats="dashboardStats" :loading="statsLoading" />
     </div>
 
-    <!-- Content Area with Tabs or Sections -->
-    <div class="flex-1 overflow-auto px-6 py-6 space-y-6">
-      <!-- User Management Table -->
-      <AdminUserTable
-        :users="users"
-        :loading="usersLoading"
-        :total="totalUsers"
-        @update-user="handleUpdateUser"
-        @delete-user="handleDeleteUser"
-        @refresh="fetchUsers"
-      />
+    <!-- Tabs Navigation -->
+    <div class="border-b border-border bg-card">
+      <div class="px-6">
+        <nav class="flex gap-8" aria-label="Tabs">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            class="py-4 px-1 border-b-2 font-medium text-sm transition-colors flex items-center gap-2"
+            :class="
+              activeTab === tab.id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
+            "
+          >
+            <span>{{ tab.label }}</span>
+            <span
+              v-if="getTabCount(tab.id) !== null"
+              class="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium rounded-full min-w-[1.5rem]"
+              :class="
+                activeTab === tab.id
+                  ? 'bg-primary/10 text-primary'
+                  : 'bg-muted text-muted-foreground'
+              "
+            >
+              {{ getTabCount(tab.id) }}
+            </span>
+          </button>
+        </nav>
+      </div>
+    </div>
 
-      <!-- Feedback Panel -->
-      <AdminFeedbackPanel />
+    <!-- Tab Content -->
+    <div class="flex-1 overflow-auto px-6 py-6">
+      <!-- User Management Tab -->
+      <div v-if="activeTab === 'users'">
+        <AdminUserTable
+          :users="users"
+          :loading="usersLoading"
+          :total="totalUsers"
+          @update-user="handleUpdateUser"
+          @delete-user="handleDeleteUser"
+          @refresh="fetchUsers"
+        />
+      </div>
+
+      <!-- API Tokens Tab -->
+      <div v-else-if="activeTab === 'tokens'">
+        <AdminApiTokensPanel />
+      </div>
+
+      <!-- User Feedback Tab -->
+      <div v-else-if="activeTab === 'feedback'">
+        <AdminFeedbackPanel />
+      </div>
     </div>
   </div>
 </template>
@@ -45,6 +86,15 @@
 definePageMeta({
   middleware: "admin",
 });
+
+// Tab management
+const activeTab = ref("users");
+
+const tabs = [
+  { id: "users", label: "User Management" },
+  { id: "tokens", label: "API Tokens" },
+  { id: "feedback", label: "User Feedback" },
+];
 
 interface User {
   id: string;
@@ -106,11 +156,33 @@ const totalUsers = ref(0);
 const dashboardStats = ref<DashboardStats | null>(null);
 const statsLoading = ref(false);
 
+const tokenCount = ref(0);
+const feedbackCount = ref(0);
+
+// Get count for tab badges
+function getTabCount(tabId: string): number | null {
+  switch (tabId) {
+    case "users":
+      return totalUsers.value;
+    case "tokens":
+      return tokenCount.value;
+    case "feedback":
+      return feedbackCount.value;
+    default:
+      return null;
+  }
+}
+
 // Fetch dashboard stats
 async function fetchStats() {
   statsLoading.value = true;
   try {
     dashboardStats.value = await $fetch("/api/admin/stats");
+    // Update counts for tab badges
+    if (dashboardStats.value) {
+      tokenCount.value = dashboardStats.value.totalApiTokens;
+      feedbackCount.value = dashboardStats.value.feedback.totalFeedback;
+    }
   } catch (error) {
     console.error("Failed to fetch stats:", error);
   } finally {
