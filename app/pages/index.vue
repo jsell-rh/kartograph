@@ -283,6 +283,7 @@ interface ThinkingStep {
 }
 
 interface Message {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
@@ -390,6 +391,7 @@ async function loadConversation(id: string) {
     if (conversation && conversation.messages) {
       // Load messages into view
       messages.value = conversation.messages.map((msg) => ({
+        id: msg.id,
         role: msg.role,
         content: msg.content,
         timestamp: msg.createdAt,
@@ -650,8 +652,9 @@ async function handleSubmit(query: string) {
                 },
               );
 
-              // Add assistant message
+              // Add assistant message with ID from backend
               messages.value.push({
+                id: data.assistantMessageId,
                 role: "assistant",
                 content: finalResponse,
                 timestamp: new Date(),

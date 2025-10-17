@@ -52,7 +52,7 @@ export default defineEventHandler(async (event) => {
 
   // Get the conversation to verify ownership
   const conversation = await db.query.conversations.findFirst({
-    where: eq(messages.conversationId, message.conversationId),
+    where: eq(conversations.id, message.conversationId),
   });
 
   if (!conversation) {

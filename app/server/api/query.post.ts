@@ -996,11 +996,15 @@ export default defineEventHandler(async (event) => {
               );
 
               // Save messages to database
+              let savedUserMessageId: string | undefined;
+              let savedAssistantMessageId: string | undefined;
+
               try {
                 const messageTimestamp = new Date();
 
                 // Save user message
                 const userMessageId = crypto.randomUUID();
+                savedUserMessageId = userMessageId;
                 await db.insert(messagesTable).values({
                   id: userMessageId,
                   conversationId: activeConversationId,
@@ -1011,6 +1015,7 @@ export default defineEventHandler(async (event) => {
 
                 // Save assistant message
                 const assistantMessageId = crypto.randomUUID();
+                savedAssistantMessageId = assistantMessageId;
                 await db.insert(messagesTable).values({
                   id: assistantMessageId,
                   conversationId: activeConversationId,
@@ -1135,6 +1140,8 @@ export default defineEventHandler(async (event) => {
                 entities: allEntities,
                 usage: response.usage,
                 conversationId: activeConversationId,
+                userMessageId: savedUserMessageId,
+                assistantMessageId: savedAssistantMessageId,
               });
               break;
             }
