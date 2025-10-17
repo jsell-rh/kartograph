@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.3](https://github.com/jsell-rh/kartograph/compare/v0.1.2...v0.1.3) (2025-10-17)
+
+
+### Features
+
+* Add admin user management ([3b451b2](https://github.com/jsell-rh/kartograph/commit/3b451b21cc924dcbbca3a457853904532b2b1ffd))
+
+
+### Chores
+
+* **release:** 0.1.2 ([2888b06](https://github.com/jsell-rh/kartograph/commit/2888b069133f62e8a7a328bfd8b3b6e30f224b76))
+
 ### [0.1.2](https://github.com/jsell-rh/kartograph/compare/v0.1.1...v0.1.2) (2025-10-16)
 
 
