@@ -50,7 +50,7 @@
           <Line
             :data="webChartData"
             :options="webChartOptions"
-            :height="100"
+            :height="150"
           />
         </div>
       </div>
@@ -64,7 +64,7 @@
           <Line
             :data="apiChartData"
             :options="apiChartOptions"
-            :height="100"
+            :height="150"
           />
         </div>
       </div>
@@ -192,10 +192,31 @@ const webChartOptions: ChartOptions<"line"> = {
     legend: {
       display: true,
       position: "top",
+      align: "end",
+      labels: {
+        usePointStyle: true,
+        pointStyle: "circle",
+        padding: 20,
+        font: {
+          size: 13,
+          family: "inherit",
+        },
+        color: "#64748b",
+      },
     },
     tooltip: {
       mode: "index",
       intersect: false,
+      backgroundColor: "rgba(0, 0, 0, 0.8)",
+      padding: 12,
+      cornerRadius: 8,
+      titleFont: {
+        size: 13,
+        weight: "bold",
+      },
+      bodyFont: {
+        size: 12,
+      },
     },
   },
   scales: {
@@ -203,6 +224,26 @@ const webChartOptions: ChartOptions<"line"> = {
       beginAtZero: true,
       ticks: {
         precision: 0,
+        color: "#94a3b8",
+        font: {
+          size: 11,
+        },
+      },
+      grid: {
+        color: "rgba(148, 163, 184, 0.1)",
+      },
+    },
+    x: {
+      ticks: {
+        color: "#94a3b8",
+        font: {
+          size: 11,
+        },
+        maxRotation: 45,
+        minRotation: 0,
+      },
+      grid: {
+        display: false,
       },
     },
   },
@@ -216,10 +257,31 @@ const apiChartOptions: ChartOptions<"line"> = {
     legend: {
       display: true,
       position: "top",
+      align: "end",
+      labels: {
+        usePointStyle: true,
+        pointStyle: "circle",
+        padding: 20,
+        font: {
+          size: 13,
+          family: "inherit",
+        },
+        color: "#64748b",
+      },
     },
     tooltip: {
       mode: "index",
       intersect: false,
+      backgroundColor: "rgba(0, 0, 0, 0.8)",
+      padding: 12,
+      cornerRadius: 8,
+      titleFont: {
+        size: 13,
+        weight: "bold",
+      },
+      bodyFont: {
+        size: 12,
+      },
     },
   },
   scales: {
@@ -227,6 +289,26 @@ const apiChartOptions: ChartOptions<"line"> = {
       beginAtZero: true,
       ticks: {
         precision: 0,
+        color: "#94a3b8",
+        font: {
+          size: 11,
+        },
+      },
+      grid: {
+        color: "rgba(148, 163, 184, 0.1)",
+      },
+    },
+    x: {
+      ticks: {
+        color: "#94a3b8",
+        font: {
+          size: 11,
+        },
+        maxRotation: 45,
+        minRotation: 0,
+      },
+      grid: {
+        display: false,
       },
     },
   },
