@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.6](https://github.com/jsell-rh/kartograph/compare/v0.1.5...v0.1.6) (2025-10-17)
+
+
+### Features
+
+* Add MCP server configuration environment variables to deployment ([#7](https://github.com/jsell-rh/kartograph/issues/7)) ([7b989a5](https://github.com/jsell-rh/kartograph/commit/7b989a5a1a3bba4a0728d3fbae7add2686d6d841)), closes [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#4](https://github.com/jsell-rh/kartograph/issues/4) [#5](https://github.com/jsell-rh/kartograph/issues/5)
+
+
+### Documentation
+
+* Add issue and branch creation workflow to AGENTS.md ([5c66878](https://github.com/jsell-rh/kartograph/commit/5c6687877473348e1f9a3b4bd88e28e5f16ac978))
+
+
+### Chores
+
+* **release:** 0.1.5 ([16bcc1b](https://github.com/jsell-rh/kartograph/commit/16bcc1be8fa1cbb6fcee9bfd69de000c23c15a06))
+
 ### [0.1.5](https://github.com/jsell-rh/kartograph/compare/v0.1.4...v0.1.5) (2025-10-17)
 
 ### Features
