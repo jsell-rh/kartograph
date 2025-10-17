@@ -238,6 +238,9 @@
                 • {{ formatElapsedTime(message.elapsedSeconds) }}
               </span>
             </div>
+
+            <!-- Message Feedback -->
+            <MessageFeedback v-if="message.id" :message-id="message.id" />
           </div>
         </div>
       </div>
@@ -272,6 +275,7 @@ interface ThinkingStep {
 }
 
 interface Message {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   timestamp: Date;

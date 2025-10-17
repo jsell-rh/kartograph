@@ -10,6 +10,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  role?: "user" | "admin";
 }
 
 interface AuthState {
@@ -81,6 +82,7 @@ export const useAuthStore = defineStore("auth", {
             id: session.data.user.id,
             name: session.data.user.name || "User",
             email: session.data.user.email || "",
+            role: (session.data.user as any).role || "user",
           };
           this.isAuthenticated = true;
           this.lastSync = Date.now();
@@ -139,6 +141,20 @@ export const useAuthStore = defineStore("auth", {
         localStorage.removeItem("kartograph_user");
         localStorage.removeItem("kartograph_auth");
       }
+    },
+
+    /**
+     * Fetch user session from server
+     */
+    async fetchUser() {
+      await this.syncWithServer();
+    },
+
+    /**
+     * Check if user is admin
+     */
+    isAdmin(): boolean {
+      return this.user?.role === "admin";
     },
   },
 });
