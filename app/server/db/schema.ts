@@ -25,6 +25,17 @@ export const users = sqliteTable("users", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .default(sql`(unixepoch())`),
+
+  // Admin features
+  role: text("role", { enum: ["user", "admin"] })
+    .notNull()
+    .default("user"),
+  isActive: integer("is_active", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
+  disabledAt: integer("disabled_at", { mode: "timestamp" }),
+  disabledBy: text("disabled_by"), // Admin user ID who disabled this account
 });
 
 /**
@@ -198,5 +209,79 @@ export const queryAuditLog = sqliteTable(
   (table) => ({
     tokenIdIdx: index("query_audit_log_token_id_idx").on(table.tokenId),
     timestampIdx: index("query_audit_log_timestamp_idx").on(table.timestamp),
+  }),
+);
+
+/**
+ * Admin Audit Log table - tracks all admin actions
+ *
+ * Records all administrative actions for security and compliance purposes.
+ * Includes information about who performed the action, what was done, and when.
+ */
+export const adminAuditLog = sqliteTable(
+  "admin_audit_log",
+  {
+    id: text("id").primaryKey(),
+    adminUserId: text("admin_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetUserId: text("target_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    action: text("action").notNull(), // 'user_disabled', 'user_enabled', 'user_deleted', 'role_changed'
+    metadata: text("metadata", { mode: "json" }), // Additional context
+    ipAddress: text("ip_address"),
+    userAgent: text("user_agent"),
+    timestamp: integer("timestamp", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    adminUserIdx: index("admin_audit_log_admin_user_idx").on(table.adminUserId),
+    targetUserIdx: index("admin_audit_log_target_user_idx").on(
+      table.targetUserId,
+    ),
+    timestampIdx: index("admin_audit_log_timestamp_idx").on(table.timestamp),
+  }),
+);
+
+/**
+ * Message Feedback table - user feedback on assistant responses
+ *
+ * Stores user ratings (helpful/unhelpful) and optional text feedback.
+ * Denormalizes conversation context (user query + assistant response) to allow
+ * admins to view feedback with context while preserving privacy for non-feedback conversations.
+ */
+export const messageFeedback = sqliteTable(
+  "message_feedback",
+  {
+    id: text("id").primaryKey(),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+
+    // Feedback data
+    rating: text("rating", { enum: ["helpful", "unhelpful"] }).notNull(),
+    feedbackText: text("feedback_text"), // Optional written feedback
+
+    // Conversation context (denormalized for admin view)
+    userQuery: text("user_query").notNull(),
+    assistantResponse: text("assistant_response").notNull(),
+
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    messageIdx: index("message_feedback_message_idx").on(table.messageId),
+    userIdx: index("message_feedback_user_idx").on(table.userId),
+    ratingIdx: index("message_feedback_rating_idx").on(table.rating),
+    timestampIdx: index("message_feedback_timestamp_idx").on(table.createdAt),
   }),
 );
