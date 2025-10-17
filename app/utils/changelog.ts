@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [
-    "Add admin user management"
-  ],
+  "features": [],
   "improvements": [],
-  "bugFixes": []
+  "bugFixes": [
+    "Add ADMIN_EMAILS environment variable to deployment configuration"
+  ]
 };
 
 export default changelog;

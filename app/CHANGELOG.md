@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.4](https://github.com/jsell-rh/kartograph/compare/v0.1.3...v0.1.4) (2025-10-17)
+
+
+### Bug Fixes
+
+* Add ADMIN_EMAILS environment variable to deployment configuration ([a1868ea](https://github.com/jsell-rh/kartograph/commit/a1868ea90b79210842d7c721fb92d517f66db227)), closes [#2](https://github.com/jsell-rh/kartograph/issues/2) [#2](https://github.com/jsell-rh/kartograph/issues/2)
+
+
+### Chores
+
+* **release:** 0.1.3 ([83481da](https://github.com/jsell-rh/kartograph/commit/83481dad17dc8020e4ad7c8de6112697c09e684e))
+
 ### [0.1.3](https://github.com/jsell-rh/kartograph/compare/v0.1.2...v0.1.3) (2025-10-17)
 
 
