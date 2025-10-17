@@ -33,6 +33,7 @@ GITHUB_CLIENT_SECRET ?=
 # Authentication configuration (optional - can be set via environment or command line)
 AUTH_PASSWORD_ENABLED ?= true
 AUTH_ALLOWED_EMAIL_DOMAINS ?=
+ADMIN_EMAILS ?=
 
 # Version info for Docker builds
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -111,8 +112,9 @@ deploy: ## Deploy using oc apply (requires IMAGE_TAG)
 	@oc create secret generic kartograph-auth-config \
 		--from-literal=password-enabled=$(AUTH_PASSWORD_ENABLED) \
 		--from-literal=allowed-domains=$(AUTH_ALLOWED_EMAIL_DOMAINS) \
+		--from-literal=admin-emails=$(ADMIN_EMAILS) \
 		--dry-run=client -o yaml | oc apply -f -
-	@echo "Auth config: PASSWORD_ENABLED=$(AUTH_PASSWORD_ENABLED), ALLOWED_DOMAINS=$(AUTH_ALLOWED_EMAIL_DOMAINS)"
+	@echo "Auth config: PASSWORD_ENABLED=$(AUTH_PASSWORD_ENABLED), ALLOWED_DOMAINS=$(AUTH_ALLOWED_EMAIL_DOMAINS), ADMIN_EMAILS=$(ADMIN_EMAILS)"
 	oc process -f deploy/clowdapp.yaml \
 		-p ENV_NAME=$(ENV_NAME) \
 		-p IMAGE=$(IMAGE) \
@@ -176,8 +178,9 @@ deploy-ephemeral-local: build-local ## Build and deploy locally to ephemeral nam
 	@oc create secret generic kartograph-auth-config \
 		--from-literal=password-enabled=$(AUTH_PASSWORD_ENABLED) \
 		--from-literal=allowed-domains=$(AUTH_ALLOWED_EMAIL_DOMAINS) \
+		--from-literal=admin-emails=$(ADMIN_EMAILS) \
 		--dry-run=client -o yaml | oc apply -f -
-	@echo "Auth config: PASSWORD_ENABLED=$(AUTH_PASSWORD_ENABLED), ALLOWED_DOMAINS=$(AUTH_ALLOWED_EMAIL_DOMAINS)"
+	@echo "Auth config: PASSWORD_ENABLED=$(AUTH_PASSWORD_ENABLED), ALLOWED_DOMAINS=$(AUTH_ALLOWED_EMAIL_DOMAINS), ADMIN_EMAILS=$(ADMIN_EMAILS)"
 	@echo "Deploying standalone dgraph (bypassing Clowder)..."
 	@oc apply -f deploy/dgraph-standalone.yaml
 	@oc apply -f deploy/dgraph-services.yaml
