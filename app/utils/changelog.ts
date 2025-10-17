@@ -12,9 +12,11 @@ export interface ChangelogData {
 
 export const changelog: ChangelogData = {
   "features": [
-    "Add API usage dashboard and admin enhancements (#6)"
+    "Add MCP server configuration environment variables to deployment (#7)"
   ],
-  "improvements": [],
+  "improvements": [
+    "Add issue and branch creation workflow to AGENTS.md"
+  ],
   "bugFixes": []
 };
 
