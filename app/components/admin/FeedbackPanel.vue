@@ -91,10 +91,9 @@
             User Query
           </div>
           <div
-            class="p-4 bg-muted/50 rounded-lg border border-border/50 text-sm text-foreground whitespace-pre-wrap"
-          >
-            {{ item.userQuery }}
-          </div>
+            class="p-4 bg-card/40 rounded-lg border border-border text-sm text-foreground prose prose-sm max-w-none"
+            v-html="renderMarkdown(item.userQuery)"
+          />
         </div>
 
         <!-- Assistant Response -->
@@ -103,10 +102,9 @@
             Assistant Response
           </div>
           <div
-            class="p-4 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200/50 dark:border-blue-800/50 text-sm text-foreground whitespace-pre-wrap max-h-64 overflow-y-auto"
-          >
-            {{ item.assistantResponse }}
-          </div>
+            class="p-4 bg-muted/30 rounded-lg border border-border text-sm text-foreground prose prose-sm max-w-none max-h-64 overflow-y-auto"
+            v-html="renderMarkdown(item.assistantResponse)"
+          />
         </div>
 
         <!-- Feedback Text (if provided) -->
@@ -115,7 +113,7 @@
             User Feedback
           </div>
           <div
-            class="p-4 bg-amber-50 dark:bg-amber-950/20 rounded-lg border border-amber-200/50 dark:border-amber-800/50 text-sm text-foreground whitespace-pre-wrap"
+            class="p-4 bg-muted/50 rounded-lg border border-primary/20 text-sm text-foreground whitespace-pre-wrap"
           >
             {{ item.feedbackText }}
           </div>
@@ -197,6 +195,23 @@
 </template>
 
 <script setup lang="ts">
+import { marked } from "marked";
+
+// Configure marked for markdown rendering
+const renderer = new marked.Renderer();
+
+// Override link renderer to add target="_blank" and rel attributes
+renderer.link = ({ href, title, text }) => {
+  const titleAttr = title ? ` title="${title}"` : '';
+  return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
+};
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  renderer,
+});
+
 interface FeedbackItem {
   id: string;
   messageId: string;
@@ -280,8 +295,87 @@ function formatDate(date: Date): string {
   });
 }
 
+// Render markdown
+function renderMarkdown(content: string): string {
+  if (!content) return "";
+
+  try {
+    return marked.parse(content) as string;
+  } catch (e) {
+    console.error("[AdminFeedbackPanel] Markdown parsing error:", e);
+    // Fallback to plain text with line breaks
+    return content.replace(/\n/g, "<br>");
+  }
+}
+
 // Load feedback on mount
 onMounted(() => {
   fetchFeedback();
 });
 </script>
+
+<style scoped>
+.prose :deep(p) {
+  @apply my-2;
+}
+
+.prose :deep(code) {
+  @apply px-1.5 py-0.5 bg-muted rounded text-sm font-mono border border-border/50;
+}
+
+.prose :deep(pre) {
+  @apply p-4 bg-muted/60 rounded-lg my-3 overflow-x-auto border border-border/30;
+}
+
+.prose :deep(pre code) {
+  @apply p-0 bg-transparent border-0;
+}
+
+.prose :deep(strong) {
+  @apply font-semibold;
+}
+
+.prose :deep(em) {
+  @apply italic;
+}
+
+.prose :deep(a) {
+  @apply text-primary hover:underline;
+}
+
+.prose :deep(ul) {
+  @apply list-disc my-2 pl-6;
+}
+
+.prose :deep(ol) {
+  @apply list-decimal my-2 pl-6;
+}
+
+.prose :deep(li) {
+  @apply my-1.5 pl-2;
+}
+
+.prose :deep(table) {
+  @apply w-full my-4 border-collapse;
+}
+
+.prose :deep(thead) {
+  @apply bg-muted/50 border-b-2 border-border;
+}
+
+.prose :deep(th) {
+  @apply px-4 py-3 text-left font-semibold text-sm border-b border-border/60;
+}
+
+.prose :deep(tbody tr) {
+  @apply border-b border-border/30 transition-colors duration-150;
+}
+
+.prose :deep(tbody tr:hover) {
+  @apply bg-muted/20;
+}
+
+.prose :deep(td) {
+  @apply px-4 py-3 text-sm;
+}
+</style>

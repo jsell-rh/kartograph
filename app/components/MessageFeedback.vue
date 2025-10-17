@@ -76,6 +76,9 @@
           maxlength="1000"
           :disabled="isSubmitting"
         />
+        <div class="character-count">
+          {{ feedbackText.length }}/1000
+        </div>
 
         <!-- Privacy notice -->
         <div class="feedback-privacy-notice">
@@ -99,21 +102,49 @@
         </div>
 
         <div class="feedback-form-actions">
-          <button
+          <Button
+            variant="outline"
             @click="skipFeedback"
-            class="feedback-action-button secondary"
             :disabled="isSubmitting"
           >
-            Skip
-          </button>
-          <button
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+            <span>Skip</span>
+          </Button>
+          <Button
+            variant="default"
             @click="submitFeedback"
-            class="feedback-action-button primary"
             :disabled="isSubmitting"
           >
             <span v-if="isSubmitting" class="spinner"></span>
-            <span v-else>Submit Feedback</span>
-          </button>
+            <template v-else>
+              <svg
+                class="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                />
+              </svg>
+              <span>Submit Feedback</span>
+            </template>
+          </Button>
         </div>
       </div>
     </Transition>
@@ -121,6 +152,8 @@
 </template>
 
 <script setup lang="ts">
+import { Button } from "~/components/ui/button";
+
 interface Props {
   messageId: string;
 }
@@ -325,26 +358,41 @@ async function submitFeedbackToServer(
 .feedback-textarea {
   width: 100%;
   padding: 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  background-color: var(--background);
+  border: 2px solid var(--border);
+  border-radius: 0.5rem;
+  background-color: var(--card);
   color: var(--foreground);
   font-size: 0.875rem;
   resize: vertical;
   min-height: 4rem;
   font-family: inherit;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1);
+  transition: all 0.2s ease;
+}
+
+.feedback-textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.6;
 }
 
 .feedback-textarea:focus {
   outline: none;
   border-color: var(--primary);
-  ring: 2px;
-  ring-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1), 0 1px 3px 0 rgb(0 0 0 / 0.1);
 }
 
 .feedback-textarea:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.character-count {
+  display: flex;
+  justify-content: flex-end;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin-top: 0.25rem;
+  opacity: 0.7;
 }
 
 .feedback-privacy-notice {
@@ -369,44 +417,6 @@ async function submitFeedbackToServer(
   justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 0.75rem;
-}
-
-.feedback-action-button {
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.feedback-action-button.secondary {
-  background-color: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted-foreground);
-}
-
-.feedback-action-button.secondary:hover:not(:disabled) {
-  background-color: var(--muted);
-  color: var(--foreground);
-}
-
-.feedback-action-button.primary {
-  background-color: var(--primary);
-  border: 1px solid var(--primary);
-  color: var(--primary-foreground);
-}
-
-.feedback-action-button.primary:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.feedback-action-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .spinner {
