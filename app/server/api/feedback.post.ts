@@ -5,7 +5,7 @@
  * Creates or updates feedback with rating and optional text.
  */
 
-import { and, eq, lt, desc } from "drizzle-orm";
+import { and, eq, asc } from "drizzle-orm";
 import { messages, messageFeedback, conversations } from "~/server/db/schema";
 import { db } from "~/server/db/client";
 import { auth } from "~/server/lib/auth";
@@ -78,16 +78,26 @@ export default defineEventHandler(async (event) => {
   }
 
   // Get the user's query (previous message in conversation)
-  const userMessage = await db.query.messages.findFirst({
-    where: and(
-      eq(messages.conversationId, message.conversationId),
-      eq(messages.role, "user"),
-      lt(messages.createdAt, message.createdAt),
-    ),
-    orderBy: desc(messages.createdAt),
+  // Get all messages in conversation, ordered chronologically
+  const allMessages = await db.query.messages.findMany({
+    where: eq(messages.conversationId, message.conversationId),
+    orderBy: asc(messages.createdAt),
   });
 
-  const userQuery = userMessage?.content ?? "[No user query found]";
+  // Find the index of the current assistant message
+  const currentIndex = allMessages.findIndex((m) => m.id === messageId);
+
+  // Find the most recent user message before this assistant message
+  let userQuery = "[No user query found]";
+  if (currentIndex > 0) {
+    for (let i = currentIndex - 1; i >= 0; i--) {
+      const msg = allMessages[i];
+      if (msg && msg.role === "user") {
+        userQuery = msg.content;
+        break;
+      }
+    }
+  }
 
   // Check if feedback already exists for this message
   const existingFeedback = await db.query.messageFeedback.findFirst({
