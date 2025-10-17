@@ -54,7 +54,7 @@ repos:
     hooks:
       - id: markdownlint
         args: ["--fix", "--config", ".markdownlint.json"]
-        exclude: '^app/(\.nuxt|\.output|node_modules)/.*'
+        exclude: '^app/(\.nuxt|\.output|node_modules)/.*|^app/CHANGELOG\.md$'
 
   # YAML linting
   - repo: https://github.com/adrienverge/yamllint

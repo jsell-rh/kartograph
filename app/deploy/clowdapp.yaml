@@ -153,6 +153,16 @@ objects:
                 value: /etc/vertex-ai/credentials.json
               - name: CLAUDE_CODE_USE_VERTEX
                 value: "1"
+              # MCP Server Configuration
+              # NUXT_ prefix required for runtime config overrides
+              - name: NUXT_API_TOKEN_RATE_LIMIT
+                value: ${API_TOKEN_RATE_LIMIT}
+              - name: NUXT_API_TOKEN_MAX_EXPIRY_DAYS
+                value: ${API_TOKEN_MAX_EXPIRY_DAYS}
+              - name: NUXT_API_TOKEN_DEFAULT_EXPIRY_DAYS
+                value: ${API_TOKEN_DEFAULT_EXPIRY_DAYS}
+              - name: NUXT_AUDIT_LOG_RETENTION_DAYS
+                value: ${AUDIT_LOG_RETENTION_DAYS}
             volumes:
               - name: app-data
                 persistentVolumeClaim:
@@ -228,6 +238,20 @@ parameters:
   - name: GITHUB_URL
     description: GitHub repository URL (optional, shows button in footer if set)
     value: ""
+
+  # MCP Server Configuration parameters
+  - name: API_TOKEN_RATE_LIMIT
+    description: API token rate limit (queries per hour)
+    value: "100"
+  - name: API_TOKEN_MAX_EXPIRY_DAYS
+    description: Maximum API token lifetime in days
+    value: "365"
+  - name: API_TOKEN_DEFAULT_EXPIRY_DAYS
+    description: Default API token lifetime in days
+    value: "90"
+  - name: AUDIT_LOG_RETENTION_DAYS
+    description: Query audit log retention period in days
+    value: "90"
 
   # Dgraph Zero parameters
   - name: DGRAPH_ZERO_REPLICAS
