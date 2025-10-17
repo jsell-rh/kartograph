@@ -19,9 +19,12 @@ import { db } from "~/server/db/client";
 export default defineEventHandler(async (event) => {
   await requireAdmin(event);
 
-  // Calculate timestamp for 30 days ago
+  // Calculate timestamps for time-based queries
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
   // Get user statistics
   const userStats = await db
@@ -72,7 +75,7 @@ export default defineEventHandler(async (event) => {
       totalFeedback: count(messageFeedback.id),
       helpfulCount: sql<number>`COUNT(CASE WHEN ${messageFeedback.rating} = 'helpful' THEN 1 END)`,
       unhelpfulCount: sql<number>`COUNT(CASE WHEN ${messageFeedback.rating} = 'unhelpful' THEN 1 END)`,
-      recentUnhelpfulCount: sql<number>`COUNT(CASE WHEN ${messageFeedback.rating} = 'unhelpful' AND ${messageFeedback.createdAt} >= ${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)} THEN 1 END)`,
+      recentUnhelpfulCount: sql<number>`COUNT(CASE WHEN ${messageFeedback.rating} = 'unhelpful' AND ${messageFeedback.createdAt} >= ${sevenDaysAgo} THEN 1 END)`,
       feedbackWithTextCount: sql<number>`COUNT(CASE WHEN ${messageFeedback.feedbackText} IS NOT NULL THEN 1 END)`,
     })
     .from(messageFeedback);
