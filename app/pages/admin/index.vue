@@ -57,8 +57,13 @@
 
     <!-- Tab Content -->
     <div class="flex-1 overflow-auto px-6 py-6">
+      <!-- Overview Tab -->
+      <div v-if="activeTab === 'overview'">
+        <AdminUsageCharts />
+      </div>
+
       <!-- User Management Tab -->
-      <div v-if="activeTab === 'users'">
+      <div v-else-if="activeTab === 'users'">
         <AdminUserTable
           :users="users"
           :loading="usersLoading"
@@ -88,9 +93,10 @@ definePageMeta({
 });
 
 // Tab management
-const activeTab = ref("users");
+const activeTab = ref("overview");
 
 const tabs = [
+  { id: "overview", label: "Overview" },
   { id: "users", label: "User Management" },
   { id: "tokens", label: "API Tokens" },
   { id: "feedback", label: "User Feedback" },
@@ -162,6 +168,8 @@ const feedbackCount = ref(0);
 // Get count for tab badges
 function getTabCount(tabId: string): number | null {
   switch (tabId) {
+    case "overview":
+      return null; // No count badge for overview
     case "users":
       return totalUsers.value;
     case "tokens":
