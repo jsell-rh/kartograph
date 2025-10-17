@@ -4,11 +4,9 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### [0.1.4](https://github.com/jsell-rh/kartograph/compare/v0.1.3...v0.1.4) (2025-10-17)
 
-
 ### Bug Fixes
 
 * Add ADMIN_EMAILS environment variable to deployment configuration ([a1868ea](https://github.com/jsell-rh/kartograph/commit/a1868ea90b79210842d7c721fb92d517f66db227)), closes [#2](https://github.com/jsell-rh/kartograph/issues/2) [#2](https://github.com/jsell-rh/kartograph/issues/2)
-
 
 ### Chores
 
@@ -16,18 +14,15 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### [0.1.3](https://github.com/jsell-rh/kartograph/compare/v0.1.2...v0.1.3) (2025-10-17)
 
-
 ### Features
 
 * Add admin user management ([3b451b2](https://github.com/jsell-rh/kartograph/commit/3b451b21cc924dcbbca3a457853904532b2b1ffd))
-
 
 ### Chores
 
 * **release:** 0.1.2 ([2888b06](https://github.com/jsell-rh/kartograph/commit/2888b069133f62e8a7a328bfd8b3b6e30f224b76))
 
 ### [0.1.2](https://github.com/jsell-rh/kartograph/compare/v0.1.1...v0.1.2) (2025-10-16)
-
 
 ### Features
 
@@ -38,7 +33,6 @@ All notable changes to this project will be documented in this file. See [standa
 * Improve link behavior and metadata sorting ([7e6bd65](https://github.com/jsell-rh/kartograph/commit/7e6bd65d06c165b2cfa95ffebd2ad0372616035b))
 * Improve sidebar and graph explorer UX ([cd8dc30](https://github.com/jsell-rh/kartograph/commit/cd8dc30ad3bcc43f4afe4f41dfddee43ac6f39e6))
 * Move example queries to empty state ([30f2fbf](https://github.com/jsell-rh/kartograph/commit/30f2fbf4c701651cfe106fefe6c0989e151d339c))
-
 
 ### Bug Fixes
 
@@ -59,19 +53,16 @@ All notable changes to this project will be documented in this file. See [standa
 * Use runtime base URL for changelog.json fetch ([f26e0a6](https://github.com/jsell-rh/kartograph/commit/f26e0a605d545e73e6b50bd9f7a4fe4432ceeaee))
 * Use runtime baseURL in useAppUrls composable for OAuth redirects ([9a84e99](https://github.com/jsell-rh/kartograph/commit/9a84e99561b16cf4b0c343571db8b0d00695f85f))
 
-
 ### Chores
 
 * Merge branch 'main' of github.com:jsell-rh/kartograph ([c9f3e4a](https://github.com/jsell-rh/kartograph/commit/c9f3e4ac43078a0307bfaab89bf5375a89f71d73))
 
 ### 0.1.1 (2025-10-16)
 
-
 ### Features
 
 * Add automated versioning and app version tagging ([2959d92](https://github.com/jsell-rh/kartograph/commit/2959d92cb0fef21ac7a70b9efcb4c82f26c3dd37))
 * **app:** Allow disabling password login & whitelist email domains. ([b178bd9](https://github.com/jsell-rh/kartograph/commit/b178bd9e3df5313769352fc160d77a17234e0b58))
-
 
 ### Bug Fixes
 
@@ -81,13 +72,11 @@ All notable changes to this project will be documented in this file. See [standa
 * Handle multiple trailing slashes in URL normalization ([a6fd5c0](https://github.com/jsell-rh/kartograph/commit/a6fd5c0f69505d0801bc631bd02a30a10c551e5a))
 * Support NUXT_ prefixed env vars for runtime auth config ([521b7b7](https://github.com/jsell-rh/kartograph/commit/521b7b7998eb5a8c43c545829847cd68b524b176))
 
-
 ### Chores
 
 * Add .gitignore ([1d6d5dc](https://github.com/jsell-rh/kartograph/commit/1d6d5dc6ecf1d8da01bf8d8501c304026852b052))
 * Initial commit ([59910fb](https://github.com/jsell-rh/kartograph/commit/59910fb6b13c1101d9ff6638836e7e0a2f993b6d))
 * Remove baseline secrets from gitignore ([a68faf5](https://github.com/jsell-rh/kartograph/commit/a68faf516aed06c31f22d651e082bb8435fcb04a))
-
 
 ### Code Refactoring
 
