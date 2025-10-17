@@ -39,6 +39,9 @@
             <th class="text-left px-6 py-3 text-sm font-semibold text-foreground">
               Activity
             </th>
+            <th class="text-left px-6 py-3 text-sm font-semibold text-foreground">
+              Last Login
+            </th>
             <th class="text-right px-6 py-3 text-sm font-semibold text-foreground">
               Actions
             </th>
@@ -91,6 +94,16 @@
               <div class="text-sm text-muted-foreground">
                 {{ user.stats.conversationCount }} conversations •
                 {{ user.stats.messageCount }} messages
+              </div>
+            </td>
+
+            <!-- Last Login -->
+            <td class="px-6 py-4">
+              <div
+                class="text-sm text-muted-foreground"
+                :title="getFullTimestamp(user.lastLoginAt)"
+              >
+                {{ formatDate(user.lastLoginAt) }}
               </div>
             </td>
 
@@ -157,6 +170,7 @@ interface User {
   name: string;
   role: "user" | "admin";
   isActive: boolean;
+  lastLoginAt: Date | null;
   stats: {
     conversationCount: number;
     messageCount: number;
@@ -183,4 +197,41 @@ const emit = defineEmits<{
   deleteUser: [userId: string];
   refresh: [];
 }>();
+
+// Format date for last login display
+function formatDate(date: Date | null): string {
+  if (!date) return "Never";
+
+  const d = new Date(date);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+// Get full timestamp for tooltip
+function getFullTimestamp(date: Date | null): string {
+  if (!date) return "User has never logged in";
+
+  return new Date(date).toLocaleString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
 </script>
