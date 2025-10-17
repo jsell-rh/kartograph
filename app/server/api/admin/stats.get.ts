@@ -20,11 +20,10 @@ export default defineEventHandler(async (event) => {
   await requireAdmin(event);
 
   // Calculate timestamps for time-based queries
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  // SQLite stores timestamps as Unix epoch integers, so we need to convert Date to number
+  const now = Date.now();
+  const thirtyDaysAgo = Math.floor((now - 30 * 24 * 60 * 60 * 1000) / 1000); // Unix timestamp in seconds
+  const sevenDaysAgo = Math.floor((now - 7 * 24 * 60 * 60 * 1000) / 1000); // Unix timestamp in seconds
 
   // Get user statistics
   const userStats = await db
