@@ -114,6 +114,12 @@ objects:
                     name: kartograph-auth-config
                     key: allowed-domains
                     optional: true
+              - name: NUXT_ADMIN_EMAILS
+                valueFrom:
+                  secretKeyRef:
+                    name: kartograph-auth-config
+                    key: admin-emails
+                    optional: true
               # GitHub OAuth configuration
               - name: NUXT_GITHUB_CLIENT_ID
                 valueFrom:
