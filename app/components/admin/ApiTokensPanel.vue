@@ -13,7 +13,7 @@
           <!-- Filter by status -->
           <select
             v-model="filterStatus"
-            @change="fetchTokens"
+            @change="setFilter(filterStatus)"
             class="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="all">All Tokens</option>
@@ -35,30 +35,62 @@
     <!-- Stats Cards -->
     <div class="p-6 border-b border-border bg-muted/20">
       <div class="grid grid-cols-4 gap-4">
-        <div class="bg-card p-4 rounded-lg border border-border">
+        <button
+          @click="setFilter('all')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'all'
+              ? 'border-primary border-2 shadow-lg'
+              : 'border-border hover:border-primary/50'
+          "
+        >
           <div class="text-2xl font-bold text-foreground">
             {{ stats.totalTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Total Tokens</div>
-        </div>
-        <div class="bg-card p-4 rounded-lg border border-green-200">
+        </button>
+        <button
+          @click="setFilter('active')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'active'
+              ? 'border-green-500 border-2 shadow-lg'
+              : 'border-green-200 hover:border-green-400'
+          "
+        >
           <div class="text-2xl font-bold text-green-600">
             {{ stats.activeTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Active</div>
-        </div>
-        <div class="bg-card p-4 rounded-lg border border-orange-200">
+        </button>
+        <button
+          @click="setFilter('expired')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'expired'
+              ? 'border-orange-500 border-2 shadow-lg'
+              : 'border-orange-200 hover:border-orange-400'
+          "
+        >
           <div class="text-2xl font-bold text-orange-600">
             {{ stats.expiredTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Expired</div>
-        </div>
-        <div class="bg-card p-4 rounded-lg border border-red-200">
+        </button>
+        <button
+          @click="setFilter('revoked')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'revoked'
+              ? 'border-red-500 border-2 shadow-lg'
+              : 'border-red-200 hover:border-red-400'
+          "
+        >
           <div class="text-2xl font-bold text-red-600">
             {{ stats.revokedTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Revoked</div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -231,6 +263,13 @@ const stats = ref<TokenStats>({
   expiredTokens: 0,
 });
 
+// Set filter and fetch tokens
+function setFilter(status: "all" | "active" | "revoked" | "expired") {
+  filterStatus.value = status;
+  offset.value = 0; // Reset to first page when filtering
+  fetchTokens();
+}
+
 // Fetch tokens from API
 async function fetchTokens() {
   loading.value = true;
@@ -268,22 +307,34 @@ function previousPage() {
   }
 }
 
-// Format date
+// Format date - handles both past and future dates
 function formatDate(date: Date | null): string {
   if (!date) return "Never";
 
   const d = new Date(date);
   const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
+  const diffMs = d.getTime() - now.getTime();
+  const absDiffMs = Math.abs(diffMs);
+  const absDiffMins = Math.floor(absDiffMs / 60000);
+  const absDiffHours = Math.floor(absDiffMs / 3600000);
+  const absDiffDays = Math.floor(absDiffMs / 86400000);
 
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
+  // Future dates (e.g., expiration)
+  if (diffMs > 0) {
+    if (absDiffMins < 1) return "in < 1m";
+    if (absDiffMins < 60) return `in ${absDiffMins}m`;
+    if (absDiffHours < 24) return `in ${absDiffHours}h`;
+    if (absDiffDays < 7) return `in ${absDiffDays}d`;
+  }
+  // Past dates (e.g., last used)
+  else {
+    if (absDiffMins < 1) return "Just now";
+    if (absDiffMins < 60) return `${absDiffMins}m ago`;
+    if (absDiffHours < 24) return `${absDiffHours}h ago`;
+    if (absDiffDays < 7) return `${absDiffDays}d ago`;
+  }
 
+  // For dates more than 7 days away, show full date
   return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
