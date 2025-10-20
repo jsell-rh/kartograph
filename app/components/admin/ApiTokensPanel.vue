@@ -13,7 +13,7 @@
           <!-- Filter by status -->
           <select
             v-model="filterStatus"
-            @change="fetchTokens"
+            @change="setFilter(filterStatus)"
             class="px-3 py-2 text-sm bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="all">All Tokens</option>
@@ -35,30 +35,62 @@
     <!-- Stats Cards -->
     <div class="p-6 border-b border-border bg-muted/20">
       <div class="grid grid-cols-4 gap-4">
-        <div class="bg-card p-4 rounded-lg border border-border">
+        <button
+          @click="setFilter('all')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'all'
+              ? 'border-primary border-2 shadow-lg'
+              : 'border-border hover:border-primary/50'
+          "
+        >
           <div class="text-2xl font-bold text-foreground">
             {{ stats.totalTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Total Tokens</div>
-        </div>
-        <div class="bg-card p-4 rounded-lg border border-green-200">
+        </button>
+        <button
+          @click="setFilter('active')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'active'
+              ? 'border-green-500 border-2 shadow-lg'
+              : 'border-green-200 hover:border-green-400'
+          "
+        >
           <div class="text-2xl font-bold text-green-600">
             {{ stats.activeTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Active</div>
-        </div>
-        <div class="bg-card p-4 rounded-lg border border-orange-200">
+        </button>
+        <button
+          @click="setFilter('expired')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'expired'
+              ? 'border-orange-500 border-2 shadow-lg'
+              : 'border-orange-200 hover:border-orange-400'
+          "
+        >
           <div class="text-2xl font-bold text-orange-600">
             {{ stats.expiredTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Expired</div>
-        </div>
-        <div class="bg-card p-4 rounded-lg border border-red-200">
+        </button>
+        <button
+          @click="setFilter('revoked')"
+          class="bg-card p-4 rounded-lg border transition-all text-left hover:shadow-md"
+          :class="
+            filterStatus === 'revoked'
+              ? 'border-red-500 border-2 shadow-lg'
+              : 'border-red-200 hover:border-red-400'
+          "
+        >
           <div class="text-2xl font-bold text-red-600">
             {{ stats.revokedTokens }}
           </div>
           <div class="text-sm text-muted-foreground">Revoked</div>
-        </div>
+        </button>
       </div>
     </div>
 
@@ -230,6 +262,13 @@ const stats = ref<TokenStats>({
   revokedTokens: 0,
   expiredTokens: 0,
 });
+
+// Set filter and fetch tokens
+function setFilter(status: "all" | "active" | "revoked" | "expired") {
+  filterStatus.value = status;
+  offset.value = 0; // Reset to first page when filtering
+  fetchTokens();
+}
 
 // Fetch tokens from API
 async function fetchTokens() {
