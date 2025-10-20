@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.7](https://github.com/jsell-rh/kartograph/compare/v0.1.6...v0.1.7) (2025-10-20)
+
+
+### Bug Fixes
+
+* Admin view: Correct API token expiry display and add clickable filter cards ([#9](https://github.com/jsell-rh/kartograph/issues/9)) ([1911c7e](https://github.com/jsell-rh/kartograph/commit/1911c7ed71fde211fa5442cffbe7aa91b42e8846)), closes [#8](https://github.com/jsell-rh/kartograph/issues/8)
+
+
+### Chores
+
+* **release:** 0.1.6 ([72bdea4](https://github.com/jsell-rh/kartograph/commit/72bdea48047b766ffd30359c717982d304bbc9a2))
+
 ### [0.1.6](https://github.com/jsell-rh/kartograph/compare/v0.1.5...v0.1.6) (2025-10-17)
 
 
