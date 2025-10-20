@@ -36,6 +36,11 @@ export const users = sqliteTable("users", {
   lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
   disabledAt: integer("disabled_at", { mode: "timestamp" }),
   disabledBy: text("disabled_by"), // Admin user ID who disabled this account
+
+  // Changelog tracking
+  lastSeenChangelogAt: integer("last_seen_changelog_at", {
+    mode: "timestamp",
+  }), // Last time user dismissed the WhatsNewDialog
 });
 
 /**

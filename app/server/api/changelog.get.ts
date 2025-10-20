@@ -2,18 +2,24 @@
  * GET /api/changelog
  *
  * Fetches unified changelog entries (operational + git releases).
- * Public endpoint - filters visibility based on user auth.
+ * Requires authentication - filters visibility based on user role.
  */
 
 import { and, desc, eq, gte, or, sql } from "drizzle-orm";
-import { changelogEntries } from "~/server/db/schema";
+import { changelogEntries, users } from "~/server/db/schema";
 import { db } from "~/server/db/client";
-import { auth } from "~/server/lib/auth";
+import { requireAuth } from "~/server/utils/auth";
 
 export default defineEventHandler(async (event) => {
-  // Check if user is authenticated (optional - public can see public entries)
-  const session = await auth.api.getSession({ headers: event.headers });
-  const isAdmin = session?.user?.role === "admin";
+  // Require authentication
+  const session = await requireAuth(event);
+
+  // Fetch user from database to get role
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, session.user.id),
+  });
+
+  const isAdmin = user?.role === "admin";
 
   // Parse query parameters
   const query = getQuery(event);

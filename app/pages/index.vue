@@ -920,14 +920,26 @@ onMounted(async () => {
       );
     }, 1000);
   }
-  // Check if version has changed since last visit
-  else if (hasVersionChanged(currentVersion)) {
-    // Show what's new dialog for returning users
-    showWhatsNew.value = true;
-  }
+  // Check if version has changed OR if there are unseen operational entries
+  else {
+    const hasNewVersion = hasVersionChanged(currentVersion);
+    let hasUnseenOperational = false;
 
-  // Update last seen version
-  updateLastVersion(currentVersion);
+    try {
+      const response = await $fetch("/api/user/has-unseen-changelog");
+      hasUnseenOperational = response.hasUnseen;
+    } catch (error) {
+      console.error("Failed to check for unseen changelog entries:", error);
+    }
+
+    // Show dialog if either condition is true
+    if (hasNewVersion || hasUnseenOperational) {
+      showWhatsNew.value = true;
+    }
+
+    // Update last seen version
+    updateLastVersion(currentVersion);
+  }
 });
 
 onUnmounted(() => {

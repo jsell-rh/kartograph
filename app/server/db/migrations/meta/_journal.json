@@ -57,6 +57,13 @@
       "when": 1760976009760,
       "tag": "0007_dashing_loa",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1760984251177,
+      "tag": "0008_foamy_onslaught",
+      "breakpoints": true
     }
   ]
 }

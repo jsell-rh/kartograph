@@ -243,13 +243,23 @@ const entryTypes = [
   },
 ];
 
+// Helper to format date for datetime-local input (in local timezone)
+const formatDateTimeLocal = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
 const formData = reactive({
   type: (props.entry?.type as any) || "data",
   title: props.entry?.title || "",
   description: props.entry?.description || "",
   timestamp: props.entry?.timestamp
-    ? new Date(props.entry.timestamp).toISOString().slice(0, 16)
-    : "",
+    ? formatDateTimeLocal(new Date(props.entry.timestamp))
+    : formatDateTimeLocal(new Date()), // Default to current local date/time
   metadata: {
     affectedRecords: (props.entry?.metadata as any)?.affectedRecords || null,
     dataSource: (props.entry?.metadata as any)?.dataSource || "",
