@@ -469,6 +469,273 @@ def extract_all_fields(data, urn, entity_type):
 
 Entities without names will appear as hex IDs in graph visualizations.
 
+#### Mandatory Name/Type Validation
+
+**ENFORCE BEFORE EXTRACTION**: Every entity MUST be validated before being added to the graph.
+
+```python
+def validate_entity_before_extraction(entity, filepath):
+    """Validate entity has required fields BEFORE adding to graph."""
+
+    # Mandatory field check
+    if "@id" not in entity:
+        raise ValueError(f"Entity missing @id in {filepath}")
+
+    if "@type" not in entity or not entity["@type"]:
+        # Attempt type inference before failing
+        entity["@type"] = infer_type_from_context(entity, filepath)
+        if not entity["@type"]:
+            raise ValueError(f"Entity {entity.get('@id', 'unknown')} missing @type in {filepath}")
+
+    if "name" not in entity or not entity["name"]:
+        # Attempt name fallback before failing
+        entity["name"] = generate_fallback_name(entity, filepath)
+        if not entity["name"]:
+            raise ValueError(f"Entity {entity['@id']} missing name in {filepath}")
+
+    return entity
+```
+
+#### Fallback Naming Strategies
+
+When `name` field is missing or empty in source data, use these fallback strategies **in order**:
+
+**Strategy 1: Extract from URN**
+
+```python
+def extract_name_from_urn(urn):
+    """Extract human-readable name from URN last segment."""
+    # urn:service:my-service → "my-service"
+    # urn:namespace:prod:app-sre → "app-sre"
+    segments = urn.split(':')
+    last_segment = segments[-1]
+
+    # Convert kebab-case/snake_case to Title Case
+    name = last_segment.replace('-', ' ').replace('_', ' ').title()
+    return name
+```
+
+**Strategy 2: Use Schema Entity Type**
+
+```python
+def name_from_type_and_identifier(entity_type, identifier):
+    """Generate name from type and unique identifier."""
+    # For entities like ConfigMap, Secret where URN contains meaningful info
+    # urn:k8s-configmap:namespace:config-name → "Config Name (ConfigMap)"
+    clean_id = identifier.replace('-', ' ').title()
+    return f"{clean_id} ({entity_type})"
+```
+
+**Strategy 3: Extract from File Path**
+
+```python
+def extract_name_from_filepath(filepath):
+    """Derive name from file location patterns."""
+    # /services/cincinnati/app.yml → "Cincinnati"
+    # /namespaces/production/config.yml → "Production"
+
+    path_parts = filepath.split('/')
+
+    # Check common patterns
+    if '/services/' in filepath:
+        # Get service name from directory
+        service_idx = path_parts.index('services') + 1
+        if service_idx < len(path_parts):
+            return path_parts[service_idx].replace('-', ' ').title()
+
+    # Generic: use parent directory name
+    parent_dir = path_parts[-2] if len(path_parts) > 1 else path_parts[-1]
+    return parent_dir.replace('-', ' ').title()
+```
+
+**Strategy 4: Composite Field Name**
+
+```python
+def generate_composite_name(entity, data):
+    """Build name from multiple fields when single 'name' field absent."""
+
+    # Pattern: namespace + kind (Kubernetes resources)
+    if 'namespace' in data and 'kind' in data:
+        ns = data['namespace']
+        kind = data['kind']
+        resource_name = data.get('metadata', {}).get('name', 'unknown')
+        return f"{resource_name} ({kind} in {ns})"
+
+    # Pattern: host + path (Endpoints)
+    if 'host' in data and 'path' in data:
+        return f"{data['host']}{data['path']}"
+
+    # Pattern: owner + resource type
+    if 'owner' in data and '@type' in entity:
+        return f"{data['owner']}'s {entity['@type']}"
+
+    return None
+```
+
+**Implementation in Extraction**:
+
+```python
+def extract_entity(data, filepath, schema_config):
+    """Extract entity with guaranteed name field."""
+
+    # Normal extraction
+    entity = {
+        "@id": generate_urn(schema_config['urn_pattern'], data),
+        "@type": schema_config['entity_type']
+    }
+
+    # Try to get name from data
+    name = get_nested_field(data, 'name')
+
+    # Apply fallback strategies if name missing
+    if not name:
+        name = (
+            extract_name_from_urn(entity["@id"]) or
+            extract_name_from_filepath(filepath) or
+            name_from_type_and_identifier(entity["@type"], entity["@id"]) or
+            generate_composite_name(entity, data)
+        )
+
+    if not name:
+        # FAIL EXTRACTION - do not add entity without name
+        log_error(f"Cannot generate name for entity in {filepath}")
+        return None
+
+    entity["name"] = name
+
+    # Extract remaining fields...
+    return entity
+```
+
+#### Type Inference Patterns
+
+When `@type` is missing, infer from context:
+
+**Pattern 1: URN-Based Inference**
+
+```python
+def infer_type_from_urn(urn):
+    """Infer entity type from URN structure."""
+    # urn:service:X → "Service"
+    # urn:namespace:Y → "Namespace"
+    # urn:k8s-deployment:Z → "Deployment"
+
+    if not urn.startswith('urn:'):
+        return None
+
+    type_segment = urn.split(':')[1]
+
+    # Convert URN prefix to entity type
+    type_mapping = {
+        'service': 'Service',
+        'namespace': 'Namespace',
+        'dependency': 'Dependency',
+        'k8s-service': 'K8sService',
+        'k8s-deployment': 'Deployment',
+        'k8s-configmap': 'ConfigMap',
+        'k8s-route': 'Route',
+        'cluster': 'Cluster',
+        'user': 'User',
+        'role': 'Role',
+        'aws-account': 'AWSAccount'
+    }
+
+    return type_mapping.get(type_segment.lower())
+```
+
+**Pattern 2: Schema Field Inference**
+
+```python
+def infer_type_from_schema_field(data):
+    """Extract type from $schema field in YAML."""
+    # $schema: /dependencies/dependency-1.yml → "Dependency"
+    # $schema: /app/app-1.yml → "Service"
+
+    schema_ref = data.get('$schema', '')
+    if not schema_ref:
+        return None
+
+    schema_mapping = {
+        '/app/': 'Service',
+        '/dependencies/': 'Dependency',
+        '/namespace/': 'Namespace',
+        '/cluster/': 'Cluster',
+        '/aws/': 'AWSAccount',
+        '/user/': 'User',
+        '/role/': 'Role'
+    }
+
+    for pattern, entity_type in schema_mapping.items():
+        if pattern in schema_ref:
+            return entity_type
+
+    return None
+```
+
+**Pattern 3: File Path Inference**
+
+```python
+def infer_type_from_filepath(filepath):
+    """Infer entity type from file location."""
+    # /services/foo/app.yml → "Service"
+    # /namespaces/bar.yml → "Namespace"
+
+    path_mapping = {
+        '/services/': 'Service',
+        '/namespaces/': 'Namespace',
+        '/dependencies/': 'Dependency',
+        '/clusters/': 'Cluster',
+        '/aws/': 'AWSAccount',
+        '/users/': 'User',
+        '/roles/': 'Role'
+    }
+
+    for pattern, entity_type in path_mapping.items():
+        if pattern in filepath:
+            return entity_type
+
+    return None
+```
+
+**Pattern 4: Kubernetes Kind Field**
+
+```python
+def infer_type_from_kubernetes_kind(data):
+    """Use Kubernetes 'kind' field as entity type."""
+    # kind: Deployment → @type: "Deployment"
+    # kind: Service → @type: "K8sService" (to avoid conflict with app Service)
+
+    if 'kind' not in data:
+        return None
+
+    kind = data['kind']
+
+    # Avoid conflicts with business entity types
+    if kind == 'Service':
+        return 'K8sService'
+
+    return kind
+```
+
+**Consolidated Type Inference**:
+
+```python
+def infer_type_from_context(entity, filepath, data=None):
+    """Try all type inference strategies."""
+
+    inferred_type = (
+        infer_type_from_urn(entity.get("@id", "")) or
+        (infer_type_from_schema_field(data) if data else None) or
+        (infer_type_from_kubernetes_kind(data) if data else None) or
+        infer_type_from_filepath(filepath)
+    )
+
+    if inferred_type:
+        log_info(f"Inferred type '{inferred_type}' for {entity.get('@id', filepath)}")
+
+    return inferred_type
+```
+
 ### Sub-Entity Pattern
 
 For complex nested structures, create separate entities:
@@ -549,15 +816,43 @@ After each batch:
 def validate_batch(entities):
     """Validate extracted entities before continuing."""
 
-    # Check all entities have required fields
+    errors = []
+    warnings = []
+
+    # MANDATORY: Check all entities have required fields
     for entity in entities:
-        assert "@id" in entity, f"Entity missing @id: {entity}"
-        assert "@type" in entity, f"Entity missing @type: {entity}"
-        assert "name" in entity, f"Entity missing name: {entity['@id']}"
+        entity_id = entity.get("@id", "<no-id>")
+
+        # Check @id
+        if "@id" not in entity:
+            errors.append(f"Entity missing @id: {entity}")
+            continue
+
+        # Check @type (MANDATORY)
+        if "@type" not in entity or not entity["@type"]:
+            errors.append(f"Entity missing @type: {entity_id}")
+
+        # Check name (MANDATORY)
+        if "name" not in entity or not entity["name"]:
+            errors.append(f"Entity missing name: {entity_id}")
+
+        # Check name is not just whitespace
+        if "name" in entity and isinstance(entity["name"], str):
+            if not entity["name"].strip():
+                errors.append(f"Entity has empty/whitespace name: {entity_id}")
 
     # Check URN uniqueness
     urns = [e["@id"] for e in entities]
-    assert len(urns) == len(set(urns)), "Duplicate URNs found"
+    if len(urns) != len(set(urns)):
+        duplicates = [urn for urn in urns if urns.count(urn) > 1]
+        errors.append(f"Duplicate URNs found: {set(duplicates)}")
+
+    # FAIL FAST if critical errors found
+    if errors:
+        print(f"❌ VALIDATION FAILED: {len(errors)} critical errors")
+        for error in errors[:20]:  # Show first 20 errors
+            print(f"  - {error}")
+        raise ValueError(f"Batch validation failed with {len(errors)} errors")
 
     # Count by type
     type_counts = {}
@@ -565,11 +860,83 @@ def validate_batch(entities):
         entity_type = entity["@type"]
         type_counts[entity_type] = type_counts.get(entity_type, 0) + 1
 
-    print(f"Batch extracted {len(entities)} entities:")
+    # Calculate completeness metrics
+    total = len(entities)
+    with_names = sum(1 for e in entities if e.get("name"))
+    with_types = sum(1 for e in entities if e.get("@type"))
+
+    print(f"✅ Batch extracted {total} entities:")
     for entity_type, count in sorted(type_counts.items()):
         print(f"  {entity_type}: {count}")
 
+    print(f"\nCompleteness:")
+    print(f"  Entities with names: {with_names}/{total} ({100*with_names/total:.1f}%)")
+    print(f"  Entities with types: {with_types}/{total} ({100*with_types/total:.1f}%)")
+
+    # Warnings for low completeness (should be 100%)
+    if with_names < total:
+        warnings.append(f"{total - with_names} entities lack names")
+    if with_types < total:
+        warnings.append(f"{total - with_types} entities lack types")
+
+    if warnings:
+        print(f"\n⚠️  WARNINGS:")
+        for warning in warnings:
+            print(f"  - {warning}")
+
     return True
+
+
+def validate_entity_quality(entities):
+    """Additional quality checks beyond mandatory fields."""
+
+    quality_report = {
+        'entities_with_descriptions': 0,
+        'entities_with_relationships': 0,
+        'total_relationships': 0,
+        'orphaned_entities': [],
+        'sparse_entities': []  # Entities with < 3 fields
+    }
+
+    for entity in entities:
+        # Check description presence
+        if 'description' in entity:
+            quality_report['entities_with_descriptions'] += 1
+
+        # Count relationships
+        relationship_count = 0
+        for key, value in entity.items():
+            if isinstance(value, dict) and "@id" in value:
+                relationship_count += 1
+            elif isinstance(value, list):
+                refs = [v for v in value if isinstance(v, dict) and "@id" in v]
+                relationship_count += len(refs)
+
+        if relationship_count > 0:
+            quality_report['entities_with_relationships'] += 1
+            quality_report['total_relationships'] += relationship_count
+        else:
+            quality_report['orphaned_entities'].append(entity["@id"])
+
+        # Check field count (excluding @id, @type, name)
+        field_count = len([k for k in entity.keys() if k not in ['@id', '@type', 'name']])
+        if field_count < 3:
+            quality_report['sparse_entities'].append({
+                'id': entity["@id"],
+                'field_count': field_count
+            })
+
+    total = len(entities)
+    print(f"\n📊 Quality Metrics:")
+    print(f"  With descriptions: {quality_report['entities_with_descriptions']}/{total} " +
+          f"({100*quality_report['entities_with_descriptions']/total:.1f}%)")
+    print(f"  With relationships: {quality_report['entities_with_relationships']}/{total} " +
+          f"({100*quality_report['entities_with_relationships']/total:.1f}%)")
+    print(f"  Total relationships: {quality_report['total_relationships']}")
+    print(f"  Orphaned entities: {len(quality_report['orphaned_entities'])}")
+    print(f"  Sparse entities (< 3 fields): {len(quality_report['sparse_entities'])}")
+
+    return quality_report
 ```
 
 ---
