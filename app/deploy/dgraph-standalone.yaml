@@ -64,8 +64,7 @@ spec:
               mountPath: /dgraph
       volumes:
         - name: dgraph-zero-data
-          persistentVolumeClaim:
-            claimName: dgraph-zero-pvc
+          emptyDir: {}
 
 ---
 # Dgraph Alpha Deployment
