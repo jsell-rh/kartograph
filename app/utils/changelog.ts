@@ -11,13 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [
-    "Add MCP server configuration environment variables to deployment (#7)"
-  ],
-  "improvements": [
-    "Add issue and branch creation workflow to AGENTS.md"
-  ],
-  "bugFixes": []
+  "features": [],
+  "improvements": [],
+  "bugFixes": [
+    "Admin view: Correct API token expiry display and add clickable filter cards (#9)"
+  ]
 };
 
 export default changelog;
