@@ -14,7 +14,7 @@ export const changelog: ChangelogData = {
   "features": [],
   "improvements": [],
   "bugFixes": [
-    "Remove dgraph-zero PVC from ClowdApp manifest"
+    "Dynamically query all graph relationships using schema introspection (#12)"
   ]
 };
 

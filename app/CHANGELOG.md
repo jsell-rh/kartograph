@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.10](https://github.com/jsell-rh/kartograph/compare/v0.1.9...v0.1.10) (2025-10-20)
+
+
+### Bug Fixes
+
+* Dynamically query all graph relationships using schema introspection ([#12](https://github.com/jsell-rh/kartograph/issues/12)) ([08bfffd](https://github.com/jsell-rh/kartograph/commit/08bfffd33eddbaeb58be6832933bbaf510338b9c)), closes [#11](https://github.com/jsell-rh/kartograph/issues/11)
+
+
+### Chores
+
+* **release:** 0.1.9 ([539d36b](https://github.com/jsell-rh/kartograph/commit/539d36b30de8e9b9c849cf8215b80a061ad43c9e))
+
 ### [0.1.9](https://github.com/jsell-rh/kartograph/compare/v0.1.8...v0.1.9) (2025-10-20)
 
 
