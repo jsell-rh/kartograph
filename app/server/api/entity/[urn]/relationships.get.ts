@@ -6,6 +6,12 @@
  */
 
 import { createLogger } from "../../../lib/logger";
+import {
+  getReversePredicates,
+  getRelationshipPredicates,
+  buildOutgoingRelationshipsQuery,
+  buildIncomingRelationshipsQuery,
+} from "../../../lib/dgraph-schema";
 
 const log = createLogger("entity-relationships-api");
 
@@ -114,7 +120,8 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const [, entityType, entityId] = urnMatch;
+    const entityType = urnMatch[1]!;
+    const entityId = urnMatch[2]!;
 
     log.info({ entityType, entityId }, "Parsed URN");
 
@@ -123,14 +130,21 @@ export default defineEventHandler(async (event) => {
     // We'll make TWO separate queries:
     // 1. Get outgoing relationships (what this entity points to)
     // 2. Get incoming relationships (what points to this entity) using reverse predicates
-    const query = `
-      {
-        entity(func: eq(type, "${entityType}")) @filter(eq(name, "${entityId}")) {
-          uid
-          expand(_all_)
-        }
-      }
-    `;
+
+    // Get all relationship predicates from schema (for outgoing relationships)
+    const relationshipPredicates = await getRelationshipPredicates();
+
+    log.info(
+      { entityType, entityId, relationshipPredicateCount: relationshipPredicates.length },
+      "Building outgoing relationships query with dynamic predicates",
+    );
+
+    // Build the outgoing query dynamically based on schema
+    const query = buildOutgoingRelationshipsQuery(
+      entityType,
+      entityId,
+      relationshipPredicates,
+    );
 
     log.info({ query }, "Sending DQL query to Dgraph");
 
@@ -331,75 +345,23 @@ export default defineEventHandler(async (event) => {
     // Now fetch incoming relationships (entities that point TO our source entity)
     // Use Dgraph's reverse edge traversal with ~predicate syntax
     //
-    // IMPORTANT: Only query predicates that have @reverse directive in the schema
+    // IMPORTANT: Dynamically query all predicates that have @reverse directive in the schema
+    // We query the schema to discover these predicates at runtime (with caching)
     // Querying a predicate without @reverse will cause the entire query to fail
-    const incomingQuery = `
-      {
-        belongsTo(func: uid(${sourceUid})) {
-          ~belongsTo {
-            uid
-            name
-            type
-          }
-        }
-        dependsOn(func: uid(${sourceUid})) {
-          ~dependsOn {
-            uid
-            name
-            type
-          }
-        }
-        deployedBy(func: uid(${sourceUid})) {
-          ~deployedBy {
-            uid
-            name
-            type
-          }
-        }
-        hasAWSGroup(func: uid(${sourceUid})) {
-          ~hasAWSGroup {
-            uid
-            name
-            type
-          }
-        }
-        hasCodeComponent(func: uid(${sourceUid})) {
-          ~hasCodeComponent {
-            uid
-            name
-            type
-          }
-        }
-        hasRole(func: uid(${sourceUid})) {
-          ~hasRole {
-            uid
-            name
-            type
-          }
-        }
-        parentService(func: uid(${sourceUid})) {
-          ~parentService {
-            uid
-            name
-            type
-          }
-        }
-        routesTo(func: uid(${sourceUid})) {
-          ~routesTo {
-            uid
-            name
-            type
-          }
-        }
-        runsOn(func: uid(${sourceUid})) {
-          ~runsOn {
-            uid
-            name
-            type
-          }
-        }
-      }
-    `;
+
+    // Get all reverse predicates from schema (cached)
+    const reversePredicates = await getReversePredicates();
+
+    log.info(
+      { sourceUid, reversePredicateCount: reversePredicates.length },
+      "Building incoming relationships query with dynamic reverse predicates",
+    );
+
+    // Build the incoming query dynamically based on schema
+    const incomingQuery = buildIncomingRelationshipsQuery(
+      sourceUid,
+      reversePredicates,
+    );
 
     log.info(
       { sourceUid, incomingQuery },
