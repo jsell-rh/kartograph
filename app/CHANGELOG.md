@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.9](https://github.com/jsell-rh/kartograph/compare/v0.1.8...v0.1.9) (2025-10-20)
+
+
+### Bug Fixes
+
+* remove dgraph-zero PVC from ClowdApp manifest ([9322f39](https://github.com/jsell-rh/kartograph/commit/9322f3972cd230fd0436c9fc57d8fa72aa203d86))
+
+
+### Chores
+
+* **release:** 0.1.8 ([7325360](https://github.com/jsell-rh/kartograph/commit/7325360868e59025108fbadd56ac8e6063336a81))
+
 ### [0.1.8](https://github.com/jsell-rh/kartograph/compare/v0.1.7...v0.1.8) (2025-10-20)
 
 

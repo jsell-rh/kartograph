@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [
-    "Add operational changelog system (#10)"
-  ],
+  "features": [],
   "improvements": [],
-  "bugFixes": []
+  "bugFixes": [
+    "Remove dgraph-zero PVC from ClowdApp manifest"
+  ]
 };
 
 export default changelog;
