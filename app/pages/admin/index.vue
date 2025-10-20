@@ -83,6 +83,11 @@
       <div v-else-if="activeTab === 'feedback'">
         <AdminFeedbackPanel />
       </div>
+
+      <!-- Changelog Tab -->
+      <div v-else-if="activeTab === 'changelog'">
+        <AdminChangelogPanel />
+      </div>
     </div>
   </div>
 </template>
@@ -100,6 +105,7 @@ const tabs = [
   { id: "users", label: "User Management" },
   { id: "tokens", label: "API Tokens" },
   { id: "feedback", label: "User Feedback" },
+  { id: "changelog", label: "Changelog" },
 ];
 
 interface User {
