@@ -8,17 +8,6 @@ objects:
   - apiVersion: v1
     kind: PersistentVolumeClaim
     metadata:
-      name: dgraph-zero-pvc
-    spec:
-      accessModes:
-        - ReadWriteOnce
-      resources:
-        requests:
-          storage: 10Gi
-
-  - apiVersion: v1
-    kind: PersistentVolumeClaim
-    metadata:
       name: dgraph-alpha-pvc
     spec:
       accessModes:

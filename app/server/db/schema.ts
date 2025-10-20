@@ -36,6 +36,11 @@ export const users = sqliteTable("users", {
   lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
   disabledAt: integer("disabled_at", { mode: "timestamp" }),
   disabledBy: text("disabled_by"), // Admin user ID who disabled this account
+
+  // Changelog tracking
+  lastSeenChangelogAt: integer("last_seen_changelog_at", {
+    mode: "timestamp",
+  }), // Last time user dismissed the WhatsNewDialog
 });
 
 /**
@@ -285,3 +290,74 @@ export const messageFeedback = sqliteTable(
     timestampIdx: index("message_feedback_timestamp_idx").on(table.createdAt),
   }),
 );
+
+/**
+ * Changelog Entry Metadata type
+ */
+export interface ChangelogEntryMetadata {
+  affectedRecords?: number;
+  dataSource?: string;
+  severity?: "info" | "minor" | "major";
+  tags?: string[];
+  relatedVersion?: string;
+  [key: string]: unknown; // Allow additional custom fields
+}
+
+/**
+ * Changelog Entries table - operational updates and system events
+ *
+ * Stores manually-created operational changelog entries that complement
+ * git-based code releases. Includes data updates, maintenance events,
+ * configuration changes, and system events.
+ *
+ * Displayed in:
+ * - WhatsNewDialog (recent entries)
+ * - Dedicated /changelog page (full history)
+ * - Admin dashboard (management interface)
+ */
+export const changelogEntries = sqliteTable(
+  "changelog_entries",
+  {
+    id: text("id").primaryKey(),
+    type: text("type", {
+      enum: ["code", "data", "maintenance", "config", "system"],
+    }).notNull(),
+    title: text("title").notNull(),
+    description: text("description"), // Markdown supported
+    timestamp: integer("timestamp", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    authorId: text("author_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    authorName: text("author_name"), // Fallback for system/API entries
+    metadata: text("metadata", { mode: "json" }).$type<ChangelogEntryMetadata>(),
+    pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+    visibility: text("visibility", {
+      enum: ["public", "admin"],
+    })
+      .notNull()
+      .default("public"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => ({
+    typeIdx: index("changelog_entries_type_idx").on(table.type),
+    timestampIdx: index("changelog_entries_timestamp_idx").on(table.timestamp),
+    visibilityIdx: index("changelog_entries_visibility_idx").on(
+      table.visibility,
+    ),
+    pinnedIdx: index("changelog_entries_pinned_idx").on(table.pinned),
+    // Composite index for common query pattern
+    visibilityTimestampIdx: index(
+      "changelog_entries_visibility_timestamp_idx",
+    ).on(table.visibility, table.timestamp),
+  }),
+);
+
+export type ChangelogEntry = typeof changelogEntries.$inferSelect;
+export type NewChangelogEntry = typeof changelogEntries.$inferInsert;
