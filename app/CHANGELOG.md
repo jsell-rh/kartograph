@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.8](https://github.com/jsell-rh/kartograph/compare/v0.1.7...v0.1.8) (2025-10-20)
+
+
+### Features
+
+* Add operational changelog system ([#10](https://github.com/jsell-rh/kartograph/issues/10)) ([2816d65](https://github.com/jsell-rh/kartograph/commit/2816d65609c7b72c80fa52247657b8d46ea8b49f))
+
+
+### Chores
+
+* **release:** 0.1.7 ([bab5397](https://github.com/jsell-rh/kartograph/commit/bab539736565cdb66a882d495105a849cc418da4))
+
 ### [0.1.7](https://github.com/jsell-rh/kartograph/compare/v0.1.6...v0.1.7) (2025-10-20)
 
 

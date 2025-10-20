@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [],
+  "features": [
+    "Add operational changelog system (#10)"
+  ],
   "improvements": [],
-  "bugFixes": [
-    "Admin view: Correct API token expiry display and add clickable filter cards (#9)"
-  ]
+  "bugFixes": []
 };
 
 export default changelog;
