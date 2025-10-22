@@ -1098,6 +1098,109 @@ def extract_all_fields(data, urn, entity_type):
     return entity
 ```
 
+### CRITICAL: What NOT to Do
+
+Before proceeding with extraction, understand these **prohibited patterns** that will cause extraction failure:
+
+#### ❌ DO NOT Create Relationship Entities
+
+**NEVER** create entities with `@type="Relationship"`. Relationships are **predicates** (edges), not entities.
+
+**❌ WRONG Pattern:**
+
+```json
+{
+  "@type": "Relationship",
+  "from": "urn:service:foo",
+  "to": "urn:repo:bar",
+  "relationshipType": "repoUrl"
+}
+```
+
+**✅ CORRECT Pattern:**
+
+```json
+{
+  "@id": "urn:service:foo",
+  "@type": "Service",
+  "name": "foo",
+  "repoUrl": {"@id": "urn:repo:bar"}
+}
+```
+
+In JSON-LD and graph databases, relationships are expressed as **predicates on source entities**, not as separate entities with metadata.
+
+#### ❌ DO NOT Use Invalid Type Names
+
+Entity type names MUST match the pattern: `^[A-Za-z][A-Za-z0-9]*$`
+
+**Invalid characters:** `/`, `[`, `]`, `.`, `:`, `-`, `space`, `+`, `@`
+
+**❌ WRONG Examples:**
+
+- `"rhdh/backstage.io/techdocs-ref/clowder"` (contains `/`, `.`)
+- `"Parameters[0]"` (contains `[`, `]`)
+- `"acceptance-criteria"` (contains `-`)
+- `"SlackChannel@mentions"` (contains `@`)
+
+**✅ CORRECT Examples:**
+
+- `"TechDocsRef"` (if it's truly an entity type)
+- `"Parameter"` (generic, reusable)
+- `"AcceptanceCriterion"` (singular, no dashes)
+- `"SlackChannel"` (no special chars)
+
+**Key principle:** Type names must be valid programming identifiers (letters and numbers only, must start with a letter).
+
+#### ❌ DO NOT Skip Name Fields
+
+**ALL entities MUST have a `name` field** before extraction. No exceptions.
+
+**❌ WRONG:**
+
+```json
+{
+  "@id": "urn:emailaddress:user_example.com",
+  "@type": "EmailAddress",
+  "email": "user@example.com"
+}
+```
+
+**✅ CORRECT:**
+
+```json
+{
+  "@id": "urn:emailaddress:user_example.com",
+  "@type": "EmailAddress",
+  "name": "user@example.com",
+  "email": "user@example.com"
+}
+```
+
+Use fallback strategies (see Section 6.3.4 below):
+
+1. Extract from primary field (e.g., `email` for EmailAddress, `url` for CodeRepository)
+2. Extract from URN last segment
+3. Use `@type` + unique identifier combination
+
+#### ❌ DO NOT Create Entities from Array Indices
+
+Array elements of the same type should share a **generic type name**, not indexed types.
+
+**❌ WRONG:**
+
+- `Items[0]`, `Items[1]`, `Items[2]` (indexed types - creates 100s of types)
+- `Parameters[0]`, `Parameters[1]` (indexed types)
+- `Codecomponents[3]` (indexed type)
+
+**✅ CORRECT:**
+
+- `Item` (generic, reusable for all array items)
+- `Parameter` (generic, applies to all parameters)
+- `CodeComponent` (singular, semantic)
+
+**Key principle:** Entity types should be **semantic categories**, not **structural positions**.
+
 ### Naming Requirements
 
 **CRITICAL**: ALL entities MUST have these predicates:
@@ -1119,17 +1222,38 @@ Entities without names will appear as hex IDs in graph visualizations.
 ```python
 def validate_entity_before_extraction(entity, filepath):
     """Validate entity has required fields BEFORE adding to graph."""
+    import re
 
-    # Mandatory field check
-    if "@id" not in entity:
+    # Check @id
+    if "@id" not in entity or not entity["@id"]:
         raise ValueError(f"Entity missing @id in {filepath}")
 
+    # Check @type
     if "@type" not in entity or not entity["@type"]:
         # Attempt type inference before failing
         entity["@type"] = infer_type_from_context(entity, filepath)
         if not entity["@type"]:
-            raise ValueError(f"Entity {entity.get('@id', 'unknown')} missing @type in {filepath}")
+            raise ValueError(f"Entity {entity.get('@id')} missing @type in {filepath}")
 
+    # CRITICAL: Reject Relationship entities (relationships are predicates, not entities)
+    if entity["@type"] == "Relationship":
+        raise ValueError(
+            f"ILLEGAL: Relationship entities are prohibited. "
+            f"Relationships must be expressed as predicates on source entities. "
+            f"Entity: {entity.get('@id')} in {filepath}"
+        )
+
+    # CRITICAL: Validate type name format (must be valid identifier)
+    type_name = entity["@type"]
+    if not re.match(r'^[A-Za-z][A-Za-z0-9]*$', type_name):
+        raise ValueError(
+            f"Invalid @type name: '{type_name}' in {filepath}. "
+            f"Type names must match ^[A-Za-z][A-Za-z0-9]*$ "
+            f"(letters and numbers only, must start with a letter). "
+            f"Invalid characters: / [ ] . : - space + @"
+        )
+
+    # Check name with fallback
     if "name" not in entity or not entity["name"]:
         # Attempt name fallback before failing
         entity["name"] = generate_fallback_name(entity, filepath)
@@ -4011,6 +4135,67 @@ Agent: "Checking bidirectional relationships..."
 ✓ PASSED (99.7% paired)
 ```
 
+**Standard 7: No Relationship Entities**
+
+```
+Agent: "Checking for prohibited Relationship entities..."
+✓ Relationship entities found: 0
+✓ All relationships expressed as predicates
+✓ PASSED
+```
+
+**Failure Example**:
+
+```
+Agent: "Checking for prohibited Relationship entities..."
+❌ Relationship entities found: 16,156
+❌ These must be converted to predicates on source entities
+❌ FAILED - Critical error, cannot proceed
+```
+
+**Standard 8: Valid Type Names**
+
+```
+Agent: "Validating entity type name format..."
+✓ All type names match ^[A-Za-z][A-Za-z0-9]*$
+✓ No invalid characters (/, [, ], ., :, -, space, +, @)
+✓ Total unique types: 47
+✓ PASSED
+```
+
+**Failure Example**:
+
+```
+Agent: "Validating entity type name format..."
+❌ Invalid type names found: 63
+❌ Examples:
+   - "rhdh/backstage.io/techdocs-ref/clowder" (contains /, .)
+   - "Parameters[0]" (contains [, ])
+   - "acceptance-criteria" (contains -)
+❌ FAILED - Must use valid identifier names
+```
+
+**Standard 9: Name Field Coverage**
+
+```
+Agent: "Checking name field presence..."
+✓ Entities with name: 286/286 (100%)
+✓ All entities have human-readable names
+✓ PASSED
+```
+
+**Failure Example**:
+
+```
+Agent: "Checking name field presence..."
+❌ Entities with name: 212/286 (74.1%)
+❌ Missing name: 74 entities
+❌ Examples:
+   - urn:emailaddress:user_example.com (EmailAddress)
+   - urn:coderepository:org/repo (CodeRepository)
+❌ FAILED - Must add name field to all entities
+```
+
 ### AI Quality Self-Assessment
 
 **Agent must provide**:
@@ -4028,7 +4213,7 @@ Agent: "Checking bidirectional relationships..."
 Overall Confidence: HIGH
 
 Reasoning:
-✓ All 6 deterministic standards passed
+✓ All 9 deterministic standards passed
 ✓ 99.7% bidirectional relationship consistency
 ✓ 0.7% broken reference rate (well below 2% target)
 ✓ 17.3 avg predicates exceeds 12+ target significantly

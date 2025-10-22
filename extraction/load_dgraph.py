@@ -333,10 +333,10 @@ class DgraphLoader:
             port = parsed.port or 8080
 
             # Determine alpha gRPC and zero ports
-            # Makefile sets: HTTP=8082, gRPC=9081, Zero=5081 (all increment together)
+            # Standard Dgraph ports: HTTP=8080, gRPC=9080, Zero=5080
             if "localhost" in host or "127.0.0.1" in host:
-                alpha_port = port + 999  # HTTP 8082 -> gRPC 9081
-                zero_port = port - 3001  # HTTP 8082 -> Zero 5081
+                alpha_port = port + 1000  # HTTP 8080 -> gRPC 9080
+                zero_port = port - 3000  # HTTP 8080 -> Zero 5080
             else:
                 # Remote dgraph - gRPC port not accessible, skip dgraph live
                 alpha_port = None
