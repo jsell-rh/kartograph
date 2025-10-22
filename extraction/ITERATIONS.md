@@ -1249,6 +1249,267 @@ By implementing **repository-agnostic AI-driven pattern discovery and relationsh
 - Time to apply patterns (performance)
 - Pattern discovery consistency (same patterns discovered on repeated runs)
 
+---
+
+### Iteration 7: Maximum Fidelity Field Extraction
+
+**Date**: 2025-10-20
+**Status**: Complete
+**Focus Area**: Metadata Completeness - Field Extraction Coverage
+
+**Hypothesis**:
+
+By extracting ALL available fields from source data (not just required fields), we can increase the average predicates per entity from 6.8 to 12+, nearly doubling the richness and queryability of the knowledge graph.
+
+**Problem Statement**:
+
+The baseline extraction averaged only 6.8 predicates per entity, indicating that many available fields in the source YAML were not being extracted. This limits:
+
+- **Queryability**: Cannot query by fields that weren't extracted (e.g., "Show services by cost center")
+- **Context preservation**: Missing optional fields that contain critical information (URLs, contacts, settings, tier, criticality)
+- **Analytics capability**: Insufficient data for reporting, insights, and decision-making
+- **Future-proofing**: Can't predict what queries users will run - missing fields prevent future use cases
+
+**Root Cause Analysis**:
+
+Extraction logic was overly conservative, focusing only on "important" or required fields and skipping:
+
+- Optional fields in schemas (e.g., grafanaUrl, slackChannel, sopsUrl, architectureDocument)
+- Configuration metadata (e.g., appCode, costCenter, tier, criticality)
+- Status indicators (e.g., onboardingStatus, health, phase)
+- Contact/resource links that seemed "secondary"
+
+**Changes to PROCESS.md**:
+
+1. **Added "Maximum Fidelity Field Extraction" subsection** (Phase 2: Entity Extraction)
+   - **Field Categories Framework**: 9 categories to guide extraction (Identity, Type, Descriptive, Metadata, Configuration, Relationships, Resources, Contact, Status)
+   - **Extraction Strategy by Field Type**: How to handle scalars, arrays, objects, timestamps, null values
+   - **Repository-Agnostic Discovery**: 3-step process for Claude Code to discover ALL available fields (schema analysis, sample file analysis, field discovery iteration)
+   - **AI Reasoning Framework**: 3 questions Claude Code should ask when encountering source data
+   - **Common Mistakes to Avoid**: 5 anti-patterns with corrections (skipping optional fields, assuming irrelevance, flattening complex fields, ignoring arrays, skipping null values)
+   - **Validation Function**: `validate_field_completeness()` - Check coverage percentage, report missing fields, alert if < 80% coverage
+
+2. **Added Best Practices Section 6.11** - "Maximum Fidelity Field Extraction"
+   - **Problem Statement**: Explains why 6.8 predicates per entity is insufficient
+   - **Field Categories**: Same 9 categories as Phase 2
+   - **AI Reasoning Framework**: Detailed reasoning process for Claude Code with example analysis
+   - **Examples**: Before/After comparison showing 3 predicates → 12+ predicates
+   - **Common Mistakes**: 5 specific anti-patterns developers should avoid
+   - **Expected Impact Table**: Baseline vs Target metrics
+   - **New Query Capabilities**: 6 example query types enabled by richer extraction (resource queries, team queries, criticality queries, documentation queries, tier queries, status queries)
+   - **Validation Metrics**: Coverage percentage, field count comparison, missing field identification
+   - **When to Extract vs Skip**: Clear guidelines (ALWAYS extract all data fields, SKIP only structural metadata)
+   - **Repository-Agnostic Application**: Examples across YAML, JSON, Python, npm, Terraform, Kubernetes
+
+**Implementation Guidance for Claude Code**:
+
+When extracting entities, Claude Code should:
+
+1. **Analyze ALL source fields**: Check every key in the YAML/JSON, not just required fields from schema
+2. **Default to extracting**: Extract ALL fields unless clearly structural metadata (`$schema`, `apiVersion`)
+3. **Preserve structure**: Don't flatten - maintain arrays, extract nested objects appropriately
+4. **Handle all types**: Scalars directly, arrays preserved, objects checked for sub-entity criteria, nulls included, timestamps preserved
+5. **Validate coverage**: Target >80% of source fields extracted (excluding structural metadata)
+
+**Code Examples Added**:
+
+```python
+# Example 1: Field coverage validation function
+def validate_field_completeness(entity, source_data, schema=None):
+    """
+    Validate that all meaningful fields were extracted.
+    Returns warnings for fields that exist in source but not in entity.
+    """
+    # Get all fields from source data (excluding metadata)
+    metadata_fields = ['$schema', 'apiVersion', 'kind']
+    source_fields = set(source_data.keys()) - set(metadata_fields)
+
+    # Get all fields in extracted entity (excluding internal)
+    entity_fields = set(k for k in entity.keys() if not k.startswith('_'))
+
+    # Find missing fields
+    missing_fields = source_fields - entity_fields
+
+    if missing_fields:
+        warnings.append(
+            f"Entity {entity['@id']} missing {len(missing_fields)} source fields: "
+            f"{', '.join(list(missing_fields)[:5])}"
+        )
+
+    # Calculate field coverage
+    coverage = len(entity_fields) / len(source_fields) if source_fields else 0
+
+    if coverage < 0.8:  # Less than 80% of source fields extracted
+        warnings.append(
+            f"Low field coverage for {entity['@id']}: "
+            f"{coverage:.1%} ({len(entity_fields)}/{len(source_fields)} fields)"
+        )
+
+    return warnings
+
+# Example 2: AI reasoning for field extraction
+# Input File: data/services/cincinnati/app.yml
+#
+# Claude Code Analysis:
+# "I see a service definition with many fields. Let me categorize them:
+#
+# Required fields (must extract):
+# - name: "Cincinnati"
+# - description: "OpenShift Update Service that provides..."
+#
+# Optional fields (should extract ALL of these):
+# - grafanaUrl, slackChannel, sopsUrl, architectureDocument
+# - appCode, costCenter, tier, criticality
+#
+# Nested objects (check for sub-entity extraction):
+# - serviceOwners, endpoints, codeComponents
+#
+# Skip (structural metadata):
+# - $schema, apiVersion
+#
+# Result: Extract 12+ predicates from this service"
+```
+
+**Expected Improvements**:
+
+| Metric | Baseline | Target (Iteration 7) | Expected Improvement |
+|--------|----------|---------------------|---------------------|
+| **Avg predicates per entity** | 6.8 | 12+ | +76% (almost 2x) |
+| **Field extraction coverage** | Unknown (~40-50%) | >80% | High fidelity |
+| **Services with rich metadata** | Low | High | Comprehensive context |
+| **Queryable dimensions** | Limited (~7 predicates) | Extensive (12+ predicates) | Enable complex queries |
+| **Query patterns enabled** | Baseline | +6 new types | Resource, team, criticality, docs, tier, status queries |
+
+**Concrete Example** (from app-interface Service entity):
+
+**Before (Baseline - 3 predicates)**:
+
+```json
+{
+  "@id": "urn:service:cincinnati",
+  "@type": "Service",
+  "name": "Cincinnati"
+}
+```
+
+**After (Iteration 7 - 14 predicates)**:
+
+```json
+{
+  "@id": "urn:service:cincinnati",
+  "@type": "Service",
+  "name": "Cincinnati",
+  "description": "OpenShift Update Service that provides...",
+  "onboardingStatus": "OnBoarded",
+  "grafanaUrl": "https://grafana.example.com/d/cincinnati",
+  "slackChannel": "#cincinnati-team",
+  "sopsUrl": "https://github.com/org/cincinnati/docs/sops",
+  "architectureDocument": "https://docs.example.com/arch/cincinnati",
+  "appCode": "CINC-001",
+  "costCenter": "Engineering",
+  "tier": "production",
+  "criticality": "high",
+  "hasOwner": [{"@id": "urn:user:jdoe@example.com"}],
+  "hasEndpoint": [{"@id": "urn:endpoint:api.example.com"}],
+  "dependencies": [{"@id": "urn:dependency:github"}]
+}
+```
+
+**Result**: 3 predicates → 14 predicates (367% increase)
+
+**New Query Capabilities Enabled**:
+
+1. **Resource queries**: "Show all services with Grafana dashboards" (`grafanaUrl` field)
+2. **Team queries**: "Find services in cost center Engineering" (`costCenter` field)
+3. **Criticality queries**: "List all high-criticality services" (`criticality` field)
+4. **Documentation queries**: "Show services with architecture documents" (`architectureDocument` field)
+5. **Tier queries**: "Find all production-tier services" (`tier` field)
+6. **Status queries**: "Show services with onboardingStatus = OnBoarded" (`onboardingStatus` field)
+
+**Implementation Status**:
+
+- ✅ PROCESS.md Phase 2 enhanced with Maximum Fidelity Field Extraction section
+- ✅ Best Practices Section 6.11 added with comprehensive guidance
+- ✅ AI reasoning framework documented for Claude Code
+- ✅ Field categories defined (9 categories)
+- ✅ Extraction strategies documented for all field types
+- ✅ Common mistakes identified with corrections
+- ✅ Validation function specified
+- ✅ Expected impact metrics defined
+- ⏳ Extraction scripts need updating to implement maximum fidelity
+- ⏳ Re-extraction needed to measure actual improvements
+
+**Next Steps**:
+
+1. Update extraction scripts to implement maximum fidelity field extraction:
+   - Extract ALL scalar fields from source data
+   - Extract ALL optional fields present in data
+   - Preserve ALL array structures
+   - Extract nested objects (check sub-entity criteria)
+   - Include null values for defined fields
+
+2. Implement field coverage validation:
+   - Add `validate_field_completeness()` to extraction workflow
+   - Track coverage percentage for each entity type
+   - Alert on entities with < 80% coverage
+   - Generate missing fields report for improvement
+
+3. Re-run extraction on app-interface repository with maximum fidelity
+
+4. Measure actual improvements:
+   - Calculate avg predicates per entity (target: 12+)
+   - Measure field extraction coverage (target: >80%)
+   - Count entities with < 5 predicates (target: <5%)
+   - Identify most commonly missed fields
+   - Count queryable dimensions enabled
+
+5. Validate new query capabilities:
+   - Test resource queries (services with Grafana dashboards)
+   - Test team queries (services by cost center)
+   - Test criticality queries (high-criticality services)
+   - Test documentation queries (services with architecture docs)
+   - Test tier queries (production-tier services)
+   - Test status queries (services by onboarding status)
+
+6. Document actual results:
+   - Compare actual vs expected metrics
+   - Report field coverage by entity type
+   - Identify any remaining gaps
+   - Plan Iteration 8 (possible focus: temporal analysis, deployment tracking, relationship strength scoring, confidence tuning)
+
+**Success Criteria**:
+
+- ✅ Maximum fidelity extraction patterns documented
+- ✅ Field categories clearly defined (9 categories)
+- ✅ AI reasoning framework provided for Claude Code
+- ✅ Validation function specified
+- ✅ Common mistakes identified with corrections
+- ⏳ Avg predicates per entity: 6.8 → 12+ (76% increase)
+- ⏳ Field extraction coverage: >80%
+- ⏳ Entities with < 5 predicates: <5%
+- ⏳ New query patterns: 6+ types enabled
+- ⏳ Repository-agnostic: Works for YAML, JSON, Python, npm, Terraform, Kubernetes
+
+**Metrics to Track**:
+
+- Average predicates per entity (baseline: 6.8, target: 12+)
+- Field extraction coverage percentage (target: >80%)
+- Predicates per entity distribution (histogram)
+- Entities with < 5 predicates (count and %)
+- Most commonly missed fields (for improvement targeting)
+- Queryable dimensions count (unique predicates across all entities)
+- New query patterns enabled (count and examples)
+- Coverage by entity type (Service, Namespace, Dependency, etc.)
+- Extraction time impact (performance measurement)
+
+**Key Distinctions from Previous Iterations**:
+
+- **Iteration 1-6**: Focused on validation, relationships, sub-entities, free-text extraction, inference patterns
+- **Iteration 7**: Focuses on extracting MORE FIELDS from EXISTING source data (not discovering new entity types)
+- **Goal**: Richer individual entities, not more entities or relationships
+- **Impact**: Better queryability, more context, future-proofed for unpredictable queries
+- **Approach**: AI-guided systematic field extraction with coverage validation
+
 **Testing Preparation** (Ready for Actual Extraction):
 
 After this iteration, we'll actually run Claude Code on sample repositories to:
@@ -1270,3 +1531,247 @@ After this iteration, we'll actually run Claude Code on sample repositories to:
 | **Testing** | Already tested on app-interface | Ready for cross-repo testing |
 | **Relationships** | 269 inferred | 5,000-8,000 target |
 | **Examples** | App-interface only | Python, JS, K8s, Terraform |
+
+---
+
+### Iteration 8: AI-First Process Optimization
+
+**Date**: 2025-10-22
+**Status**: In Progress
+**Focus Area**: Process Transformation - Enable Autonomous AI Agent Execution
+
+**Hypothesis**:
+
+By transforming PROCESS.md from a "script-generation paradigm" to an "AI-first reasoning paradigm," we can enable Claude Code agents to autonomously execute knowledge graph extraction end-to-end without human intervention, while maintaining strict quality standards through deterministic validation.
+
+**Problem Statement**:
+
+**Current Paradigm (Mixed AI/Script)**:
+
+- PROCESS.md instructs: "Claude Code generates Python scripts"
+- User must run generated scripts manually
+- Extraction logic is deterministic (can't adapt to unexpected patterns)
+- AI intelligence limited to code generation, not data interpretation
+- Iterations 5-6 (free-text, universal inference) already require AI reasoning but are framed as "generate code to do X"
+- Testing requires human intervention to execute scripts
+
+**Limitations**:
+
+- ❌ AI agent can't execute extraction autonomously
+- ❌ Can't leverage Claude's semantic understanding during extraction
+- ❌ Deterministic extraction can't adapt to edge cases
+- ❌ Mixed paradigm creates confusion: "Should I reason or code?"
+- ❌ Testing process improvements requires manual script execution
+
+**Target Paradigm (AI-First Reasoning + Deterministic Validation)**:
+
+**Separation of Concerns**:
+
+```
+Intelligence Layer (AI Reasoning - Flexible):
+  ├─ Analyzes repository structure through reasoning
+  ├─ Understands schemas semantically
+  ├─ Decides what fields to extract based on understanding
+  ├─ Infers relationships from patterns
+  └─ Adapts to unexpected patterns
+
+Quality Layer (Deterministic Validation - Strict):
+  ├─ Enforces URN format: ^urn:[a-z0-9-]+:[a-z0-9-:]+$
+  ├─ Validates required predicates: @id, @type, name
+  ├─ Checks JSON-LD structure validity
+  ├─ Verifies reference integrity
+  └─ Measures iteration-specific targets
+```
+
+**Key Insight**: AI has maximum flexibility in **how** it extracts, but output **must** pass all deterministic validations.
+
+**Changes to PROCESS.md**:
+
+1. **Overview Section - AI-First Instructions**
+   - Changed audience from "Claude will generate scripts" to "Claude Code agents execute autonomously"
+   - Added "Execution Paradigm: AI-First Reasoning + Deterministic Validation"
+   - Updated instructions: REASON (don't script), UNDERSTAND (semantics), DECIDE (adaptively), VALIDATE (output)
+   - Added confidence scoring requirement (HIGH/MEDIUM/LOW for all decisions)
+
+2. **Phase 0: Repository Discovery - AI Reasoning Process**
+   - BEFORE: Bash commands (find, tree, grep)
+   - AFTER: AI questions ("What is this repository's purpose?", "How are files organized?", "What patterns exist?")
+   - Removed script examples, replaced with AI reasoning examples
+   - Added self-assessment requirements
+   - Added extraction strategy decision framework
+
+3. **Phase 1: Schema Analysis - Semantic Understanding**
+   - BEFORE: Python schema parsing code templates
+   - AFTER: AI semantic understanding ("What does this schema represent conceptually?")
+   - Focus on understanding **why** fields exist, not just **what** they are
+   - Added cross-schema relationship mapping
+   - Added extraction strategy decisions per entity type
+
+4. **Phase 2: Entity Extraction - AI Decision-Making**
+   - BEFORE: Python extraction templates with hardcoded field lists
+   - AFTER: AI reasoning per file ("What entity type?", "What fields to extract?", "How to handle nested?")
+   - Detailed AI reasoning example showing field-by-field decisions
+   - Applied all 7 iterations through reasoning (not code)
+   - Added confidence scoring per extraction
+
+5. **New Section: Deterministic Validation Standards**
+   - **Standard 1**: URN Format Validation (regex, normalization rules)
+   - **Standard 2**: Required Predicates (@id, @type, name)
+   - **Standard 3**: JSON-LD Structure Validation
+   - **Standard 4**: Reference Integrity (<2% broken refs)
+   - **Standard 5**: Iteration-Specific Targets (all 7 iterations)
+   - **Standard 6**: Bidirectional Relationship Consistency
+   - Validation execution guidelines (when, how, on failure)
+   - Quality gate rule: Don't proceed if validations fail
+
+**Implementation Guidance for Claude Code Agents**:
+
+**AI Reasoning Framework**:
+
+1. **Phase 0**: Analyze repository → understand organization → decide strategy
+2. **Phase 1**: Read schemas → understand semantically → map relationships
+3. **Phase 2**: Extract entities → reason about fields → apply iterations → validate
+4. **Phase 3**: Resolve references → infer relationships → assign confidence → validate
+5. **Phase 3.5**: Self-assess quality → run all validations → report results
+
+**Confidence Scoring**:
+
+- **HIGH** (>90%): Schema-driven, explicit references, clear patterns
+- **MEDIUM** (60-90%): Inferred relationships, free-text extraction, naming patterns
+- **LOW** (<60%): Ambiguous entity types, uncertain patterns → Skip or flag
+
+**Self-Validation Checkpoints**:
+
+- After Phase 0: "Do my organizational patterns make sense?"
+- After Phase 2: "Did I extract all important fields?"
+- After Phase 3: "Do my inferred relationships make semantic sense?"
+- After Phase 3.5: "What is my overall confidence in this extraction?"
+
+**Deterministic Validation Requirements**:
+
+All AI output must pass:
+
+- ✓ 100% URN format compliance
+- ✓ 100% required predicates (@id, @type, name)
+- ✓ Valid JSON-LD syntax
+- ✓ <2% broken reference rate (Iteration 2)
+- ✓ <0.5% orphan rate (Iteration 3)
+- ✓ >80% field coverage, >12 avg predicates (Iteration 7)
+- ✓ Sub-entities created where applicable (Iteration 4)
+- ✓ Free-text extraction applied (Iteration 5)
+- ✓ Universal inference patterns used (Iteration 6)
+
+**Expected Improvements**:
+
+| Metric | Before (Script Paradigm) | After (AI-First) | Impact |
+|--------|-------------------------|------------------|---------|
+| **Agent Autonomy** | 0% (requires manual script execution) | 100% (full end-to-end) | Autonomous execution ✓ |
+| **Reasoning Quality** | N/A (code generation only) | Explicit reasoning required | AI decisions transparent |
+| **Confidence Scoring** | No | All decisions scored | Uncertainty tracked |
+| **Adaptability** | Low (deterministic code) | High (AI reasoning) | Handles edge cases |
+| **Testing Efficiency** | Manual (run scripts, collect results) | Automated (agent self-tests) | Continuous iteration ✓ |
+| **Process Validation** | Manual (user runs, reports issues) | Automated (sub-agents test) | Self-improving process |
+
+**Testing Plan**:
+
+**Phase 1: Process Validation**
+
+- ✓ All phases have AI reasoning guidance (no script generation)
+- ✓ Confidence scoring framework defined
+- ✓ Deterministic validation standards clear
+- ✓ Examples show AI reasoning, not code execution
+
+**Phase 2: Sub-Agent Execution Test**
+
+- Repository: `/home/jsell/code/sandbox/cartograph/app-interface`
+- Agent: Launch general-purpose agent with PROCESS.md context
+- Constraint: Agent must execute end-to-end without human intervention
+- Success criteria:
+  - Agent completes extraction autonomously ✓
+  - All deterministic validations pass ✓
+  - Agent provides confidence scores and reasoning ✓
+  - Output conforms to standards (URN, JSON-LD, required predicates) ✓
+  - Iteration targets met (coverage, predicates, broken refs, orphans) ✓
+
+**Phase 3: Iteration Based on Agent Feedback**
+
+- Test agent → Observe behavior → Identify PROCESS.md gaps → Update → Re-test
+- Iterate until agent successfully executes extraction
+- Document learnings for future improvements
+
+**Metrics to Track**:
+
+- Agent autonomy rate (% of extraction completed without human help)
+- Reasoning quality (are agent decisions well-explained?)
+- Confidence score distribution (HIGH/MEDIUM/LOW percentages)
+- Validation pass rate (% of validations passed on first try)
+- Time to successful extraction (agent iterations needed)
+- URN format compliance (100% target)
+- Required predicates compliance (100% target)
+- Reference integrity (<2% broken refs)
+- Orphan rate (<0.5%)
+- Field coverage (>80% avg)
+- Predicate density (>12 avg)
+
+**Key Distinctions from Previous Iterations**:
+
+| Aspect | Iterations 0-7 | Iteration 8 |
+|--------|---------------|-------------|
+| **Focus** | What to extract | How to execute |
+| **Target** | Extraction quality | Process executability |
+| **Paradigm** | Script generation | AI reasoning |
+| **Autonomy** | User runs scripts | Agent executes |
+| **Testing** | Manual verification | Automated sub-agents |
+| **Validation** | Post-extraction | Continuous + deterministic |
+| **Adaptability** | Fixed logic | AI adapts |
+| **Confidence** | Implicit | Explicit scores |
+
+**Implementation Status**:
+
+- ✅ ITERATION_8_CHANGES.md created (comprehensive documentation)
+- ✅ PROCESS.md Overview section updated (AI-first instructions)
+- ✅ PROCESS.md Phase 0 transformed (AI reasoning, no bash)
+- ✅ PROCESS.md Phase 1 transformed (semantic understanding)
+- ✅ PROCESS.md Phase 2 transformed (AI field extraction decisions)
+- ✅ Deterministic Validation Standards section added (6 standards)
+- ✅ ITERATIONS.md updated with Iteration 8 entry
+- ⏳ Sub-agent execution test (pending)
+- ⏳ PROCESS.md iteration based on agent feedback (pending)
+- ⏳ Final validation of agent autonomy (pending)
+
+**Next Steps**:
+
+1. **Test with sub-agent** on app-interface repository
+   - Launch agent with PROCESS.md context
+   - Observe autonomous execution behavior
+   - Collect validation results
+   - Document any confusion or failures
+
+2. **Iterate PROCESS.md** based on agent feedback
+   - Identify where agent struggled
+   - Add clarifying guidance
+   - Enhance reasoning examples
+   - Re-test until successful
+
+3. **Measure success** against Iteration 8 targets
+   - Agent autonomy: 100%
+   - All validations pass
+   - Iteration 0-7 targets met
+   - Reasoning quality: HIGH
+
+4. **Document learnings**
+   - What guidance worked well?
+   - What was confusing?
+   - How did agent adapt?
+   - Recommendations for future iterations
+
+**Success Criteria**:
+
+Iteration 8 is complete when:
+
+- ✅ PROCESS.md is fully AI-first (no script generation instructions)
+- ⏳ Sub-agent successfully executes extraction autonomously
+- ⏳ All deterministic validations pass (URN, predicates, refs, orphans, coverage)
+- ⏳ All Iteration 0-7 targets met
+- ⏳ Agent provides clear reasoning and confidence scores
+- ⏳ Process is self-testable (agents can validate the process)
