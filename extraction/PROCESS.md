@@ -2445,288 +2445,297 @@ Based on baseline analysis, app-interface descriptions contain rich information.
 - Description coverage (% of services with extractable descriptions)
 - Average entities extracted per description field
 
-#### Contact Information & Communication Channel Extraction
+#### General Entity Type Discovery (AI-Driven Pattern Analysis)
 
-**CRITICAL ENHANCEMENT**: Extract contact information as **entities with relationships**, not just as string fields. This enables queries like "How do I contact the team for service X?" or "Who can I reach out to about Y?".
+**CRITICAL PRINCIPLE**: Entity types should be DISCOVERED from the data, NOT prescribed from hardcoded ontologies.
 
-**Problem**: Contact information (Slack channels, emails, GitHub handles) is often stored as string values, making it impossible to query "Show me all services that use Slack channel #platform" or "Find the support contact for this service".
+**Why This Matters**: Different data sources represent different domains (infrastructure configs vs code vs e-commerce vs documentation). Each domain has its own natural entity types. A truly general process discovers what types exist in THIS data source through pattern analysis.
 
-**Solution**: Extract contact points as entities and create "contactVia" relationships.
+**Core Approach**: Instead of telling AI "extract SlackChannel entities," tell AI "discover what entity types exist, then extract them."
 
-**Contact Entity Types to Extract**:
+---
 
-1. **SlackChannel** - From slackChannel fields, descriptions, READMEs
-   - URN pattern: `urn:slack-channel:{channel-name}`
-   - Extract from: slackChannel field, descriptions ("reach us at #team-name"), READMEs
-   - Relationship: Service --contactVia--> SlackChannel, SlackChannel --supportsService--> Service
+##### Step 1: Analyze Value Patterns
 
-2. **Email** - From owner emails, support addresses, descriptions
-   - URN pattern: `urn:email:{email-address}`
-   - Extract from: Contact fields, descriptions ("contact <team@example.com>")
-   - Relationship: Service --contactVia--> Email, Email --contactFor--> Service
+**AI asks**: "What patterns exist in the data values?"
 
-3. **GitHubHandle** - From code component URLs, descriptions
-   - URN pattern: `urn:github:{org-or-user}`
-   - Extract from: GitHub URLs, @mentions in descriptions
-   - Relationship: Service --maintainedBy--> GitHubHandle
+**Pattern Categories**:
 
-4. **JiraProject** - From JIRA links in descriptions
-   - URN pattern: `urn:jira-project:{project-key}`
-   - Extract from: JIRA URLs, project mentions
-   - Relationship: Service --trackedIn--> JiraProject
+1. **Identifier Patterns**
+   - URLs → `{scheme}://{domain}/{path}` → External system references
+   - Email addresses → `{user}@{domain}` → Contact points
+   - Hashtags → `#{identifier}` → Channel/tag references
+   - Handles → `@{identifier}` → User/org references
+   - IDs → `{PREFIX}-{number}` → Tracking systems
 
-5. **PagerDutyService** - From escalation policies, on-call references
-   - URN pattern: `urn:pagerduty:{service-id}`
-   - Extract from: PagerDuty links, escalation policies
-   - Relationship: Service --alertsTo--> PagerDutyService
+2. **Structural Patterns**
+   - Arrays of objects with `{name, url}` → Link collections
+   - Objects with `{host, port, database}` → Connection configs
+   - Objects with `{type, value}` → Polymorphic data
+   - Nested objects with 3+ properties → Potential sub-entities
 
-**AI Extraction Process**:
+3. **Semantic Patterns**
+   - Field names ending in "Url" → External resources
+   - Field names ending in "Channel" → Communication channels
+   - Field names containing "contact" → Contact information
+   - Field names containing "owner" → Ownership relationships
+   - Field names containing "depends" → Dependencies
+
+**Example AI Reasoning**:
 
 ```
-Agent analyzing Service "acs-fleet-manager":
+Agent analyzing field "slackChannel" with value "#team-platform":
 
-Field: slackChannel = "#acs-fleet-manager-team"
-Decision: Extract as SlackChannel entity
-URN: urn:slack-channel:acs-fleet-manager-team
-Relationships:
-- acs-fleet-manager --contactVia--> urn:slack-channel:acs-fleet-manager-team
-- urn:slack-channel:acs-fleet-manager-team --supportsService--> acs-fleet-manager
+Pattern matching:
+1. Field name contains "channel" → Communication channel pattern
+2. Value starts with "#" → Channel identifier pattern
+3. Semantic context: "contact", "communication"
 
-Field: description = "Contact team at #acs-alerts or email acs-team@redhat.com"
-Free-text extraction:
-1. Slack channel: #acs-alerts
-   URN: urn:slack-channel:acs-alerts
-   Relationship: acs-fleet-manager --contactVia--> urn:slack-channel:acs-alerts
-   Confidence: HIGH (explicit mention)
-
-2. Email: acs-team@redhat.com
-   URN: urn:email:acs-team-at-redhat-com
-   Relationship: acs-fleet-manager --contactVia--> urn:email:acs-team-at-redhat-com
-   Confidence: HIGH (explicit contact)
-
-Field: architectureDocument = "https://github.com/stackrox/acs-fleet-manager"
-GitHub extraction:
-- Organization: stackrox
-  URN: urn:github:stackrox
-  Relationship: acs-fleet-manager --maintainedBy--> urn:github:stackrox
-  Confidence: HIGH (repo URL)
+Decision: This represents a communication channel entity
+Inferred type: CommunicationChannel
+URN pattern: urn:communication-channel:{value}
+Justification: Field name + value pattern + semantic context
+Confidence: HIGH (90%)
 ```
 
-**Pattern Recognition for Contact Extraction**:
+```
+Agent analyzing field "repository" with value "https://github.com/org/repo":
+
+Pattern matching:
+1. Field name "repository" → Code repository pattern
+2. Value matches URL pattern → External resource
+3. Domain "github.com" → Known code hosting platform
+
+Decision: This represents a code repository entity
+Inferred type: CodeRepository
+URN pattern: urn:code-repository:{org}:{repo}
+Justification: Field semantics + URL pattern + domain knowledge
+Confidence: HIGH (95%)
+```
+
+---
+
+##### Step 2: Analyze Field Semantics
+
+**AI asks**: "What do these fields MEAN in this domain?"
+
+**Semantic Analysis Process**:
+
+1. **Field Name Analysis**
+   - What noun does this field represent? (e.g., "owner" → Person, "database" → Database)
+   - What verb does this imply? (e.g., "dependsOn" → dependency relationship)
+   - What domain is this? (infrastructure, e-commerce, code, documentation, etc.)
+
+2. **Value Semantics**
+   - What real-world concept does this value represent?
+   - Is this an identifier for something? (yes → potential entity)
+   - Is this a property of something? (yes → attribute)
+   - Is this a reference to something external? (yes → relationship target)
+
+3. **Context Analysis**
+   - What is the parent entity type? (Service, Product, Module, User, etc.)
+   - How is this field used in this domain?
+   - What queries would users want to run involving this field?
+
+**Example**:
+
+```
+Agent analyzing infrastructure config repository:
+
+Field: "grafanaUrl" = "https://grafana.example.com/d/dashboard-id"
+
+Semantic analysis:
+- Field name: "grafana" + "Url"
+  → Grafana is a monitoring tool (domain knowledge)
+  → "Url" suffix indicates external resource
+- Value: URL pattern
+  → Points to specific dashboard
+- Context: Parent is Service entity
+  → Services are monitored
+  → Grafana provides monitoring
+- Query potential: "Which services use Grafana?"
+
+Decision:
+- Create entity type: MonitoringTool
+- Instance: Grafana
+- Relationship: Service --monitoredBy--> MonitoringTool
+- URN: urn:monitoring-tool:grafana
+
+Justification: Field semantics + domain understanding + queryability
+Confidence: HIGH (85%)
+```
+
+---
+
+##### Step 3: Discover Entity Type Taxonomy
+
+**AI asks**: "What categories of entities exist in this data?"
+
+**Taxonomy Discovery Process**:
+
+1. **Group similar patterns**
+   - Fields with similar patterns → Same entity type category
+   - Values with similar structures → Same entity type category
+
+2. **Identify entity type hierarchies**
+   - Are some entity types specializations of others?
+   - Should we use generic types or specific types?
+
+3. **Validate queryability**
+   - Would users want to query "all X"?
+   - Would users want to find "things related to X"?
+   - If yes → X should be an entity type
+
+**Decision Framework**:
 
 ```python
-# AI should identify these patterns:
+Should value V from field F become an entity?
 
-Slack channels:
-- Field named "slackChannel", "slack", "channel"
-- Patterns: #channel-name, slack.com/channels/C123456
-- Description mentions: "contact us at #team", "reach out on #support"
+YES if:
+  1. Pattern Recognition: V matches a known pattern (URL, email, ID, etc.)
+  AND
+  2. Identity: V uniquely identifies a real-world thing
+  AND
+  3. Queryability: Users would want to query "find all X" or "show things related to X"
 
-Emails:
-- Field named "email", "contact", "supportEmail"
-- Patterns: email@domain.com
-- Description mentions: "email team@example.com", "contact: support@domain.com"
-
-GitHub:
-- URLs: github.com/{org}/{repo}
-- @mentions: @username, @org-name
-- Repository references in codeComponents
-
-JIRA:
-- URLs: jira.company.com/projects/PROJ
-- Project keys: PROJ-123 patterns
-
-PagerDuty:
-- URLs: *.pagerduty.com/services/*
-- Service IDs in escalation policies
+NO if:
+  1. Simple Property: V is just an attribute (string, number, boolean)
+  OR
+  2. Not Queryable: Users wouldn't search for V independently
+  OR
+  3. Too Generic: V is too common/vague to be useful as entity
 ```
 
-**Query Capabilities Enabled**:
+**Examples**:
 
-After extracting contact entities:
+| Field | Value | Entity? | Type Discovered | Reasoning |
+|-------|-------|---------|-----------------|-----------|
+| slackChannel | "#team-platform" | YES | CommunicationChannel | Pattern (#), queryable ("services using this channel") |
+| email | "<team@example.com>" | YES | EmailAddress | Pattern (@), queryable ("contact for service") |
+| description | "A service that..." | NO | - | Simple attribute, not independently queryable |
+| repository | "github.com/org/repo" | YES | CodeRepository | URL pattern, queryable ("repos by org") |
+| language | "Python" | YES | ProgrammingLanguage | Queryable ("all Python services") |
+| port | 8080 | NO | - | Simple attribute, too generic |
 
-1. "Show me all Slack channels for services owned by team X"
-2. "Which services can I contact via #platform-team?"
-3. "Find the support email for service Y"
-4. "List all GitHub organizations maintaining our services"
-5. "Which services are tracked in JIRA project ABC?"
-6. "Show me all contact points for this service" (email + Slack + GitHub)
+---
 
-**Validation**:
+##### Step 4: Generate Entity Type Definitions
 
-```
-Contact Extraction Validation:
+**AI output**: "I've discovered the following entity types in this data source:"
 
-SlackChannels: 89 extracted
-- From slackChannel field: 45
-- From descriptions: 31
-- From READMEs: 13
-
-Emails: 156 extracted
-- From owner emails: 98
-- From contact fields: 42
-- From descriptions: 16
-
-GitHubHandles: 78 extracted
-- From repository URLs: 62
-- From @mentions: 16
-
-Relationships created: 323
-- contactVia: 265
-- maintainedBy: 78
-- trackedIn: 24
-- alertsTo: 12
-
-All contact entities have bidirectional relationships ✓
-```
-
-#### README & Documentation Analysis
-
-**Enhancement**: Read and analyze README.md, CONTRIBUTING.md, and documentation files alongside entity definitions.
-
-**Why**: README files often contain:
-
-- Contact information not in structured fields
-- Technology stack details
-- Setup/deployment instructions with tool mentions
-- Links to additional resources
-- Team composition and roles
-
-**AI Process**:
+**Report Format**:
 
 ```
-Agent discovers Service "cincinnati" at /data/services/cincinnati/app.yml
+Entity Type Discovery Report
+=============================
 
-Step 1: Check for README
-- Look for: README.md, README, CONTRIBUTING.md in same directory
-- Found: /data/services/cincinnati/README.md
+Data Source: /path/to/repository
+Domain: [Discovered domain - infrastructure/code/e-commerce/etc.]
+Sample Size: [N files analyzed]
 
-Step 2: Analyze README content
-Section: "Contact"
-- Slack: #cincinnati-team, #cincinnati-alerts
-- Email: cincinnati-team@redhat.com
-- PagerDuty: cincinnati-production-alerts
+## Discovered Entity Types
 
-Section: "Technology Stack"
-- Language: Go 1.19
-- Database: PostgreSQL 14
-- Cache: Redis 6.2
-- Messaging: Kafka
+### Type 1: [DiscoveredTypeName]
+**Pattern**: [What pattern led to this discovery]
+**Examples**: [Actual values from data]
+**URN**: urn:[type-identifier]:{value-pattern}
+**Queryability**: [What queries this enables]
+**Confidence**: HIGH/MEDIUM/LOW (percentage)
+**Instances Found**: [Count in sample]
 
-Section: "Links"
-- Docs: https://docs.example.com/cincinnati
-- Grafana: https://grafana.example.com/cincinnati
-- GitHub: https://github.com/openshift/cincinnati
+### Type 2: [DiscoveredTypeName]
+...
 
-Step 3: Extract entities from README
-Technologies:
-- urn:technology:go → cincinnati --uses--> go
-- urn:technology:postgresql → cincinnati --uses--> postgresql
-- urn:technology:redis → cincinnati --uses--> redis
+## Discovery Statistics
+- Total unique patterns: X
+- Entity types (HIGH confidence >85%): X
+- Entity types (MEDIUM confidence 60-85%): X
+- Excluded (LOW confidence <60%): X
 
-Contacts (additional to app.yml):
-- urn:slack-channel:cincinnati-alerts → cincinnati --contactVia--> ...
-
-Documentation:
-- urn:documentation:cincinnati-docs → cincinnati --documentedAt--> ...
+## Discovered Relationship Types
+[Based on field semantics and entity types]
 ```
 
-**README Parsing Pattern**:
+**Tested Examples** (see `/extraction/ENTITY_DISCOVERY_REPORT_APPINTERFACE.md` and `/extraction/ENTITY_DISCOVERY_REPORT_CODE.md`):
+
+- **Infrastructure domain** (app-interface) → Discovered: EmailAddress, CodeRepository, MonitoringDashboard, ServiceEndpoint, ContainerRegistry, etc. (11 types)
+- **Code domain** (kartograph) → Discovered: PythonModule, TypeScriptModule, VueComponent, PythonClass, PackageDependency, DatabaseTable, APIEndpoint, etc. (14 types)
+- **ZERO overlap** between domains (proves true domain adaptation)
+
+---
+
+##### Step 5: Apply Discovered Types to Extraction
+
+**Once entity types are discovered**, use them for extraction:
 
 ```
-Agent: "Analyzing README.md for service X..."
+Agent: "Applying discovered entity type taxonomy to extraction..."
 
-Common sections to parse:
-- "Contact" / "Support" / "Team" → Contact information
-- "Technology" / "Stack" / "Dependencies" → Technology entities
-- "Links" / "Resources" → Documentation links
-- "Contributing" → Development info
-- "Deployment" → Infrastructure details
-- "Monitoring" → Observability links
+For each data file:
+  For each field:
+    Check against discovered pattern library
+    If matches discovered pattern:
+      Extract entity using discovered type
+      Create URN using discovered pattern
+      Create relationships using discovered semantics
 
-Extraction confidence:
-- Explicit sections (## Contact): HIGH
-- Inline mentions ("uses PostgreSQL"): MEDIUM
-- Implied tech (package.json → Node.js): MEDIUM
+Confidence-based extraction:
+- HIGH confidence types (>85%): Extract automatically
+- MEDIUM confidence types (60-85%): Extract with validation
+- LOW confidence types (<60%): Skip or flag for review
 ```
 
-#### Technology Stack & Tool Extraction (Iteration 5 Enhancement)
-
-**Extract technology and tool mentions** from descriptions, READMEs, and configuration to enable queries like "Which services use PostgreSQL?" or "Show me all Python services".
-
-**Technology Entity Types**:
-
-1. **ProgrammingLanguage** - Python, JavaScript, Go, Java, etc.
-   - URN: `urn:language:{language-name}`
-
-2. **Framework** - Django, React, Spring Boot, etc.
-   - URN: `urn:framework:{framework-name}`
-
-3. **Database** - PostgreSQL, MongoDB, Redis, etc.
-   - URN: `urn:database:{db-name}`
-
-4. **CloudProvider** - AWS, GCP, Azure, etc.
-   - URN: `urn:cloud:{provider-name}`
-
-5. **Tool** - Docker, Kubernetes, Jenkins, etc.
-   - URN: `urn:tool:{tool-name}`
-
-**Extraction Patterns**:
+**Example Application**:
 
 ```
-Description: "Python microservice using Flask and PostgreSQL, deployed on Kubernetes"
+Agent discovered "CommunicationChannel" type from patterns.
 
-Extracted entities:
-1. urn:language:python
-   - Relationship: service --implementedIn--> python
-   - Confidence: HIGH (explicit mention)
+Now applying to extraction:
 
-2. urn:framework:flask
-   - Relationship: service --uses--> flask
-   - Confidence: HIGH (explicit mention)
+Field: slackChannel = "#team-platform"
+→ Matches CommunicationChannel pattern (HIGH confidence)
+→ Extract: urn:communication-channel:team-platform
+→ Relationships: service --contactVia--> channel
 
-3. urn:database:postgresql
-   - Relationship: service --uses--> postgresql
-   - Confidence: HIGH (explicit mention)
-
-4. urn:tool:kubernetes
-   - Relationship: service --deployedOn--> kubernetes
-   - Confidence: HIGH (deployment context)
+Field: description = "Contact us at #support"
+→ Matches CommunicationChannel pattern in free-text (HIGH confidence)
+→ Extract: urn:communication-channel:support
+→ Relationships: service --contactVia--> channel
 ```
 
-**Common Technology Patterns to Recognize**:
+---
 
-```
-Languages:
-- "Python service", "written in Go", "JavaScript application"
-- File extensions in code components (.py → Python, .go → Go)
-- Package managers (package.json → Node.js, requirements.txt → Python)
+##### Key Differences from Hardcoded Approach
 
-Frameworks:
-- "using Django", "built with React", "Spring Boot application"
-- Dependencies in package files
+| Aspect | Hardcoded (Old) | Discovery (New) |
+|--------|----------------|-----------------|
+| **Entity Types** | Predefined list (SlackChannel, Email, etc.) | Discovered from data patterns |
+| **Applicability** | Works only for known domains | Works for ANY data source |
+| **Flexibility** | Fixed ontology | Adapts to domain |
+| **Maintenance** | Must update for new domains | Self-adapting |
+| **Testing** | Single domain | Multiple diverse domains |
 
-Databases:
-- "PostgreSQL database", "stores data in MongoDB", "Redis cache"
-- "uses MySQL for persistence"
+---
 
-Cloud Providers:
-- "deployed on AWS", "running in GCP", "Azure-hosted"
-- URLs: *.amazonaws.com, *.cloud.google.com
+##### Validation of This Approach
 
-Tools:
-- "Docker containers", "Kubernetes deployment", "Jenkins pipeline"
-- "monitored by Prometheus", "logs in Splunk"
-```
+**Tested on 2 diverse data sources**:
 
-**Query Capabilities**:
+1. **Infrastructure Config** (app-interface) - YAML
+   - Discovered: 11 entity types (EmailAddress, CodeRepository, MonitoringDashboard, ServiceEndpoint, etc.)
+   - Domain-appropriate for operations and deployment
 
-1. "Show me all services using PostgreSQL"
-2. "Which Python services exist?"
-3. "Find services deployed on AWS"
-4. "List all services using Kubernetes"
-5. "Show me the technology stack for service X"
-6. "Which services use the same tech stack as Y?"
+2. **Code Repository** (kartograph) - Python/TypeScript
+   - Discovered: 14 entity types (PythonModule, PythonClass, PackageDependency, DatabaseTable, etc.)
+   - Domain-appropriate for software architecture
+
+**Result**: ZERO entity type overlap → Proves framework truly adapts to domain
+
+**See detailed reports**:
+
+- `/extraction/ENTITY_DISCOVERY_REPORT_APPINTERFACE.md`
+- `/extraction/ENTITY_DISCOVERY_REPORT_CODE.md`
+- `/extraction/DISCOVERY_COMPARISON.md`
 
 ---
 
