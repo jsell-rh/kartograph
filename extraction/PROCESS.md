@@ -17,7 +17,7 @@ A repository-agnostic methodology for extracting knowledge graphs from configura
 3. [Phase 1: Schema Analysis](#phase-1-schema-analysis)
 4. [Phase 2: Entity Extraction](#phase-2-entity-extraction)
 5. [Phase 3: Relationship Resolution](#phase-3-relationship-resolution)
-6. [Phase 3.5: Graph Validation & Repair](#phase-35-graph-validation--repair)
+6. [Phase 3.5: Self-Validation & Quality Assessment](#phase-35-self-validation--quality-assessment)
 7. [Phase 4: Graph Export](#phase-4-graph-export)
 8. [Best Practices](#best-practices)
 9. [Case Studies](#case-studies)
@@ -74,6 +74,41 @@ When executing knowledge graph extraction:
 - Report your reasoning process, not just results
 - Flag uncertainties with MEDIUM/LOW confidence scores
 - Ask clarifying questions only when critically blocked
+
+### Confidence Score Definitions
+
+All decisions must be scored using these standardized confidence levels:
+
+- **VERY HIGH** (>95%): Schema-driven extraction, 100% validation pass, no ambiguity whatsoever
+- **HIGH** (90-95%): Schema-guided with clear evidence, >95% validation pass, minimal uncertainty
+- **MEDIUM** (60-90%): Inferred from patterns, partial validation, some uncertainty or assumptions made
+- **LOW** (<60%): Heuristic/guessing, <80% confidence, requires human review or validation
+
+**Usage**: Assign confidence to entity classifications, field extraction decisions, relationship inferences, and overall phase assessments.
+
+### Extraction Scope Guidance
+
+**Full Extraction**:
+
+- Extract ALL entities from entire repository
+- Target: >12 avg predicates for all primary entities
+- Apply all 7 iterations comprehensively
+- Complete validation against all standards
+
+**Test/Sample Extraction**:
+
+- Extract representative sample to validate process
+- Recommended: 5-10 primary entities minimum (e.g., 5 Services)
+- Include related entities to test all relationship types
+- May create entity "stubs" for referenced but not fully extracted entities
+- Validation: Measure metrics only on fully extracted primary entities
+- Goal: Validate process works, not achieve complete graph
+
+**Choosing Scope**:
+
+- Testing new repository type → Use test extraction first
+- Validating process improvements → Use test extraction
+- Production knowledge graph → Use full extraction
 
 ---
 
@@ -3310,1954 +3345,252 @@ def validate_entity_quality(entities):
         if has_sub_entities:
             quality_report['parent_entities_with_sub_entities'] += 1
 
-        if relationship_count > 0:
-            quality_report['entities_with_relationships'] += 1
-            quality_report['total_relationships'] += relationship_count
-        else:
-            quality_report['orphaned_entities'].append(entity["@id"])
+## Phase 3: Relationship Resolution
 
-        # Check field count (excluding @id, @type, name)
-        field_count = len([k for k in entity.keys() if k not in ['@id', '@type', 'name']])
-        if field_count < 3:
-            quality_report['sparse_entities'].append({
-                'id': entity["@id"],
-                'field_count': field_count
-            })
+**Goal**: AI agent resolves all `$ref` values to URNs, infers implicit relationships from patterns (Iteration 6), and creates bidirectional edges.
 
-    total = len(entities)
-    print(f"\n📊 Quality Metrics:")
-    print(f"  With descriptions: {quality_report['entities_with_descriptions']}/{total} " +
-          f"({100*quality_report['entities_with_descriptions']/total:.1f}%)")
-    print(f"  With relationships: {quality_report['entities_with_relationships']}/{total} " +
-          f"({100*quality_report['entities_with_relationships']/total:.1f}%)")
-    print(f"  Total relationships: {quality_report['total_relationships']}")
-    print(f"  Orphaned entities: {len(quality_report['orphaned_entities'])}")
-    print(f"  Sparse entities (< 3 fields): {len(quality_report['sparse_entities'])}")
+### AI Reasoning Process
 
-    # Sub-entity extraction metrics (Iteration 4)
-    if quality_report['sub_entities_by_type']:
-        print(f"\n📊 Sub-Entity Extraction Metrics (Iteration 4):")
-        total_sub_entities = sum(quality_report['sub_entities_by_type'].values())
-        print(f"  Total sub-entities: {total_sub_entities}")
-        print(f"  Sub-entities by type:")
-        for entity_type, count in sorted(quality_report['sub_entities_by_type'].items(),
-                                        key=lambda x: -x[1]):
-            print(f"    {entity_type}: {count}")
-        print(f"  Parent entities with sub-entities: {quality_report['parent_entities_with_sub_entities']}")
-        print(f"  Parent-child relationships: {quality_report['parent_child_relationships']}")
+#### Step 1: Explicit Relationship Resolution (Two-Pass - Iteration 2)
 
-        # Calculate percentage of parents with sub-entities
-        # This helps validate extraction completeness
-        parent_types = ['Service', 'Namespace', 'Application']
-        parent_count = sum(1 for e in entities if e.get('@type') in parent_types)
-        if parent_count > 0:
-            pct_with_sub = (100.0 * quality_report['parent_entities_with_sub_entities'] /
-                           parent_count)
-            print(f"  Percentage of parents with sub-entities: {pct_with_sub:.1f}%")
+**AI Task**: Resolve all `$ref` and explicit references collected during Phase 2
 
-    return quality_report
+**For Each Pending Reference, AI Asks**:
+
+1. **Reference Type**: "What kind of reference is this?" ($ref file path, URN reference, nested object)
+2. **Target Resolution**: "What entity does this reference point to?"
+3. **Target Validation**: "Does the target entity exist in my entity index?"
+4. **Relationship Type**: "What predicate describes this relationship?"
+
+**AI Reasoning Example**:
+
+```
+
+Agent resolving references for Service "cincinnati":
+
+Pending Reference 1:
+  Source: urn:service:cincinnati
+  Field: dependencies[]
+  Value: $ref: /data/dependencies/github/service.yml
+  
+  Resolution:
+
+- Reference type: $ref file path
+- Target file: /data/dependencies/github/service.yml
+- Target entity: urn:dependency:github (from entity index)
+- Validation: Target exists ✓
+- Predicate: dependsOn
+- Create: cincinnati --dependsOn--> github
+- Bidirectional: github --supportedBy--> cincinnati
+- Confidence: HIGH
+
+Pending Reference 2:
+  Source: urn:service:cincinnati  
+  Field: escalationPolicy
+  Value: $ref: /data/escalation/sre-team.yml
+  
+  Resolution:
+
+- Reference type: $ref file path
+- Target file: /data/escalation/sre-team.yml
+- Target entity: urn:escalation-policy:sre-team (from entity index)
+- Validation: Target exists ✓
+- Predicate: hasEscalationPolicy
+- Create: cincinnati --hasEscalationPolicy--> sre-team
+- Bidirectional: sre-team --policyFor--> cincinnati
+- Confidence: HIGH
+
+Total references resolved: 8
+Broken references: 0 (0.0%)
+Bidirectional pairs created: 16 (8 forward + 8 reverse)
+
+```
+
+**Broken Reference Handling**:
+
+If target doesn't exist in entity index:
+1. Check if file exists but wasn't extracted (missed in Phase 2)
+2. If file exists: Extract entity on-demand, add to index
+3. If file doesn't exist: Log broken reference, skip relationship
+4. Report broken references for review
+
+**Deterministic Validation** (after this step):
+- Broken reference rate <2% (Iteration 2 target)
+- All forward relationships have reverse counterparts
+
+#### Step 2: Implicit Relationship Inference (Iteration 6)
+
+**AI Task**: Discover relationships not explicitly stated through pattern recognition
+
+**Inference Patterns to Apply**:
+
+**Pattern 1: Directory Structure Relationships**
+
+AI analyzes file paths to infer containment/ownership:
+
+```
+
+File: /data/services/cincinnati/namespaces/prod.yml
+Pattern: /services/{service}/namespaces/{namespace}
+Inference: Service "cincinnati" owns/contains Namespace "prod"
+Relationship: cincinnati --hasNamespace--> prod
+Reverse: prod --belongsTo--> cincinnati
+Confidence: HIGH (clear directory hierarchy)
+
+```
+
+**Pattern 2: Naming Convention Relationships**
+
+AI analyzes entity names to infer relationships:
+
+```
+
+Entities found:
+
+- urn:service:payment-api
+- urn:namespace:payment-api-prod
+- urn:database:payment-db
+
+Pattern: Shared prefix "payment"
+Inferences:
+
+- payment-api --deployedIn--> payment-api-prod (name match + type)
+- payment-api --uses--> payment-db (name match + type)
+Confidence: MEDIUM (naming pattern, not explicit)
+
+```
+
+**Pattern 3: Label/Metadata Relationships**
+
+AI analyzes labels and metadata fields:
+
+```
+
+Service "cincinnati":
+  labels:
+    team: "cincinnati-team"
+    product: "openshift"
+
+Inferences:
+
+- Team "cincinnati-team" --owns--> Service "cincinnati"
+- Product "openshift" --contains--> Service "cincinnati"
+Confidence: HIGH (explicit metadata labels)
+
+```
+
+**Pattern 4: Free-Text Description Mining (Iteration 5)**
+
+AI extracts entities mentioned in description text:
+
+```
+
+Service description: "Uses PostgreSQL database and integrates with GitHub API"
+
+Entities extracted:
+
+- urn:technology:postgresql
+- urn:service:github
+
+Relationships:
+
+- Service --uses--> PostgreSQL (MEDIUM confidence - text mention)
+- Service --integratesWith--> GitHub (MEDIUM confidence - text mention)
+
+```
+
+**AI Reasoning Output**:
+
+```
+
+Universal Inference Results:
+
+Pattern 1 (Directory): 47 relationships inferred
+Pattern 2 (Naming): 23 relationships inferred
+Pattern 3 (Labels): 31 relationships inferred
+Pattern 4 (Free-text): 12 relationships inferred
+
+Total inferred: 113 relationships
+Confidence distribution:
+
+- HIGH: 78 (69%)
+- MEDIUM: 35 (31%)
+- LOW: 0 (skipped)
+
+All inferred relationships have bidirectional pairs created.
+
+```
+
+#### Step 3: Bidirectional Relationship Creation
+
+**AI Task**: Ensure all relationships have inverse predicates for graph queryability
+
+**Common Bidirectional Pairs**:
+
+| Forward Predicate | Reverse Predicate | Example |
+|-------------------|-------------------|---------|
+| dependsOn | supportedBy | Service → Dependency |
+| hasOwner | owns | Service → User |
+| partOf | contains | Service → Product |
+| deployedIn | hosts | Service → Namespace |
+| uses | usedBy | Service → Database |
+| hasEndpoint | belongsTo | Service → Endpoint |
+| hasCodeComponent | componentOf | Service → CodeComponent |
+
+**AI Reasoning**:
+
+```
+
+Creating bidirectional pairs:
+
+Forward: urn:service:cincinnati --dependsOn--> urn:dependency:github
+Reverse: urn:dependency:github --supportedBy--> urn:service:cincinnati
+Status: Created ✓
+
+Forward: urn:service:cincinnati --hasOwner--> urn:user:jdoe@example.com
+Reverse: urn:user:jdoe@example.com --owns--> urn:service:cincinnati  
+Status: Created ✓
+
+...
+
+Bidirectional consistency: 100% (all forward rels have reverse)
+
+```
+
+### Deterministic Validation (After Phase 3)
+
+**Standard 4: Reference Integrity**
+- Broken reference rate: Must be <2%
+- How to check: Count references where target URN not in entity index
+- Pass criteria: (broken / total) × 100 < 2%
+
+**Standard 6: Bidirectional Consistency**
+- All major relationship types have reverse predicates
+- Check count imbalances are expected (shared entities)
+- Pass criteria: All forward relationships have inverses
+
+**Example Validation**:
+
+```
+
+Phase 3 Validation Report:
+
+Standard 4 (Reference Integrity):
+✓ Total references: 286
+✓ Broken references: 2 (0.7%)
+✓ Target: <2% ✓ PASSED
+
+Standard 6 (Bidirectional Consistency):
+✓ Forward relationships: 143
+✓ Reverse relationships: 143
+✓ Unpaired: 0
+✓ PASSED
+
+Phase 3 Complete ✓
+
 ```
 
 ---
-
-## Phase 3: Relationship Resolution
-
-**Goal**: AI agent resolves all `$ref` values to URNs, infers implicit relationships, and creates bidirectional edges.
-
-### Proactive Reference Validation Pattern
-
-**Best Practice**: Validate references BEFORE creating them, not after.
-
-```python
-def create_relationship_with_validation(source_entity, predicate, target_urn, entity_index):
-    """
-    Create a relationship with proactive validation.
-
-    Returns: True if relationship created, False if validation failed
-    """
-    # Validate target exists
-    if target_urn not in entity_index:
-        log_warning(
-            f"Cannot create relationship: target does not exist\n"
-            f"  Source: {source_entity['@id']}\n"
-            f"  Predicate: {predicate}\n"
-            f"  Target: {target_urn}"
-        )
-        return False
-
-    # Validate target has required metadata
-    target_entity = entity_index[target_urn]
-    if 'name' not in target_entity or not target_entity['name']:
-        log_warning(
-            f"Target entity lacks name (will appear as hex ID)\n"
-            f"  Target: {target_urn}\n"
-            f"  Referenced by: {source_entity['@id']}"
-        )
-        # Create relationship anyway but log warning
-
-    # Create relationship
-    if predicate not in source_entity:
-        source_entity[predicate] = []
-
-    if isinstance(source_entity[predicate], list):
-        source_entity[predicate].append({"@id": target_urn})
-    else:
-        source_entity[predicate] = {"@id": target_urn}
-
-    return True
-
-
-def validate_and_create_relationships(entities, entity_index):
-    """
-    Validate all relationships before creating them.
-
-    Use this pattern in single-pass extraction when relationships
-    are created during entity extraction.
-    """
-    stats = {
-        'created': 0,
-        'failed': 0,
-        'missing_targets': []
-    }
-
-    for entity in entities:
-        # Get pending relationships
-        pending_refs = entity.get('_pending_refs', [])
-
-        for ref in pending_refs:
-            target_urn = ref['target_urn']
-            predicate = ref['predicate']
-
-            # Validate and create
-            if create_relationship_with_validation(
-                entity, predicate, target_urn, entity_index
-            ):
-                stats['created'] += 1
-            else:
-                stats['failed'] += 1
-                stats['missing_targets'].append({
-                    'source': entity['@id'],
-                    'predicate': predicate,
-                    'target': target_urn
-                })
-
-        # Clean up temporary field
-        if '_pending_refs' in entity:
-            del entity['_pending_refs']
-
-    print(f"\n📊 Relationship Validation:")
-    print(f"   Created: {stats['created']}")
-    print(f"   Failed: {stats['failed']}")
-
-    if stats['missing_targets']:
-        print(f"\n⚠️  {len(stats['missing_targets'])} broken references detected:")
-        for ref in stats['missing_targets'][:10]:
-            print(f"   {ref['source']} --{ref['predicate']}--> {ref['target']}")
-
-    return stats
-```
-
-### Reference Validation Before Creation
-
-**Pattern**: Check-then-create instead of create-then-validate
-
-```python
-# ❌ BAD: Create first, validate later
-def extract_service_old(data, entity_index):
-    service = {
-        "@id": f"urn:service:{data['name']}",
-        "@type": "Service",
-        "name": data['name']
-    }
-
-    # Create relationship without checking
-    if 'namespace' in data:
-        namespace_urn = f"urn:namespace:{data['namespace']}"
-        service['belongsTo'] = {"@id": namespace_urn}  # May be broken!
-
-    return service
-
-
-# ✅ GOOD: Validate before creating
-def extract_service_new(data, entity_index):
-    service = {
-        "@id": f"urn:service:{data['name']}",
-        "@type": "Service",
-        "name": data['name']
-    }
-
-    # Validate before creating relationship
-    if 'namespace' in data:
-        namespace_urn = f"urn:namespace:{data['namespace']}"
-
-        # Check if target exists
-        if namespace_urn in entity_index:
-            service['belongsTo'] = {"@id": namespace_urn}
-        else:
-            log_warning(
-                f"Namespace {namespace_urn} not found for service {service['@id']}\n"
-                f"  Skipping belongsTo relationship"
-            )
-            # Option: Create stub or skip relationship
-            # Option: Add to broken_refs report for follow-up
-
-    return service
-```
-
-### URN Matching Validation
-
-**Problem**: Constructed URNs don't match actual extracted entity URNs
-
-**Solution**: Validate URN construction against entity index
-
-```python
-def validate_urn_construction(expected_urn, entity_index, entity_type):
-    """
-    Validate that a constructed URN exists in the entity index.
-
-    If not found, attempt to find the correct URN using fuzzy matching.
-    """
-    # Exact match
-    if expected_urn in entity_index:
-        return expected_urn
-
-    # URN not found - try fuzzy matching
-    log_warning(f"URN not found: {expected_urn}")
-
-    # Try alternative URN patterns for this entity type
-    alternatives = generate_alternative_urns(expected_urn, entity_type)
-
-    for alt_urn in alternatives:
-        if alt_urn in entity_index:
-            log_info(f"Found alternative URN: {alt_urn}")
-            return alt_urn
-
-    # Try searching by name
-    name_segment = expected_urn.split(':')[-1]
-    matching_urns = [
-        urn for urn, entity in entity_index.items()
-        if entity.get('@type') == entity_type and
-        name_segment in urn
-    ]
-
-    if len(matching_urns) == 1:
-        log_info(f"Found URN by name match: {matching_urns[0]}")
-        return matching_urns[0]
-    elif len(matching_urns) > 1:
-        log_warning(
-            f"Multiple URNs match {name_segment}: {matching_urns}\n"
-            f"  Cannot determine correct URN"
-        )
-
-    # No match found
-    return None
-
-
-def generate_alternative_urns(urn, entity_type):
-    """
-    Generate alternative URN patterns for common mismatches.
-
-    Common issues:
-    - Different casing (Cincinnati vs cincinnati)
-    - Different separators (my-service vs my_service)
-    - Missing/extra namespace prefix
-    """
-    alternatives = []
-
-    parts = urn.split(':')
-    if len(parts) < 3:
-        return alternatives
-
-    # Try lowercase version
-    alternatives.append(':'.join([p.lower() for p in parts]))
-
-    # Try with underscores instead of hyphens
-    last_part = parts[-1]
-    if '-' in last_part:
-        parts[-1] = last_part.replace('-', '_')
-        alternatives.append(':'.join(parts))
-
-    # Try with hyphens instead of underscores
-    last_part = parts[-1]
-    if '_' in last_part:
-        parts[-1] = last_part.replace('_', '-')
-        alternatives.append(':'.join(parts))
-
-    # Try without middle segments (urn:type:parent:name -> urn:type:name)
-    if len(parts) > 3:
-        alternatives.append(f"{parts[0]}:{parts[1]}:{parts[-1]}")
-
-    # Try with namespace prefix (urn:type:name -> urn:type:cluster:name)
-    # This requires knowing common prefixes - repository specific
-
-    return list(set(alternatives))  # Deduplicate
-```
-
-### $ref Resolution Enhancement
-
-**Pattern**: Follow $ref links to ensure target entities are extracted
-
-```python
-def resolve_ref_with_extraction(ref_value, entity_index, base_path):
-    """
-    Resolve a $ref, extracting the target entity if needed.
-
-    Handles:
-    - Relative paths: ../namespaces/prod.yml
-    - Absolute paths: /data/services/foo/app.yml
-    - Already extracted: Check index first
-    """
-    # Already a URN
-    if isinstance(ref_value, str) and ref_value.startswith('urn:'):
-        return ref_value
-
-    # Extract file path from $ref
-    if isinstance(ref_value, dict) and '$ref' in ref_value:
-        file_path = ref_value['$ref']
-    elif isinstance(ref_value, str):
-        file_path = ref_value
-    else:
-        log_warning(f"Unknown $ref format: {ref_value}")
-        return None
-
-    # Resolve relative path
-    if file_path.startswith('./') or file_path.startswith('../'):
-        file_path = os.path.normpath(os.path.join(base_path, file_path))
-
-    # Check if already extracted (by file path)
-    for urn, entity in entity_index.items():
-        if entity.get('_source_file') == file_path:
-            log_info(f"$ref already extracted: {file_path} -> {urn}")
-            return urn
-
-    # Not extracted - extract now
-    log_info(f"Following $ref: {file_path}")
-
-    try:
-        # Load and extract entity
-        data = load_yaml_or_json(file_path)
-
-        # Infer entity type from schema or file path
-        entity_type = infer_entity_type(data, file_path)
-
-        # Get schema config for this type
-        schema_config = get_schema_config(entity_type)
-        if not schema_config:
-            log_warning(f"No schema config for type {entity_type}")
-            return None
-
-        # Extract entity
-        entity = extract_entity_pass1(data, file_path, schema_config)
-
-        # Add to index
-        entity_index[entity['@id']] = entity
-
-        log_info(f"Extracted $ref entity: {entity['@id']}")
-        return entity['@id']
-
-    except Exception as e:
-        log_error(f"Failed to extract $ref {file_path}: {e}")
-        return None
-
-
-def build_dependency_graph(files, base_dir):
-    """
-    Build a dependency graph of files based on $ref links.
-
-    Use this to determine extraction order - extract referenced
-    entities before entities that reference them.
-    """
-    dependency_graph = {}  # file -> [files it references]
-
-    for file_path in files:
-        try:
-            data = load_yaml_or_json(file_path)
-            refs = find_all_refs(data)
-
-            # Resolve relative paths
-            resolved_refs = []
-            for ref in refs:
-                if ref.startswith('./') or ref.startswith('../'):
-                    ref = os.path.normpath(os.path.join(os.path.dirname(file_path), ref))
-                resolved_refs.append(ref)
-
-            dependency_graph[file_path] = resolved_refs
-
-        except Exception as e:
-            log_warning(f"Could not parse {file_path}: {e}")
-            dependency_graph[file_path] = []
-
-    return dependency_graph
-
-
-def topological_sort_files(dependency_graph):
-    """
-    Sort files in dependency order using topological sort.
-
-    Files with no dependencies come first.
-    """
-    from collections import deque
-
-    # Calculate in-degrees
-    in_degree = {file: 0 for file in dependency_graph}
-    for file, deps in dependency_graph.items():
-        for dep in deps:
-            if dep in in_degree:
-                in_degree[dep] += 1
-
-    # Queue files with no dependencies
-    queue = deque([file for file, degree in in_degree.items() if degree == 0])
-    sorted_files = []
-
-    while queue:
-        file = queue.popleft()
-        sorted_files.append(file)
-
-        # Reduce in-degree for dependent files
-        for dep in dependency_graph.get(file, []):
-            if dep in in_degree:
-                in_degree[dep] -= 1
-                if in_degree[dep] == 0:
-                    queue.append(dep)
-
-    # Check for cycles
-    if len(sorted_files) != len(dependency_graph):
-        log_warning("Circular dependencies detected - extraction order may not be optimal")
-
-    return sorted_files
-```
-
-### Step 1: Collect All Entity URNs
-
-```python
-def collect_all_urns(jsonld_file):
-    """Build index of all entity URNs."""
-    urns = set()
-
-    for entity in load_jsonld(jsonld_file):
-        urns.add(entity["@id"])
-
-    return urns
-```
-
-### Step 2: Validate References (Post-Extraction)
-
-```python
-def validate_references(jsonld_file, known_urns):
-    """Check all references point to existing entities."""
-
-    broken_refs = []
-
-    for entity in load_jsonld(jsonld_file):
-        for key, value in entity.items():
-            # Check @id references
-            if isinstance(value, dict) and "@id" in value:
-                if value["@id"] not in known_urns:
-                    broken_refs.append({
-                        'source': entity["@id"],
-                        'predicate': key,
-                        'target': value["@id"]
-                    })
-
-            # Check arrays of references
-            elif isinstance(value, list):
-                for item in value:
-                    if isinstance(item, dict) and "@id" in item:
-                        if item["@id"] not in known_urns:
-                            broken_refs.append({
-                                'source': entity["@id"],
-                                'predicate': key,
-                                'target': item["@id"]
-                            })
-
-    if broken_refs:
-        print(f"❌ Found {len(broken_refs)} broken references:")
-        for ref in broken_refs[:10]:
-            print(f"  {ref['source']} --{ref['predicate']}--> {ref['target']}")
-        raise ValueError("Broken references found - extraction incomplete")
-
-    print(f"✅ All {count_references(jsonld_file)} references valid")
-```
-
-### Step 3: Create Bidirectional Edges
-
-For navigability, create reverse relationships:
-
-```python
-def add_reverse_edges(entities):
-    """Create bidirectional relationships."""
-
-    reverse_map = {
-        'belongsTo': 'hasNamespace',
-        'dependsOn': 'requiredBy',
-        'ownedBy': 'owns',
-        'partOf': 'hasPart',
-        'uses': 'usedBy'
-    }
-
-    new_edges = []
-
-    for entity in entities:
-        for key, value in entity.items():
-            if key in reverse_map and isinstance(value, dict) and "@id" in value:
-                # Create reverse edge
-                target_id = value["@id"]
-                reverse_predicate = reverse_map[key]
-
-                new_edges.append({
-                    'source': target_id,
-                    'predicate': reverse_predicate,
-                    'target': entity["@id"]
-                })
-
-    # Apply reverse edges to entities
-    for edge in new_edges:
-        target_entity = find_entity(entities, edge['source'])
-        if edge['predicate'] not in target_entity:
-            target_entity[edge['predicate']] = []
-        target_entity[edge['predicate']].append({"@id": edge['target']})
-
-    print(f"✅ Added {len(new_edges)} bidirectional edges")
-    return entities
-```
-
-### AI-Driven Relationship Inference (Repository-Agnostic)
-
-**New Best Practice (Iteration 6)**: Use Claude Code's AI reasoning to discover and adapt to any repository's organizational patterns, then infer relationships based on discovered patterns rather than hardcoded rules.
-
-**Key Principle**: The AI should **learn the repository's patterns** through analysis, then **adapt extraction logic** based on discovered patterns. This works for ANY code/data repository (Python projects, Node.js apps, Kubernetes configs, Terraform IaC, documentation repos, etc.).
-
-#### Universal Inference Principles
-
-Claude Code should analyze ANY repository to discover:
-
-1. **Organizational patterns** (how files are structured)
-2. **Naming conventions** (how things are named)
-3. **Reference patterns** (how entities link to each other)
-4. **Ownership patterns** (who owns what)
-5. **Dependency patterns** (what depends on what)
-
-Then **ADAPT extraction logic** based on discovered patterns.
-
-#### Pattern Discovery Process (AI-Driven)
-
-**Step 1: Repository Structure Analysis**
-
-Claude Code reads directory tree and identifies organizational patterns:
-
-```python
-def discover_organizational_patterns(repo_path):
-    """
-    AI-driven discovery of how repository organizes entities.
-
-    Claude Code should analyze directory structure and identify patterns like:
-    - Files organized by type: /services/{name}/, /packages/{name}/, /components/{name}/
-    - Files organized by team: /teams/{team}/, /orgs/{org}/
-    - Files organized by function: /frontend/, /backend/, /infrastructure/
-    - Files organized by environment: /prod/, /staging/, /dev/
-
-    Returns: Discovered organizational patterns with confidence
-    """
-
-    # AI Analysis Example:
-    # "I see files organized in /services/{service_name}/ directories.
-    #  Each service directory contains:
-    #  - app.yml (main service definition)
-    #  - namespaces/*.yml (namespace configurations)
-    #  - dependencies/*.yml (dependency declarations)
-    #
-    #  Pattern discovered: Files in /services/foo/ belong to service 'foo'"
-
-    patterns = []
-
-    # Pattern 1: Type-based organization
-    # Example discoveries:
-    # - /services/{name}/ → service entities
-    # - /packages/{name}/ → package entities
-    # - /teams/{name}/ → team entities
-    # - /components/{name}/ → component entities
-
-    # Pattern 2: Hierarchical organization
-    # Example discoveries:
-    # - /services/{service}/namespaces/{ns}/ → service owns namespace
-    # - /products/{product}/services/ → product contains services
-    # - /teams/{team}/repos/ → team owns repositories
-
-    # Pattern 3: Function-based organization
-    # Example discoveries:
-    # - /frontend/ → frontend components
-    # - /backend/ → backend services
-    # - /infrastructure/ → infrastructure resources
-    # - /docs/ → documentation entities
-
-    return patterns
-```
-
-**Example Discoveries** (works for any repo):
-
-```
-# Python project discovery:
-"I found packages organized in /src/packages/{name}/.
- Files in each package directory include __init__.py, tests/, README.md.
- Pattern: Files in /src/packages/foo/ belong to package 'foo'."
-
-# Kubernetes config discovery:
-"I found services organized in /services/{name}/ with subdirectories:
- - /services/{name}/deployments/
- - /services/{name}/configmaps/
- - /services/{name}/secrets/
- Pattern: Resources in /services/foo/* belong to service 'foo'."
-
-# Terraform IaC discovery:
-"I found modules organized in /modules/{module_name}/ with files:
- - main.tf, variables.tf, outputs.tf
- Pattern: Resources in /modules/foo/ belong to module 'foo'."
-```
-
-**Step 2: Naming Convention Detection**
-
-Claude Code analyzes file/entity names for patterns:
-
-```python
-def discover_naming_conventions(entity_names):
-    """
-    AI-driven discovery of naming patterns in repository.
-
-    Claude Code should identify patterns like:
-    - {service}-{env} → service deployed to environment
-    - {name}-team → team entity
-    - test-{name} or {name}.test → test for entity
-    - {prefix}-{name}-{suffix} → composite naming
-
-    Returns: Discovered naming patterns with examples
-    """
-
-    # AI Analysis Example:
-    # "I notice many entities following the pattern '{name}-prod', '{name}-staging':
-    #  - api-gateway-prod
-    #  - user-service-prod
-    #  - auth-service-staging
-    #
-    #  Pattern discovered: {service}-{environment} indicates deployment relationship"
-
-    # Example discoveries across repo types:
-
-    # Code repository patterns:
-    # - test_{name}.py / {name}_test.py → test file for {name}.py
-    # - {name}.spec.ts / {name}.test.ts → test file for {name}.ts
-    # - {component}Component.tsx → React component
-    # - use{Hook}.ts → React hook
-
-    # Config repository patterns:
-    # - {service}-{env}.yml → service in environment
-    # - {team}-team.yml → team entity
-    # - {name}-deployment.yml → deployment resource
-    # - {cluster}-{namespace}-{resource} → hierarchical naming
-
-    # IaC repository patterns:
-    # - {resource}-{environment}.tf → Terraform resource
-    # - {module}_module.tf → Terraform module
-    # - {name}-network.tf → networking resource
-
-    return naming_patterns
-```
-
-**Step 3: Reference Pattern Recognition**
-
-Claude Code identifies how entities reference each other:
-
-```python
-def discover_reference_patterns(files):
-    """
-    AI-driven discovery of how entities reference each other.
-
-    Claude Code should recognize:
-    - Language-specific: import, require, #include
-    - Data-specific: $ref, dependencies[], uses[]
-    - Generic: file paths, URLs, identifiers
-
-    Returns: Reference patterns by language/format
-    """
-
-    # AI Analysis Example:
-    # "I see multiple reference patterns in this repository:
-    #
-    #  In Python files:
-    #  - from packages.auth import User → import dependency
-    #  - import database.models → import dependency
-    #
-    #  In YAML files:
-    #  - $ref: /services/foo/app.yml → cross-file reference
-    #  - dependencies:
-    #      - name: postgresql → external dependency
-    #
-    #  In Terraform:
-    #  - module.vpc.id → module reference
-    #  - aws_vpc.main → resource reference"
-
-    # Language-specific patterns:
-    language_patterns = {
-        'python': ['import', 'from...import'],
-        'javascript': ['import...from', 'require()'],
-        'typescript': ['import...from', 'import type'],
-        'go': ['import'],
-        'java': ['import'],
-        'c/c++': ['#include'],
-        'rust': ['use', 'mod']
-    }
-
-    # Data format patterns:
-    data_patterns = {
-        'yaml': ['$ref', 'dependencies[]', 'uses[]'],
-        'json': ['$ref', '"@id"', 'references[]'],
-        'terraform': ['module.X', 'resource.X', 'var.X'],
-        'kubernetes': ['configMapRef', 'secretRef', 'volumeMount']
-    }
-
-    return reference_patterns
-```
-
-**Step 4: Metadata Pattern Analysis**
-
-Claude Code finds structured metadata in files:
-
-```python
-def discover_metadata_patterns(files):
-    """
-    AI-driven discovery of metadata fields containing relationship info.
-
-    Claude Code should find:
-    - YAML: labels, annotations, tags
-    - JSON: metadata objects
-    - Code: decorators, comments, docstrings
-    - Git: authors, committers, history
-
-    Returns: Metadata patterns and their meanings
-    """
-
-    # AI Analysis Example:
-    # "I found consistent metadata patterns:
-    #
-    #  In Kubernetes YAML:
-    #  - metadata.labels.app → application name
-    #  - metadata.labels.team → owning team
-    #  - metadata.labels.environment → deployment environment
-    #
-    #  In Python files:
-    #  - @author docstring tag → author/owner
-    #  - @depends_on decorator → dependency
-    #
-    #  In package.json:
-    #  - author field → package owner
-    #  - dependencies object → package dependencies"
-
-    # YAML/JSON metadata patterns:
-    structured_metadata = {
-        'kubernetes': ['metadata.labels', 'metadata.annotations'],
-        'docker': ['labels', 'maintainer'],
-        'npm': ['author', 'contributors', 'dependencies'],
-        'python': ['author', 'maintainers', 'requires'],
-        'terraform': ['tags', 'labels']
-    }
-
-    # Code metadata patterns:
-    code_metadata = {
-        'python': ['@author', '@maintainer', '@depends'],
-        'javascript': ['@author', '@module', '@requires'],
-        'java': ['@author', '@version', '@deprecated']
-    }
-
-    # Git metadata:
-    git_metadata = ['commit authors', 'file owners (git blame)', 'modification patterns']
-
-    return metadata_patterns
-```
-
-#### Universal Relationship Inference Patterns
-
-**Pattern 1: Directory-Based Ownership (Works for any repo)**
-
-```python
-def infer_directory_ownership_relationships(entities, entity_index):
-    """
-    AI Reasoning:
-    "I see files organized in directories by entity type.
-     Files in /services/foo/ likely belong to service 'foo'.
-     Files in /components/bar/ likely belong to component 'bar'."
-
-    Generic Rule Claude Should Apply:
-    - If files are grouped in {type}/{name}/ structure
-    - Create entity for {name} of type {type}
-    - Create belongsTo/partOf relationships
-
-    Works for:
-    - Code repos: /packages/, /modules/, /components/
-    - Config repos: /services/, /apps/, /clusters/
-    - Docs repos: /products/, /features/, /teams/
-    - IaC repos: /environments/, /modules/, /resources/
-    """
-
-    inferred = []
-
-    # Example for Python project:
-    # /src/packages/auth/
-    # /src/packages/database/
-    # → auth and database are packages, files in each belong to that package
-
-    # Example for Kubernetes configs:
-    # /services/api-gateway/deployments/
-    # /services/user-service/configmaps/
-    # → api-gateway and user-service are services, resources in each belong to that service
-
-    # Example for Terraform:
-    # /modules/vpc/main.tf
-    # /modules/ec2/main.tf
-    # → vpc and ec2 are modules, resources in each belong to that module
-
-    # Generic pattern (Claude adapts):
-    for entity in entities:
-        source_file = entity.get('_source_file', '')
-
-        # Detect organizational pattern (AI discovers this)
-        # Examples: /TYPE/NAME/, /NAME-TYPE/, /TYPE-NAME/
-        pattern_match = detect_organizational_pattern(source_file)
-
-        if pattern_match:
-            parent_type = pattern_match['type']
-            parent_name = pattern_match['name']
-            parent_urn = f"urn:{parent_type.lower()}:{normalize_urn_component(parent_name)}"
-
-            if parent_urn in entity_index:
-                inferred.append({
-                    'source': parent_urn,
-                    'predicate': 'contains',  # or 'owns', 'has', depending on type
-                    'target': entity["@id"],
-                    'reason': 'directory_structure',
-                    'confidence': 'high'
-                })
-
-    return inferred
-```
-
-**Pattern 2: File Proximity Relationships (Universal)**
-
-```python
-def infer_file_proximity_relationships(entities, entity_index):
-    """
-    AI Reasoning:
-    "Files in the same directory are likely related.
-     test-foo.py next to foo.py → test file tests foo.py
-     foo.ts and foo.test.ts → test relationship
-     README.md in directory → documents contents of directory"
-
-    Generic Rule:
-    - Files with similar names in same directory → related
-    - test-{name} or {name}.test → tests relationship
-    - README/docs → documents relationship
-    - {name}.config → configures relationship
-
-    Works across all repository types.
-    """
-
-    inferred = []
-
-    # Group entities by directory
-    by_directory = {}
-    for entity in entities:
-        source_file = entity.get('_source_file', '')
-        if source_file:
-            directory = os.path.dirname(source_file)
-            by_directory.setdefault(directory, []).append(entity)
-
-    # Find relationships within directories
-    for directory, dir_entities in by_directory.items():
-        # Pattern 2a: Test file relationships
-        # test_auth.py + auth.py → test tests auth
-        # auth.test.ts + auth.ts → test tests auth
-        # auth_test.go + auth.go → test tests auth
-
-        # Pattern 2b: Documentation relationships
-        # README.md documents all files in directory
-        # docs/ directory documents parent
-
-        # Pattern 2c: Configuration relationships
-        # config.yml configures application
-        # .eslintrc configures linter
-        # setup.py configures package
-
-        # Pattern 2d: Companion files
-        # foo.py + foo.pyi → type stub for implementation
-        # component.tsx + component.module.css → styles for component
-
-        # Claude discovers these patterns by analyzing file naming in the repo
-
-        for entity in dir_entities:
-            filename = os.path.basename(entity.get('_source_file', ''))
-
-            # Test relationship detection (language-agnostic)
-            if is_test_file(filename):
-                tested_file = find_tested_file(filename, dir_entities)
-                if tested_file:
-                    inferred.append({
-                        'source': entity["@id"],
-                        'predicate': 'tests',
-                        'target': tested_file["@id"],
-                        'reason': 'file_proximity_test',
-                        'confidence': 'high'
-                    })
-
-            # Documentation relationship detection
-            if is_documentation_file(filename):
-                for other_entity in dir_entities:
-                    if other_entity != entity and not is_documentation_file(other_entity.get('_source_file', '')):
-                        inferred.append({
-                            'source': entity["@id"],
-                            'predicate': 'documents',
-                            'target': other_entity["@id"],
-                            'reason': 'file_proximity_documentation',
-                            'confidence': 'medium'
-                        })
-
-    return inferred
-```
-
-**Pattern 3: Import/Dependency Inference (Language-Agnostic)**
-
-```python
-def infer_import_dependency_relationships(entities, entity_index):
-    """
-    AI Reasoning:
-    "This file imports/requires/includes other files.
-     These are dependencies."
-
-    Language-Specific Detection:
-    - Python: import X, from X import Y
-    - JavaScript: import X from 'Y', require('X')
-    - Go: import "package"
-    - Java: import package.Class
-    - C/C++: #include "header.h"
-    - YAML: $ref, dependencies[]
-    - Terraform: module "name" { source = "..." }
-
-    Claude Should:
-    1. Recognize the language/format
-    2. Extract import/dependency statements
-    3. Resolve to target entities
-    4. Create dependsOn/imports relationships
-    """
-
-    inferred = []
-
-    for entity in entities:
-        source_file = entity.get('_source_file', '')
-        if not source_file:
-            continue
-
-        # Detect language/format
-        language = detect_language(source_file)
-
-        # Extract dependencies using language-specific patterns
-        dependencies = extract_dependencies(source_file, language)
-
-        for dep in dependencies:
-            # Resolve dependency to entity URN
-            target_urn = resolve_dependency_to_urn(dep, entity_index, language)
-
-            if target_urn and target_urn in entity_index:
-                inferred.append({
-                    'source': entity["@id"],
-                    'predicate': 'dependsOn',  # or 'imports', 'includes', 'requires'
-                    'target': target_urn,
-                    'reason': f'{language}_import',
-                    'confidence': 'high'
-                })
-
-    return inferred
-
-
-def extract_dependencies(source_file, language):
-    """
-    Extract dependency statements based on language.
-    Claude Code should recognize patterns for each language.
-    """
-
-    # Python
-    if language == 'python':
-        # import module
-        # from package import Class
-        # from . import relative
-        return extract_python_imports(source_file)
-
-    # JavaScript/TypeScript
-    elif language in ['javascript', 'typescript']:
-        # import X from 'module'
-        # import { Y } from 'module'
-        # require('module')
-        return extract_js_imports(source_file)
-
-    # Go
-    elif language == 'go':
-        # import "package/path"
-        # import alias "package/path"
-        return extract_go_imports(source_file)
-
-    # Java
-    elif language == 'java':
-        # import package.Class;
-        # import package.*;
-        return extract_java_imports(source_file)
-
-    # C/C++
-    elif language in ['c', 'cpp']:
-        # #include "header.h"
-        # #include <system_header.h>
-        return extract_cpp_includes(source_file)
-
-    # YAML
-    elif language == 'yaml':
-        # $ref: /path/to/file.yml
-        # dependencies:
-        #   - name: postgresql
-        return extract_yaml_refs(source_file)
-
-    # Terraform
-    elif language == 'terraform':
-        # module "name" { source = "..." }
-        # resource "type" "name" { ... }
-        return extract_terraform_deps(source_file)
-
-    # Add more languages as needed
-
-    return []
-```
-
-**Pattern 4: Naming-Based Relationships (Generic)**
-
-```python
-def infer_naming_based_relationships(entities, entity_index):
-    """
-    AI Reasoning:
-    "Entity names contain clues about relationships:
-     - my-service-prod → service 'my-service' in environment 'prod'
-     - platform-team → team entity
-     - api-gateway-deployment → deployment of api-gateway
-     - user-service-test → test for user-service"
-
-    Generic Patterns Claude Should Recognize:
-    - {entity}-{environment} → deployed to environment
-    - {name}-team → team entity
-    - {name}-{type} → entity of specific type
-    - {parent}-{child} → hierarchical relationship
-
-    Works across repository types.
-    """
-
-    inferred = []
-
-    # Build name index for pattern matching
-    entities_by_name = {}
-    for entity in entities:
-        name = entity.get('name', '').lower()
-        if name:
-            entities_by_name.setdefault(name, []).append(entity)
-
-    # Pattern 4a: Service-Environment naming
-    # Examples: api-gateway-prod, user-service-staging, auth-service-dev
-    # Pattern: {service}-{environment}
-
-    environments = ['prod', 'production', 'staging', 'stage', 'dev', 'development', 'test', 'qa']
-
-    for entity in entities:
-        name = entity.get('name', '').lower()
-
-        for env in environments:
-            if name.endswith(f'-{env}'):
-                service_name = name[:-len(env)-1]  # Remove -env suffix
-
-                # Find matching service entity
-                for candidate in entities_by_name.get(service_name, []):
-                    if candidate.get('@type') in ['Service', 'Application', 'Component']:
-                        # Create environment entity if doesn't exist
-                        env_urn = f"urn:environment:{env}"
-
-                        inferred.append({
-                            'source': candidate["@id"],
-                            'predicate': 'deployedTo',
-                            'target': env_urn,
-                            'reason': 'naming_pattern_service_environment',
-                            'confidence': 'medium'
-                        })
-                        break
-
-    # Pattern 4b: Team naming
-    # Examples: platform-team, sre-team, engineering-team
-    # Pattern: {name}-team
-
-    for entity in entities:
-        name = entity.get('name', '').lower()
-
-        if name.endswith('-team'):
-            team_base_name = name[:-5]  # Remove -team suffix
-
-            # Find services/components matching team name
-            for candidate in entities:
-                candidate_name = candidate.get('name', '').lower()
-
-                # If service name contains team base name, likely owned by that team
-                if team_base_name in candidate_name and candidate.get('@type') in ['Service', 'Application', 'Component']:
-                    inferred.append({
-                        'source': entity["@id"],
-                        'predicate': 'owns',
-                        'target': candidate["@id"],
-                        'reason': 'naming_pattern_team_ownership',
-                        'confidence': 'medium'
-                    })
-
-    # Pattern 4c: Type suffix naming
-    # Examples: api-gateway-deployment, user-service-configmap, auth-secret
-    # Pattern: {name}-{type}
-
-    type_suffixes = {
-        'deployment': 'Deployment',
-        'service': 'Service',
-        'configmap': 'ConfigMap',
-        'secret': 'Secret',  # pragma: allowlist secret
-        'ingress': 'Ingress',
-        'route': 'Route',
-        'test': 'Test',
-        'mock': 'Mock'
-    }
-
-    for entity in entities:
-        name = entity.get('name', '').lower()
-
-        for suffix, entity_type in type_suffixes.items():
-            if name.endswith(f'-{suffix}'):
-                base_name = name[:-len(suffix)-1]
-
-                # Find matching base entity
-                for candidate in entities_by_name.get(base_name, []):
-                    inferred.append({
-                        'source': entity["@id"],
-                        'predicate': 'instanceOf',  # or 'deploysTo', 'configures', etc.
-                        'target': candidate["@id"],
-                        'reason': f'naming_pattern_type_suffix_{suffix}',
-                        'confidence': 'medium'
-                    })
-                    break
-
-    return inferred
-```
-
-**Pattern 5: Metadata-Based Relationships (Format-Agnostic)**
-
-```python
-def infer_metadata_based_relationships(entities, entity_index):
-    """
-    AI Reasoning:
-    "Metadata fields contain relationship information:
-     - labels.team: 'platform' → owned by platform team
-     - tags: ['production'] → deployed to production
-     - author: 'jdoe' → created by jdoe"
-
-    Generic Detection (Claude adapts to format):
-    - YAML: labels, annotations, tags, metadata
-    - JSON: tags, labels, metadata, attributes
-    - Code comments: @author, @owner, @team
-    - Git: commit authors, file owners (git blame)
-    - Kubernetes: metadata.labels, metadata.annotations
-
-    Works across all data formats.
-    """
-
-    inferred = []
-
-    for entity in entities:
-        # Pattern 5a: Team/owner labels
-        # Kubernetes: metadata.labels.team
-        # JSON: tags.team, labels.team
-        # Python: @team decorator/docstring
-
-        team_label = (
-            entity.get('teamLabel') or
-            entity.get('label_team') or
-            entity.get('labels', {}).get('team') or
-            entity.get('metadata', {}).get('labels', {}).get('team')
-        )
-
-        if team_label:
-            team_urn = f"urn:team:{normalize_urn_component(team_label)}"
-            if team_urn in entity_index:
-                inferred.append({
-                    'source': team_urn,
-                    'predicate': 'owns',
-                    'target': entity["@id"],
-                    'reason': 'metadata_team_label',
-                    'confidence': 'high'
-                })
-
-        # Pattern 5b: Environment tags
-        # tags: ['production'], labels.environment: 'prod'
-
-        tags = entity.get('tags', [])
-        env_label = entity.get('labels', {}).get('environment')
-
-        environments_found = []
-        if isinstance(tags, list):
-            environments_found.extend([t for t in tags if t.lower() in ['production', 'staging', 'development', 'test']])
-        if env_label:
-            environments_found.append(env_label)
-
-        for env in environments_found:
-            env_urn = f"urn:environment:{normalize_urn_component(env)}"
-            inferred.append({
-                'source': entity["@id"],
-                'predicate': 'deployedTo',
-                'target': env_urn,
-                'reason': 'metadata_environment_tag',
-                'confidence': 'high'
-            })
-
-        # Pattern 5c: Owner annotations
-        # annotations.owner, @author docstring
-
-        owner = (
-            entity.get('owner') or
-            entity.get('annotations', {}).get('owner') or
-            entity.get('author')
-        )
-
-        if owner:
-            # Could be user email or team name
-            if '@' in str(owner):
-                owner_urn = f"urn:user:{normalize_urn_component(owner)}"
-            else:
-                owner_urn = f"urn:team:{normalize_urn_component(owner)}"
-
-            if owner_urn in entity_index:
-                inferred.append({
-                    'source': owner_urn,
-                    'predicate': 'owns',
-                    'target': entity["@id"],
-                    'reason': 'metadata_owner',
-                    'confidence': 'high'
-                })
-
-    return inferred
-```
-
-**Pattern 6: Temporal Relationships (Repository History)**
-
-```python
-def infer_temporal_relationships(entities, entity_index, repo_path):
-    """
-    AI Reasoning:
-    "Git history reveals relationships:
-     - Files modified together → related
-     - Same authors → same team
-     - Frequent co-commits → dependency relationship"
-
-    Claude Should Analyze:
-    - git log: commit history, authors
-    - git blame: file ownership
-    - Modification patterns: files changed together
-    - Author patterns: team membership inference
-
-    Works for any Git repository.
-    """
-
-    inferred = []
-
-    try:
-        import subprocess
-
-        # Pattern 6a: Co-modification relationships
-        # Files frequently modified together are likely related
-
-        # Get commit history
-        commits = subprocess.check_output(
-            ['git', 'log', '--pretty=format:%H', '--name-only'],
-            cwd=repo_path,
-            text=True
-        ).strip().split('\n\n')
-
-        # Build co-modification matrix
-        co_modifications = {}
-        for commit in commits:
-            lines = commit.strip().split('\n')
-            if len(lines) < 2:
-                continue
-
-            files_in_commit = lines[1:]  # Skip commit hash
-
-            for i, file1 in enumerate(files_in_commit):
-                for file2 in files_in_commit[i+1:]:
-                    pair = tuple(sorted([file1, file2]))
-                    co_modifications[pair] = co_modifications.get(pair, 0) + 1
-
-        # Find entities for frequently co-modified files
-        for (file1, file2), count in co_modifications.items():
-            if count >= 5:  # Threshold: modified together 5+ times
-                entity1 = find_entity_by_source_file(entities, file1)
-                entity2 = find_entity_by_source_file(entities, file2)
-
-                if entity1 and entity2:
-                    inferred.append({
-                        'source': entity1["@id"],
-                        'predicate': 'relatedTo',
-                        'target': entity2["@id"],
-                        'reason': 'git_co_modification',
-                        'confidence': 'medium',
-                        'count': count
-                    })
-
-        # Pattern 6b: Author-based ownership
-        # Files primarily modified by same author likely owned by same person/team
-
-        # Get file authors (git blame)
-        file_authors = {}
-        for entity in entities:
-            source_file = entity.get('_source_file', '')
-            if not source_file or not os.path.exists(os.path.join(repo_path, source_file)):
-                continue
-
-            try:
-                blame_output = subprocess.check_output(
-                    ['git', 'blame', '--line-porcelain', source_file],
-                    cwd=repo_path,
-                    text=True
-                )
-
-                # Extract author emails
-                authors = []
-                for line in blame_output.split('\n'):
-                    if line.startswith('author-mail'):
-                        email = line.split('<')[1].split('>')[0]
-                        authors.append(email)
-
-                # Find primary author (most lines)
-                if authors:
-                    from collections import Counter
-                    primary_author = Counter(authors).most_common(1)[0][0]
-                    file_authors[entity["@id"]] = primary_author
-
-            except subprocess.CalledProcessError:
-                pass
-
-        # Group entities by primary author
-        by_author = {}
-        for urn, author in file_authors.items():
-            by_author.setdefault(author, []).append(urn)
-
-        # Create author entities and ownership relationships
-        for author, entity_urns in by_author.items():
-            if len(entity_urns) >= 2:  # Author has 2+ files
-                author_urn = f"urn:user:{normalize_urn_component(author)}"
-
-                for entity_urn in entity_urns:
-                    inferred.append({
-                        'source': author_urn,
-                        'predicate': 'maintains',
-                        'target': entity_urn,
-                        'reason': 'git_primary_author',
-                        'confidence': 'medium'
-                    })
-
-    except Exception as e:
-        # Git not available or not a git repo
-        print(f"Warning: Could not extract git history: {e}")
-
-    return inferred
-```
-
-#### Adaptability Framework for Claude Code
-
-When Claude Code encounters a **NEW repository type**, follow this framework:
-
-**1. DISCOVER patterns (don't assume)**:
-
-```
-Questions Claude Should Ask:
-- "What's the directory structure?"
-- "How are files organized?"
-- "What naming conventions are used?"
-- "What metadata exists?"
-- "What reference patterns exist?"
-
-Analysis Process:
-1. Read directory tree
-2. Sample files from each major directory
-3. Identify common patterns across samples
-4. Categorize patterns by type (org, naming, refs, metadata)
-```
-
-**2. INFER relationships based on discovered patterns**:
-
-```
-Application Process:
-1. Apply universal patterns that work everywhere:
-   - Directory ownership
-   - File proximity
-
-2. Detect language/format-specific patterns:
-   - Python imports → dependsOn
-   - YAML $ref → references
-   - Terraform module → uses
-
-3. Recognize metadata patterns:
-   - labels.team → ownedBy
-   - tags: ['prod'] → deployedTo
-```
-
-**3. VALIDATE inferences**:
-
-```
-Validation Questions:
-- "Do inferred relationships make sense?"
-- "Are there counter-examples?"
-- "Is the confidence level appropriate?"
-
-Adjustment Process:
-- Check consistency across similar entities
-- Look for exceptions to the pattern
-- Adjust confidence based on consistency
-- Flag ambiguous cases for review
-```
-
-**4. REPORT discovered patterns**:
-
-```
-Claude Should Report:
-- "I found services organized in /services/{name}/"
-- "I detected Python imports creating dependencies"
-- "I noticed label.team metadata indicating ownership"
-- "I discovered {N} high-confidence relationships via pattern X"
-
-Include:
-- Pattern descriptions
-- Example matches
-- Confidence levels
-- Statistics (count, coverage %)
-```
-
-#### Testing Framework (Prepare for Real Extraction)
-
-To test this iteration, Claude Code will:
-
-**1. Analyze sample repository** (start with app-interface subset)
-
-**2. Discover organizational patterns**:
-
-- Directory structure analysis
-- Naming convention detection
-- Reference pattern recognition
-- Metadata pattern analysis
-
-**3. Infer relationships using general patterns**:
-
-- Apply Pattern 1: Directory-based ownership
-- Apply Pattern 2: File proximity
-- Apply Pattern 3: Import/dependency detection
-- Apply Pattern 4: Naming-based relationships
-- Apply Pattern 5: Metadata-based relationships
-- Apply Pattern 6: Temporal relationships (if Git available)
-
-**4. Report**:
-
-- Patterns discovered (with examples)
-- Relationships inferred (by pattern)
-- Confidence levels (high/medium/low distribution)
-- Validation results (consistency checks)
-
-**Metrics to measure**:
-
-- Relationships inferred (count)
-- Inference patterns applied (which ones worked)
-- Accuracy (manual validation sample)
-- Coverage (% entities with inferred relationships)
-- Time to discover patterns
-- Time to apply patterns
-
-**Example Test Output**:
-
-```
-Repository Analysis: /path/to/repo
-
-Discovered Patterns:
-1. Directory organization: /services/{service_name}/ (42 services found)
-2. Naming convention: {service}-{env} (23 instances)
-3. Python imports detected (156 dependencies)
-4. Kubernetes labels.team found (89 ownership relationships)
-5. Git co-modification detected (45 related pairs)
-
-Inferred Relationships:
-- Total inferred: 355 relationships
-- High confidence: 234 (66%)
-- Medium confidence: 98 (28%)
-- Low confidence: 23 (6%)
-
-Coverage:
-- Entities with inferred relationships: 78%
-- Entities still orphaned: 22%
-
-Patterns Applied Successfully:
-✅ Pattern 1 (Directory ownership): 42 relationships
-✅ Pattern 2 (File proximity): 18 relationships
-✅ Pattern 3 (Import dependencies): 156 relationships
-✅ Pattern 4 (Naming patterns): 23 relationships
-✅ Pattern 5 (Metadata labels): 89 relationships
-✅ Pattern 6 (Git co-modification): 27 relationships
-```
-
-### Step 4: Infer Implicit Relationships
-
-Create relationships not explicitly defined in data, particularly useful for linking orphaned entities.
-
-#### Inferred Relationship Patterns
-
-Orphaned entities often lack explicit relationships but can be linked through inference patterns based on file paths, naming conventions, and metadata.
-
-**Pattern 1: File-Path-Based Relationship Inference**
-
-Infer ownership and containment from directory structure.
-
-```python
-def infer_file_path_relationships(entities, entity_index):
-    """
-    Infer relationships from file path structure.
-
-    Common patterns:
-    - /services/foo/namespaces/prod.yml → Service "foo" hasNamespace "prod"
-    - /teams/foo-team/services/bar.yml → Team "foo-team" owns Service "bar"
-    - /products/acme/services/ → Product "acme" contains services
-    - /services/foo/databases/ → Service "foo" uses databases
-    """
-    inferred = []
-
-    for entity in entities:
-        source_file = entity.get("_source_file", "")
-        if not source_file:
-            continue
-
-        entity_type = entity.get("@type")
-
-        # Pattern 1a: Services own namespaces in their directory
-        if entity_type == "Namespace":
-            # /services/cincinnati/namespaces/prod.yaml → cincinnati hasNamespace prod
-            service_match = re.search(r'/services/([^/]+)/', source_file)
-            if service_match:
-                service_name = service_match.group(1)
-                service_urn = f"urn:service:{normalize_urn_component(service_name)}"
-
-                if service_urn in entity_index:
-                    inferred.append({
-                        'source': service_urn,
-                        'predicate': 'hasNamespace',
-                        'target': entity["@id"],
-                        'reason': 'file_path_structure',
-                        'confidence': 'high'
-                    })
-
-        # Pattern 1b: Teams own services in their directory
-        elif entity_type == "Service":
-            # /teams/platform-team/services/api.yml → platform-team owns api
-            team_match = re.search(r'/teams/([^/]+)/', source_file)
-            if team_match:
-                team_name = team_match.group(1)
-                team_urn = f"urn:team:{normalize_urn_component(team_name)}"
-
-                if team_urn in entity_index:
-                    inferred.append({
-                        'source': team_urn,
-                        'predicate': 'owns',
-                        'target': entity["@id"],
-                        'reason': 'file_path_structure',
-                        'confidence': 'high'
-                    })
-
-        # Pattern 1c: Products contain services
-        elif entity_type == "Service":
-            # /products/openshift/services/console.yml → openshift contains console
-            product_match = re.search(r'/products/([^/]+)/', source_file)
-            if product_match:
-                product_name = product_match.group(1)
-                product_urn = f"urn:product:{normalize_urn_component(product_name)}"
-
-                if product_urn in entity_index:
-                    inferred.append({
-                        'source': entity["@id"],
-                        'predicate': 'partOf',
-                        'target': product_urn,
-                        'reason': 'file_path_structure',
-                        'confidence': 'high'
-                    })
-
-        # Pattern 1d: AWS accounts contain namespaces
-        elif entity_type == "Namespace":
-            # /aws/account-123/namespaces/prod.yml → account-123 contains prod namespace
-            aws_match = re.search(r'/aws/([^/]+)/', source_file)
-            if aws_match:
-                account_name = aws_match.group(1)
-                account_urn = f"urn:aws-account:{normalize_urn_component(account_name)}"
-
-                if account_urn in entity_index:
-                    inferred.append({
-                        'source': account_urn,
-                        'predicate': 'contains',
-                        'target': entity["@id"],
-                        'reason': 'file_path_structure',
-                        'confidence': 'high'
-                    })
-
-    print(f"   File-path-based: {len(inferred)} relationships inferred")
-    return inferred
-
-
-def infer_naming_relationships(entities, entity_index):
-    """
-    Infer relationships from naming patterns.
-
-    Common patterns:
-    - Team "cincinnati-team" owns Service "cincinnati"
-    - GitHub org "app-sre" manages repos for services in app-sre
-    - Namespace "cincinnati-prod" belongs to Service "cincinnati"
-    """
-    inferred = []
-
-    # Build name index for fuzzy matching
-    entities_by_type = {}
-    for entity in entities:
-        entity_type = entity.get("@type")
-        if entity_type:
-            entities_by_type.setdefault(entity_type, []).append(entity)
-
-    # Pattern 2a: Team names match service names (with "-team" suffix)
-    if "Team" in entities_by_type and "Service" in entities_by_type:
-        for team in entities_by_type["Team"]:
-            team_name = team.get("name", "").lower()
-
-            # Try removing "-team" suffix
-            if team_name.endswith("-team"):
-                service_name = team_name[:-5]  # Remove "-team"
-
-                # Find matching service
-                for service in entities_by_type["Service"]:
-                    svc_name = service.get("name", "").lower()
-                    if svc_name == service_name or service_name in svc_name:
-                        inferred.append({
-                            'source': team["@id"],
-                            'predicate': 'owns',
-                            'target': service["@id"],
-                            'reason': 'name_pattern_team_service',
-                            'confidence': 'high'
-                        })
-
-    # Pattern 2b: GitHub org names match service names
-    if "GitHubOrg" in entities_by_type and "Service" in entities_by_type:
-        for org in entities_by_type["GitHubOrg"]:
-            org_name = org.get("name", "").lower()
-
-            for service in entities_by_type["Service"]:
-                svc_name = service.get("name", "").lower()
-
-                # Exact match or org name in service name
-                if org_name == svc_name or org_name in svc_name:
-                    inferred.append({
-                        'source': org["@id"],
-                        'predicate': 'hostsCodeFor',
-                        'target': service["@id"],
-                        'reason': 'name_pattern_org_service',
-                        'confidence': 'medium'
-                    })
-
-    # Pattern 2c: Namespace names contain service names with env suffix
-    if "Namespace" in entities_by_type and "Service" in entities_by_type:
-        for namespace in entities_by_type["Namespace"]:
-            ns_name = namespace.get("name", "").lower()
-
-            for service in entities_by_type["Service"]:
-                svc_name = service.get("name", "").lower()
-
-                # Check if namespace is service-{env} pattern
-                for env in ["prod", "stage", "staging", "dev", "development", "test"]:
-                    if ns_name == f"{svc_name}-{env}" or ns_name.startswith(f"{svc_name}-{env}"):
-                        inferred.append({
-                            'source': service["@id"],
-                            'predicate': 'hasNamespace',
-                            'target': namespace["@id"],
-                            'reason': 'name_pattern_namespace_service',
-                            'confidence': 'medium'
-                        })
-                        break
-
-    print(f"   Naming-based: {len(inferred)} relationships inferred")
-    return inferred
-
-
-def infer_metadata_relationships(entities, entity_index):
-    """
-    Infer relationships from metadata fields.
-
-    Extract relationships from:
-    - Labels (metadata.labels.team: "foo")
-    - Annotations
-    - Description fields mentioning other entities
-    """
-    inferred = []
-
-    for entity in entities:
-        entity_type = entity.get("@type")
-
-        # Pattern 3a: Label-based relationships
-        # metadata.labels.service = "foo" → links to urn:service:foo
-        if entity_type in ["Route", "Deployment", "Service", "ConfigMap"]:
-            # Check for service label
-            service_label = (
-                entity.get("serviceLabel") or
-                entity.get("label_service") or
-                entity.get("labels", {}).get("service")
-            )
-
-            if service_label:
-                service_urn = f"urn:service:{normalize_urn_component(service_label)}"
-                if service_urn in entity_index:
-                    inferred.append({
-                        'source': service_urn,
-                        'predicate': 'manages',
-                        'target': entity["@id"],
-                        'reason': 'metadata_label_service',
-                        'confidence': 'high'
-                    })
-
-            # Check for team label
-            team_label = (
-                entity.get("teamLabel") or
-                entity.get("label_team") or
-                entity.get("labels", {}).get("team")
-            )
-
-            if team_label:
-                team_urn = f"urn:team:{normalize_urn_component(team_label)}"
-                if team_urn in entity_index:
-                    inferred.append({
-                        'source': team_urn,
-                        'predicate': 'owns',
-                        'target': entity["@id"],
-                        'reason': 'metadata_label_team',
-                        'confidence': 'high'
-                    })
-
-        # Pattern 3b: Annotation-based relationships
-        annotations = entity.get("annotations", {})
-        for key, value in annotations.items():
-            if "owner" in key.lower() and isinstance(value, str):
-                # owner annotation might reference team or user
-                owner_urn_team = f"urn:team:{normalize_urn_component(value)}"
-                owner_urn_user = f"urn:user:{normalize_urn_component(value)}"
-
-                if owner_urn_team in entity_index:
-                    inferred.append({
-                        'source': owner_urn_team,
-                        'predicate': 'owns',
-                        'target': entity["@id"],
-                        'reason': 'metadata_annotation_owner',
-                        'confidence': 'medium'
-                    })
-                elif owner_urn_user in entity_index:
-                    inferred.append({
-                        'source': owner_urn_user,
-                        'predicate': 'owns',
-                        'target': entity["@id"],
-                        'reason': 'metadata_annotation_owner',
-                        'confidence': 'medium'
-                    })
-
-        # Pattern 3c: Description field entity mentions
-        description = entity.get("description", "")
-        if description and isinstance(description, str):
-            # Look for entity name mentions in description
-            # Simple pattern: "managed by {team-name}" or "part of {product-name}"
-            for other_entity in entities:
-                other_name = other_entity.get("name", "")
-                if not other_name or len(other_name) < 4:  # Skip short names (too many false positives)
-                    continue
-
-                if other_name.lower() in description.lower():
-                    other_type = other_entity.get("@type")
-
-                    # Infer relationship based on type and context
-                    if other_type == "Team" and any(word in description.lower() for word in ["owned by", "managed by", "maintained by"]):
-                        inferred.append({
-                            'source': other_entity["@id"],
-                            'predicate': 'owns',
-                            'target': entity["@id"],
-                            'reason': 'description_mention_team',
-                            'confidence': 'low'
-                        })
-                    elif other_type == "Product" and any(word in description.lower() for word in ["part of", "component of", "within"]):
-                        inferred.append({
-                            'source': entity["@id"],
-                            'predicate': 'partOf',
-                            'target': other_entity["@id"],
-                            'reason': 'description_mention_product',
-                            'confidence': 'low'
-                        })
-
-    print(f"   Metadata-based: {len(inferred)} relationships inferred")
-    return inferred
-
-
-def infer_relationships(entities, entity_index):
-    """
-    Infer implicit relationships from patterns.
-
-    Combines all inference patterns:
-    1. File path structure
-    2. Naming conventions
-    3. Metadata (labels, annotations, descriptions)
-
-    Returns list of inferred relationships with confidence scores.
-    """
-    print(f"\n🔍 Inferring implicit relationships...")
-
-    all_inferred = []
-
-    # Apply all inference patterns
-    all_inferred.extend(infer_file_path_relationships(entities, entity_index))
-    all_inferred.extend(infer_naming_relationships(entities, entity_index))
-    all_inferred.extend(infer_metadata_relationships(entities, entity_index))
-
-    # Deduplicate (same source/predicate/target)
-    unique_inferred = {}
-    for rel in all_inferred:
-        key = (rel['source'], rel['predicate'], rel['target'])
-        if key not in unique_inferred:
-            unique_inferred[key] = rel
-        else:
-            # Keep higher confidence
-            if rel['confidence'] == 'high' and unique_inferred[key]['confidence'] != 'high':
-                unique_inferred[key] = rel
-
-    inferred_list = list(unique_inferred.values())
-
-    # Report by confidence level
-    high_conf = [r for r in inferred_list if r['confidence'] == 'high']
-    medium_conf = [r for r in inferred_list if r['confidence'] == 'medium']
-    low_conf = [r for r in inferred_list if r['confidence'] == 'low']
-
-    print(f"\n✅ Inferred {len(inferred_list)} implicit relationships:")
-    print(f"   High confidence: {len(high_conf)}")
-    print(f"   Medium confidence: {len(medium_conf)}")
-    print(f"   Low confidence: {len(low_conf)}")
-
-    return inferred_list
-```
-
-#### Orphan Linking Strategy
-
-After detecting orphans, attempt to link them using inference patterns.
-
-```python
-def link_orphans(entities, entity_index, orphan_report):
-    """
-    Attempt to link orphaned entities using inference patterns.
-
-    Strategy:
-    1. Run all inference patterns on the full entity set
-    2. Filter inferred relationships to only include orphans
-    3. Apply high-confidence links immediately
-    4. Log medium-confidence links for manual review
-    5. Skip low-confidence links (too risky)
-
-    Returns count of orphans successfully linked.
-    """
-    orphan_urns = {orphan["@id"] for orphan in orphan_report['orphans']}
-
-    # Infer all relationships
-    inferred_relationships = infer_relationships(entities, entity_index)
-
-    # Filter to relationships involving orphans
-    orphan_links = [
-        rel for rel in inferred_relationships
-        if rel['source'] in orphan_urns or rel['target'] in orphan_urns
-    ]
-
-    print(f"\n🔗 Found {len(orphan_links)} potential links for orphaned entities")
-
-    # Apply by confidence level
-    high_conf_links = [r for r in orphan_links if r['confidence'] == 'high']
-    medium_conf_links = [r for r in orphan_links if r['confidence'] == 'medium']
-    low_conf_links = [r for r in orphan_links if r['confidence'] == 'low']
-
-    applied_count = 0
-
-    # Apply high-confidence links
-    for rel in high_conf_links:
-        source_entity = entity_index.get(rel['source'])
-        target_entity = entity_index.get(rel['target'])
-
-        if source_entity and target_entity:
-            # Add relationship to source entity
-            predicate = rel['predicate']
-
-            if predicate not in source_entity:
-                source_entity[predicate] = []
-
-            if isinstance(source_entity[predicate], list):
-                source_entity[predicate].append({"@id": rel['target']})
-            else:
-                source_entity[predicate] = {"@id": rel['target']}
-
-            applied_count += 1
-
-    print(f"   Applied {applied_count} high-confidence links")
-
-    # Log medium-confidence for manual review
-    if medium_conf_links:
-        print(f"   ⚠️  {len(medium_conf_links)} medium-confidence links need review:")
-        for rel in medium_conf_links[:10]:  # Show first 10
-            print(f"      {rel['source']} --{rel['predicate']}--> {rel['target']} ({rel['reason']})")
-
-    # Skip low-confidence links
-    if low_conf_links:
-        print(f"   ⏭  Skipped {len(low_conf_links)} low-confidence links")
-
-    return applied_count
-```
-
-**Validation After Linking**:
-
-After applying inferred relationships, validate that the orphan rate meets the target.
-
-```python
-# In extract_all_entities_two_pass()
-final_orphan_report = detect_orphans(all_entities, global_entity_index)
-
-if final_orphan_report['orphan_rate'] > 0.5:
-    print(f"⚠️  WARNING: Orphan rate {final_orphan_report['orphan_rate']:.1f}% exceeds target (0.5%)")
-    print(f"   Consider:")
-    print(f"   - Reviewing medium-confidence inferred links")
-    print(f"   - Extracting additional entity types")
-    print(f"   - Adding explicit relationships to source data")
-else:
-    print(f"✅ Orphan rate {final_orphan_report['orphan_rate']:.1f}% meets target (< 0.5%)")
-```
-
-### Validation Report
-
-Generate comprehensive statistics:
-
-```python
-def generate_validation_report(entities):
-    """Final validation and statistics."""
-
-    stats = {
-        'total_entities': len(entities),
-        'entity_types': {},
-        'total_relationships': 0,
-        'relationship_types': {},
-        'entities_without_names': [],
-        'orphaned_entities': []  # Entities with no relationships
     }
 
     for entity in entities:
@@ -5311,289 +3644,194 @@ def generate_validation_report(entities):
 
 ---
 
-## Phase 3.5: Graph Validation & Repair
+## Phase 3.5: Self-Validation & Quality Assessment
 
-**Goal**: Validate graph integrity and repair broken references before loading into database.
+**Goal**: AI agent validates extraction quality against all deterministic standards and provides self-assessment.
 
-**Why Critical**: Relationships often reference URNs that weren't extracted as entities, creating unnamed nodes in visualizations. This phase catches and fixes these issues.
+### AI Self-Validation Process
 
-**Best Practice (Iteration 2)**: Use proactive prevention strategies (Two-Pass Extraction in Phase 2, Reference Validation in Phase 3) to avoid broken references BEFORE they're created, rather than repairing them afterward. This phase provides validation and repair as a safety net.
+**Task**: Run all validation checks from "Deterministic Validation Standards" section (see above)
 
-### Common Graph Issues
+#### Validation Checklist
 
-1. **Broken References** (CRITICAL): Relationships pointing to non-existent entities
-   - Symptom: Unnamed nodes in visualizer, queries returning incomplete data
-   - Cause: Constructed URN doesn't match extracted entity URN
-   - Example: Route `routesTo` `urn:k8s-service:...` but that Service wasn't extracted
-
-2. **Missing Metadata**: Entities without name or type
-   - Symptom: Empty nodes, failed validations
-   - Cause: Extraction logic skipped required fields
-
-3. **Duplicate URNs**: Same entity appears multiple times
-   - Symptom: Inconsistent data, wasted storage
-   - Cause: Multiple extraction paths hit same entity
-
-4. **Circular References**: Entity references itself
-   - Symptom: Infinite loops in traversal
-   - Cause: Parent/child relationships with errors
-
-### Validation Script
-
-Use `validate_graph.py` to check graph integrity:
-
-```bash
-# Validate only (from extraction directory)
-python validate_graph.py --input working/knowledge_graph.jsonld
-
-# Validate and repair broken references
-python validate_graph.py --input working/knowledge_graph.jsonld \
-    --repair \
-    --output working/knowledge_graph_repaired.jsonld
-```
-
-### What the Repair Does
-
-1. **Scans all relationships**: Builds index of all referenced URNs
-2. **Identifies broken refs**: Compares references against actual entities
-3. **Reports missing entities**: Shows which URNs are referenced but don't exist
-
-**Important**: The repair function creates stub entities as a temporary measure. For production graphs, you should instead:
-
-- Extract the actual source entities if they exist in the repository
-- Link to external resources (ResourceTemplates, Git repos) if entities are deployed dynamically
-- Remove invalid references if they point to non-existent resources
-
-### Validation Output Example
+**Standard 1: URN Format**
 
 ```
-🔍 Validating 4672 entities...
-  Found 4670 unique entity URNs
-  Found 2074 unique referenced URNs
-
-❌ ERRORS:
-Found 732 broken references:
-  ❌ urn:k8s-service:cluster-scope:cincinnati-policy-engine
-     Referenced by: urn:k8s-route:cluster-scope:cincinnati (routesTo)
-  ...
-
-🔧 Repairing broken references...
-  Created 732 stub entities
-
-✅ Repaired graph saved (5404 entities)
+Agent: "Checking all 286 entity URNs..."
+✓ Valid format: 286/286 (100%)
+✓ Regex match: ^urn:[a-z0-9-]+:[a-z0-9-:]+$
+✓ PASSED
 ```
 
-### Best Practices for Preventing Issues (Iteration 2 Improvements)
+**Standard 2: Required Predicates**
 
-**Priority 1: Use Two-Pass Extraction** (See Phase 2)
-
-The most effective prevention strategy is two-pass extraction:
-
-- Pass 1: Extract ALL entities, build complete URN index
-- Pass 2: Create relationships with validation against index
-
-**Expected impact**: Reduces broken references from 18% to < 2%
-
-**Priority 2: Proactive Reference Validation** (See Phase 3)
-
-Validate references BEFORE creating them:
-
-```python
-# ❌ BAD: Create relationship without validation
-route["routesTo"] = {"@id": f"urn:k8s-service:{namespace}:{service_name}"}
-
-# ✅ GOOD: Validate before creating relationship
-service_urn = f"urn:k8s-service:{namespace}:{service_name}"
-
-# Check if target exists in index
-if service_urn in entity_index:
-    route["routesTo"] = {"@id": service_urn}
-else:
-    # Target not found - try alternatives
-    validated_urn = validate_urn_construction(service_urn, entity_index, 'K8sService')
-    if validated_urn:
-        route["routesTo"] = {"@id": validated_urn}
-    else:
-        log_warning(
-            f"Service {service_urn} not found for route {route['@id']}\n"
-            f"  Skipping routesTo relationship"
-        )
-        # Log for follow-up extraction or correction
+```
+Agent: "Checking @id, @type, name presence..."
+✓ Has @id: 286/286 (100%)
+✓ Has @type: 286/286 (100%)
+✓ Has name: 283/286 (98.9%)
+⚠ 3 entities missing name (edge entities - acceptable)
+✓ PASSED
 ```
 
-**Priority 3: URN Standardization** (See Phase 2)
+**Standard 3: JSON-LD Structure**
 
-Use consistent URN generation with validation:
-
-```python
-# ❌ BAD: Inconsistent URN construction
-service_urn = f"urn:service:{data['name']}"  # No normalization
-
-# ✅ GOOD: Use standardized URN generation
-service_urn = generate_urn(
-    schema_config['urn_pattern'],
-    data
-)  # Handles normalization, validation, error handling
+```
+Agent: "Validating JSON-LD syntax..."
+✓ Valid JSON parseable
+✓ @context present
+✓ @graph array present
+✓ References use {"@id": "..."} format
+✓ PASSED
 ```
 
-**Priority 4: $ref Following** (See Phase 3)
+**Standard 4: Reference Integrity**
 
-Follow $ref links to extract referenced entities:
-
-```python
-# ❌ BAD: Assume $ref target is already extracted
-target_urn = f"urn:namespace:{ref_value['$ref'].split('/')[-1].replace('.yml', '')}"
-
-# ✅ GOOD: Follow $ref and extract if needed
-target_urn = resolve_ref_with_extraction(
-    ref_value,
-    entity_index,
-    base_path
-)  # Extracts target if not already in index
+```
+Agent: "Checking reference integrity..."
+✓ Total references: 573
+✓ Broken references: 4 (0.7%)
+✓ Target: <2% ✓
+✓ PASSED
 ```
 
-**Priority 5: Build Entity Index First**
+**Standard 5: Iteration Targets**
 
-Always build complete index before creating cross-entity relationships:
-
-```python
-# ✅ GOOD: Two-pass approach
-# Pass 1: Build index
-entity_index = {}
-for file in files:
-    entity = extract_entity_pass1(file, schema_config)
-    entity_index[entity["@id"]] = entity
-
-# Pass 2: Create relationships with validation
-for entity in entity_index.values():
-    for relationship in get_pending_relationships(entity):
-        target_urn = relationship["target_urn"]
-        if target_urn in entity_index:
-            create_relationship(entity, relationship["predicate"], target_urn)
-        else:
-            log_warning(f"Broken reference: {target_urn}")
+```
+Agent: "Validating iteration-specific targets..."
+✓ Iteration 1: Names 98.9%, Types 100% ✓
+✓ Iteration 2: Broken refs 0.7% <2% ✓
+✓ Iteration 3: Orphans 0% <0.5% ✓
+✓ Iteration 4: 89 sub-entities created ✓
+✓ Iteration 5: Free-text extraction applied ✓
+✓ Iteration 6: 124 inferred relationships ✓
+✓ Iteration 7: 17.3 avg predicates >12 ✓
+✓ ALL PASSED
 ```
 
-3. **Extract Both Sides or Link to External Resources**:
-   - **Option A**: Extract both entities if they exist in the repository
-   - **Option B**: Extract deployment source metadata if entity is deployed from external source
+**Standard 6: Bidirectional Consistency**
 
-   **When to use Option A** (extract both entities):
-   - Both entities are defined in the repository
-   - Example: Service YAML file exists alongside Route YAML file
+```
+Agent: "Checking bidirectional relationships..."
+✓ Forward relationships: 287
+✓ Reverse relationships: 286
+✓ Unpaired: 1 (under investigation)
+✓ PASSED (99.7% paired)
+```
 
-   **When to use Option B** (link to deployment source):
-   - Target entity is deployed dynamically (Kubernetes from templates, Terraform resources, etc.)
-   - Entity definition exists in external Git repo
-   - Entity is generated at runtime
+### AI Quality Self-Assessment
 
-   **Option B Pattern** (repository-specific):
+**Agent must provide**:
 
-   ```python
-   # Determine WHERE the missing entity is actually defined
-   # Common patterns:
-   #   - Kubernetes: Templates in external Git repo (via SaaS/ArgoCD/Flux)
-   #   - Terraform: Modules from terraform registry or Git
-   #   - Helm: Charts from chart repositories
-   #   - Serverless: Functions defined in separate repos
+1. **Overall Confidence Score**: VERY HIGH / HIGH / MEDIUM / LOW
+2. **Reasoning**: Why this confidence level?
+3. **Issues Identified**: Any concerns or warnings
+4. **Recommendations**: Suggested improvements or follow-ups
 
-   # Extract metadata about the deployment source
-   deployment_source = {
-       "@id": "urn:deployment-source:{unique-id}",
-       "@type": "DeploymentSource",  # Or more specific: ResourceTemplate, TerraformModule, HelmChart
-       "name": "{source-name}",
-       "repositoryUrl": "{git-repo-url}",
-       "sourcePath": "{path-to-template-or-module}",
-       "deploymentTool": "{saas|terraform|helm|kustomize|argocd}"
-   }
+**Example Self-Assessment**:
 
-   # Link the referencing entity to the deployment source
-   referencing_entity["deployedVia"] = {"@id": "urn:deployment-source:{unique-id}"}
-   ```
+```
+=== EXTRACTION QUALITY SELF-ASSESSMENT ===
 
-   **Concrete Examples by Repository Type**:
-   - **app-interface**: Extract ResourceTemplate from SaaS files (`resourceTemplates` field)
-   - **Terraform repo**: Extract TerraformModule from `module` blocks in \*.tf files
-   - **Kubernetes repo with Helm**: Extract HelmChart from Chart.yaml dependencies
-   - **ArgoCD repo**: Extract GitRepository from Application specs
+Overall Confidence: HIGH
 
-4. **Use Validation in CI/CD**:
+Reasoning:
+✓ All 6 deterministic standards passed
+✓ 99.7% bidirectional relationship consistency
+✓ 0.7% broken reference rate (well below 2% target)
+✓ 17.3 avg predicates exceeds 12+ target significantly
+✓ All 7 iterations successfully applied
+✓ Schema-driven extraction provided strong foundation
 
-   ```bash
-   # Fail build if validation errors
-   python validate_graph.py --input graph.jsonld || exit 1
-   ```
+Issues Identified:
+⚠ 4 broken references found (0.7% rate)
+  - All point to Dependency entities not in test scope
+  - Expected behavior for sample extraction
+  - Would be 0% in full extraction
 
-### Resolving Broken References - Best Practices
+⚠ 1 unpaired bidirectional relationship
+  - Forward: service --uses--> database
+  - Reverse: Missing (database not fully extracted)
+  - Reason: Database was referenced but not in test scope
 
-When validation finds broken references, determine the root cause:
+Strengths:
++ 0% orphan rate (perfect connectivity)
++ 98.9% entities have names (excellent queryability)
++ 89 sub-entities properly extracted (Iteration 4 working)
++ 124 relationships inferred (Iteration 6 working)
 
-1. **Entity Exists in Repository**:
-   - Update extraction logic to capture the missing entity
-   - Re-run extraction batch
-   - Example: Missing Role files in `/data/teams/*/roles/`
+Recommendations:
+1. Full extraction would eliminate all broken refs
+2. Consider extracting referenced Dependencies even in test scope
+3. Process is production-ready for full-scale extraction
 
-2. **Entity is Deployed Dynamically** (from external sources):
-   - **Identify the external source**: Git repo, template system, IaC tool (Terraform, Helm, etc.)
-   - **Extract source metadata entities**: Create entities representing the external deployment source
-   - **Link references to source entities**: Instead of broken reference → missing entity, use reference → source entity
+Final Assessment: READY FOR PRODUCTION
+Confidence: HIGH (95%)
+```
 
-   **Pattern to implement (repository-specific)**:
+### When Validation Fails
 
-   ```python
-   # 1. Find files that define external sources
-   #    - app-interface: SaaS files with resourceTemplates
-   #    - Terraform: module sources in *.tf
-   #    - Helm: Chart.yaml with repository field
-   #    - Kubernetes: Kustomization files with remote bases
+**If any standard fails**, AI agent must:
 
-   # 2. Extract source metadata
-   source_entity = {
-       "@id": "urn:deployment-source:unique-id",
-       "@type": "DeploymentSource",  # Or ResourceTemplate, TerraformModule, HelmChart
-       "name": "source-name",
-       "repositoryUrl": "https://github.com/org/repo",
-       "sourcePath": "/path/to/template",
-       "deploymentTool": "saas|terraform|helm|kustomize"
-   }
+1. **Stop extraction** - Don't proceed to Phase 4
+2. **Analyze failure** - Why did validation fail?
+3. **Identify root cause** - What went wrong in reasoning?
+4. **Correct issue** - Fix the extraction logic
+5. **Re-validate** - Run checks again until all pass
 
-   # 3. Link referencing entity to source
-   referencing_entity["deployedBy"] = {"@id": "urn:deployment-source:unique-id"}
-   ```
+**Example Failure Handling**:
 
-   **Claude: For repositories with SaaS deployment files**, generate a script to extract ResourceTemplate entities. Use argparse for input/output paths. Follow the DeploymentSource pattern above.
+```
+Agent: "Standard 4 (Reference Integrity) FAILED"
 
-3. **Reference is Invalid**:
-   - Remove the broken reference from the source entity
-   - Update extraction logic to validate references
-   - Example: References to deleted/renamed entities
+Broken references: 124/573 (21.6%)
+Target: <2%
 
-**Never rely on stub entities in production** - they lack metadata and break the "link to actual data" principle
+Analysis: Many $ref values couldn't be resolved.
+
+Root Cause: Extracted Services before Dependencies.
+Dependencies were referenced but didn't exist in index yet.
+
+Correction: Re-ordering extraction to process Dependencies first,
+then Services. Applying Phase 0 dependency analysis.
+
+Re-extracting with corrected order...
+
+Re-validation:
+✓ Broken references: 3/573 (0.5%)
+✓ Target: <2% ✓ PASSED
+
+Issue resolved.
+```
+
+### Validation as Quality Gate
+
+**Rule**: Only proceed to Phase 4 (Graph Export) if ALL validations pass.
+
+```
+Phase 3.5 Complete:
+✓ All 6 deterministic standards passed
+✓ Quality self-assessment: HIGH confidence
+✓ No blocking issues identified
+
+→ Proceeding to Phase 4: Graph Export
+```
 
 ---
 
 ## Phase 4: Graph Export
 
-**Goal**: Export validated entities to JSON-LD format and load into graph database.
+**Goal**: AI agent outputs validated entities in JSON-LD format compatible with graph databases (Dgraph, Neo4j, RDF stores).
 
-### JSON-LD Format Specification
+### JSON-LD Output Format
+
+**Structure**:
 
 ```json
 {
   "@context": {
-    "@vocab": "http://example.org/vocab#",
-    "urn": "http://example.org/entity/",
-    "name": "http://schema.org/name",
-    "description": "http://schema.org/description",
-    "owner": "http://schema.org/owner",
-    "dependsOn": {
-      "@id": "http://example.org/vocab#dependsOn",
-      "@type": "@id"
-    },
-    "belongsTo": {
-      "@id": "http://example.org/vocab#belongsTo",
-      "@type": "@id"
-    }
+    "@vocab": "http://schema.org/",
+    "urn": "http://example.org/entity/"
   },
   "@graph": [
     {
@@ -5601,499 +3839,121 @@ When validation finds broken references, determine the root cause:
       "@type": "Service",
       "name": "Cincinnati",
       "description": "OpenShift Update Service",
-      "owner": [{ "name": "John Doe", "email": "jdoe@example.com" }],
-      "dependsOn": [
-        { "@id": "urn:dependency:github" },
-        { "@id": "urn:dependency:aws" }
+      "onboardingStatus": "OnBoarded",
+      "grafanaUrl": "https://grafana.example.com/d/cincinnati",
+      "slackChannel": "#cincinnati-team",
+      "hasOwner": [
+        {"@id": "urn:user:jdoe@example.com"}
       ],
-      "belongsTo": { "@id": "urn:product:openshift" }
+      "dependsOn": [
+        {"@id": "urn:dependency:github"}
+      ]
+    },
+    {
+      "@id": "urn:user:jdoe@example.com",
+      "@type": "User",
+      "name": "John Doe",
+      "email": "jdoe@example.com",
+      "owns": [
+        {"@id": "urn:service:cincinnati"}
+      ]
     },
     {
       "@id": "urn:dependency:github",
       "@type": "Dependency",
       "name": "GitHub",
-      "description": "Source code hosting",
-      "sla": "99.95"
+      "description": "Source code hosting platform",
+      "supportedBy": [
+        {"@id": "urn:service:cincinnati"}
+      ]
     }
   ]
 }
 ```
 
-### Export Process
+### Output Requirements
 
-```python
-def export_to_jsonld(entities, output_file):
-    """Export entities to JSON-LD format."""
+**@context**:
 
-    # Define context
-    context = {
-        "@vocab": "http://example.org/vocab#",
-        "urn": "http://example.org/entity/"
-    }
+- Defines namespace for predicates
+- Use `@vocab` for default vocabulary (e.g., schema.org)
+- Define custom predicates if needed
 
-    # Add relationship type definitions
-    for rel_type in get_all_relationship_types(entities):
-        context[rel_type] = {
-            "@id": f"http://example.org/vocab#{rel_type}",
-            "@type": "@id"
-        }
+**@graph**:
 
-    # Build JSON-LD document
-    document = {
-        "@context": context,
-        "@graph": entities
-    }
+- Array of all entities
+- Each entity must have @id, @type, name (Standard 2)
+- References must use `{"@id": "urn:..."}` format (Standard 3)
 
-    # Write to file
-    with open(output_file, 'w') as f:
-        json.dump(document, f, indent=2)
+**File Format**:
 
-    print(f"✅ Exported {len(entities)} entities to {output_file}")
+- UTF-8 encoding
+- Pretty-printed JSON (indent=2) for readability
+- File extension: `.jsonld`
 
-    # Validate JSON-LD syntax
-    validate_jsonld(output_file)
-```
+### AI Output Process
 
-### Loading into Dgraph
-
-Use the provided `load_dgraph.py` script:
-
-```bash
-# From extraction directory
-python load_dgraph.py \
-  --input working/knowledge_graph.jsonld \
-  --dgraph-url http://localhost:8080 \
-  --drop-all  # Optional: clear existing data
-```
-
-See [load_dgraph.py](#load_dgraphpy) for implementation.
-
-### Loading into Neo4j
-
-Use the provided `load_neo4j.py` script:
-
-```bash
-# From extraction directory
-python load_neo4j.py \
-  --input working/knowledge_graph.jsonld \
-  --neo4j-uri bolt://localhost:7687 \
-  --username neo4j \
-  --password your_password \
-  --clear  # Optional: clear existing data
-```
-
-See [load_neo4j.py](#load_neo4jpy) for implementation.
-
----
-
-## Deterministic Validation Standards
-
-**Purpose**: This section defines ALL validation rules that AI-extracted output MUST pass. AI agents have flexibility in **how** they reason and extract, but output **must** conform to these strict standards.
-
-### Validation Philosophy
+**Agent writes JSON-LD**:
 
 ```
-┌──────────────────────────────────────┐
-│   AI Reasoning (Flexible/Adaptive)   │
-│   - Decides what to extract          │
-│   - Infers relationships             │
-│   - Handles edge cases               │
-│   - Adapts to patterns               │
-└──────────────┬───────────────────────┘
-               │ Produces
-               ↓
-┌──────────────────────────────────────┐
-│  Deterministic Validation (Strict)   │
-│  - URN format compliance             │
-│  - Required predicates present       │
-│  - JSON-LD structure valid           │
-│  - Reference integrity verified      │
-│  - Iteration targets met             │
-└──────────────────────────────────────┘
+Agent: "Exporting 286 entities to JSON-LD..."
+
+Structure:
+✓ @context defined
+✓ @graph array with 286 entities
+✓ All entities have @id, @type, name
+✓ All references use {"@id": "..."} format
+✓ UTF-8 encoding
+✓ Pretty-printed
+
+Output file: /path/to/knowledge_graph.jsonld
+Size: 2.4 MB
+Entities: 286
+Relationships: 573
+
+Export complete ✓
 ```
 
-AI agents must self-validate their output against these standards and iterate until all checks pass.
+### Final Validation
 
-### Standard 1: URN Format Validation
-
-**Rule**: All `@id` values must conform to URN standard format.
-
-**Format**:
-
-```regex
-^urn:[a-z0-9-]+:[a-z0-9-:]+$
-```
-
-**Components**:
-
-- Prefix: `urn:`
-- Type segment: lowercase alphanumeric + hyphens only
-- Identifier segments: lowercase alphanumeric + hyphens + colons only (for hierarchical URNs)
-- Minimum: 3 segments (e.g., `urn:service:name`)
-
-**Allowed**:
-
-- `urn:service:api-gateway` ✓
-- `urn:namespace:prod-cluster:frontend` ✓
-- `urn:user:john-doe` ✓
-
-**Not Allowed**:
-
-- `urn:Service:ApiGateway` ✗ (uppercase)
-- `urn:service:API_Gateway` ✗ (underscores)
-- `urn:service:my service` ✗ (spaces)
-- `service:api-gateway` ✗ (missing urn: prefix)
-- `urn:service` ✗ (too few segments)
-
-**Normalization Rules**:
-
-1. Convert to lowercase
-2. Replace spaces with hyphens
-3. Replace underscores with hyphens
-4. Remove special characters (except hyphens and colons)
-5. Collapse multiple hyphens to single hyphen
-6. Remove leading/trailing hyphens
-
-**Validation Check**:
-
-- **Requirement**: 100% of entities must have valid URN format
-- **How to check**: Regex match all `@id` values
-- **On failure**: Report invalid URNs for correction
-
-### Standard 2: Required Predicates Validation
-
-**Rule**: ALL entities must have these three predicates.
-
-**Required Predicates**:
-
-```json
-{
-  "@id": "urn:entity-type:identifier",
-  "@type": "EntityType",
-  "name": "Human-readable name"
-}
-```
-
-**Validation Rules**:
-
-1. `@id`: Must be present, non-empty, valid URN format
-2. `@type`: Must be present, non-empty, start with uppercase letter
-3. `name`: Must be present, non-empty string (human-readable)
-
-**Exceptions**:
-
-- `name` may be omitted for composite/edge entities where URN is self-descriptive
-- Example: `urn:service:foo:depends-on:service:bar` (relationship entity)
-
-**Validation Check**:
-
-- **Requirement**: 100% of entities must have @id, @type, name (unless justified exception)
-- **How to check**: Verify all three keys exist and have non-empty values
-- **On failure**: Report entities missing required predicates
-
-### Standard 3: JSON-LD Structure Validation
-
-**Rule**: Output must be valid JSON-LD format.
-
-**Valid Structures**:
-
-Option A: JSON-LD with @context (preferred):
-
-```json
-{
-  "@context": "https://schema.org/",
-  "@graph": [
-    {
-      "@id": "urn:service:foo",
-      "@type": "Service",
-      "name": "Foo"
-    }
-  ]
-}
-```
-
-Option B: JSON-LD array (acceptable):
-
-```json
-[
-  {
-    "@id": "urn:service:foo",
-    "@type": "Service",
-    "name": "Foo"
-  }
-]
-```
-
-Option C: Single entity (for testing):
-
-```json
-{
-  "@id": "urn:service:foo",
-  "@type": "Service",
-  "name": "Foo"
-}
-```
-
-**JSON-LD Requirements**:
-
-1. Must be valid JSON syntax (parseable)
-2. Must use @id, @type keywords
-3. References to other entities must use `{"@id": "urn:..."}`
-4. Arrays of references: `[{"@id": "urn:..."}, {"@id": "urn:..."}]`
-
-**Validation Check**:
-
-- **Requirement**: Output must parse as valid JSON and follow JSON-LD conventions
-- **How to check**: JSON parse, verify @id/@type usage
-- **On failure**: Report JSON syntax errors or structure violations
-
-### Standard 4: Reference Integrity Validation
-
-**Rule**: All relationship references must point to entities that exist in the graph.
-
-**What to Check**:
-
-1. All `{"@id": "urn:..."}` references (single)
-2. All `[{"@id": "urn:..."}, ...]` references (arrays)
-3. All referenced URNs must exist in the entity index
-
-**Broken Reference Example**:
-
-```json
-{
-  "@id": "urn:service:foo",
-  "dependsOn": [
-    {"@id": "urn:service:bar"},
-    {"@id": "urn:service:baz"}
-  ]
-}
-```
-
-If `urn:service:baz` doesn't exist in the graph → broken reference.
-
-**Validation Check**:
-
-- **Requirement**: <2% broken reference rate (Iteration 2 target)
-- **How to check**:
-  1. Build entity index (set of all @id values)
-  2. Find all references in all entities
-  3. Check each reference exists in index
-  4. Calculate: (broken refs / total refs) × 100
-- **On failure**: Report broken references, must be <2%
-
-**Two-Pass Resolution** (Iteration 2):
-
-- Pass 1: Extract all entities, build entity index
-- Pass 2: Resolve all $ref values to URNs, validate existence
-- This ensures <2% broken reference rate
-
-### Standard 5: Iteration-Specific Targets
-
-**Iteration 1: Mandatory Name/Type Enforcement**
-
-- **Target**: <5% missing names, 0% missing types
-- **Validation**:
-  - Count entities missing `name` predicate
-  - Count entities missing `@type` predicate
-  - Calculate percentages
-- **Pass criteria**: Missing names <5%, missing types = 0%
-
-**Iteration 2: Two-Pass Reference Resolution**
-
-- **Target**: <2% broken reference rate
-- **Validation**:
-  - Use Reference Integrity check (Standard 4)
-  - Calculate broken ref rate
-- **Pass criteria**: Broken refs <2%
-
-**Iteration 3: Orphan Detection & Linking**
-
-- **Target**: <0.5% orphan rate
-- **Validation**:
-  - Orphan = entity with zero incoming or outgoing relationships
-  - Count entities with degree = 0
-  - Calculate: (orphans / total entities) × 100
-- **Pass criteria**: Orphan rate <0.5%
-
-**Iteration 4: Sub-Entity Extraction**
-
-- **Target**: Sub-entities created for nested structures meeting criteria
-- **Validation**:
-  - Check nested objects with 3+ properties were extracted as entities
-  - Verify bidirectional relationships created (parent↔sub-entity)
-  - Ensure sub-entities have own URNs and are queryable
-- **Pass criteria**: All qualifying structures extracted, bidirectional rels present
-
-**Iteration 5: Free-Text Entity Extraction**
-
-- **Target**: Entities extracted from description/text fields where meaningful
-- **Validation**:
-  - Check for entities with `_extracted_from_text: true` annotation
-  - Verify relationships created from free-text mentions
-- **Pass criteria**: Free-text extraction applied where applicable (MEDIUM confidence acceptable)
-
-**Iteration 6: Universal Inference**
-
-- **Target**: Implicit relationships discovered from patterns
-- **Validation**:
-  - Check for relationships with `_inferred: true` annotation
-  - Verify inference confidence scores present
-  - Confirm multiple inference patterns applied (directory, naming, labels, text)
-- **Pass criteria**: Inference patterns applied, confidence scores assigned
-
-**Iteration 7: Maximum Fidelity Field Extraction**
-
-- **Target**: >80% field coverage, >12 avg predicates per entity
-- **Validation**:
-  - Calculate field coverage: (extracted fields / source fields) × 100 per entity
-  - Average across all entities
-  - Calculate avg predicates: total predicates / total entities
-- **Pass criteria**: Avg coverage >80%, avg predicates >12
-
-**Combined Validation Check**:
+Before considering extraction complete, agent performs final check:
 
 ```
-Iteration Targets Validation Report:
+Final Pre-Export Validation:
 
-✓ Iteration 1: Names 98% present (target >95%) ✓
-✓ Iteration 1: Types 100% present (target 100%) ✓
-✓ Iteration 2: Broken refs 1.2% (target <2%) ✓
-✓ Iteration 3: Orphans 0.3% (target <0.5%) ✓
-✓ Iteration 4: 2,104 sub-entities created ✓
-✓ Iteration 5: 156 entities from free-text ✓
-✓ Iteration 6: 342 inferred relationships ✓
-✓ Iteration 7: Field coverage 87.3% avg (target >80%) ✓
-✓ Iteration 7: Predicates 13.2 avg (target >12) ✓
+✓ All 6 deterministic standards passed
+✓ JSON-LD syntax valid
+✓ File is parseable
+✓ No syntax errors
 
-All iteration targets PASSED ✓
+Extraction Complete ✓
+Output: /path/to/knowledge_graph.jsonld
+Ready for loading into graph database.
 ```
 
-### Standard 6: Bidirectional Relationship Consistency
+### Loading into Graph Databases
 
-**Rule**: Relationships should be bidirectional where semantically appropriate.
+**Output is compatible with**:
 
-**Examples**:
+- Dgraph (native JSON-LD support)
+- Neo4j (via import tools)
+- Any RDF-compliant graph database
+- SPARQL endpoints
 
-Forward relationship:
-
-```json
-{
-  "@id": "urn:service:foo",
-  "dependsOn": [{"@id": "urn:service:bar"}]
-}
-```
-
-Reverse relationship (should also exist):
-
-```json
-{
-  "@id": "urn:service:bar",
-  "supportedBy": [{"@id": "urn:service:foo"}]
-}
-```
-
-**Common Bidirectional Pairs**:
-
-- `dependsOn` ↔ `supportedBy` / `requiredBy`
-- `hasOwner` ↔ `owns`
-- `partOf` ↔ `contains` / `includes`
-- `deployedIn` ↔ `hosts`
-- `uses` ↔ `usedBy`
-
-**Validation Check**:
-
-- **Requirement**: Verify bidirectional relationships exist for major relationship types
-- **How to check**: For each relationship, verify inverse exists
-- **On failure**: Report missing inverse relationships
-
-### Validation Execution
-
-**When to Validate**:
-
-1. **After Phase 2** (Entity Extraction): Validate URN format, required predicates, JSON-LD structure
-2. **After Phase 3** (Relationship Resolution): Validate reference integrity, bidirectional consistency
-3. **After Phase 3.5** (Final Validation): Validate all iteration targets, final quality check
-
-**How to Validate**:
-
-AI agent should implement validation logic or use provided validation functions.
-
-**Example Validation Flow**:
+**Agent provides usage guidance**:
 
 ```
-Agent: "Phase 2 extraction complete. Running Standard 1-3 validations..."
+To load into Dgraph:
+  Use Dgraph's bulk import or live loader with this JSON-LD file
 
-Standard 1 (URN Format):
-- Checking 6,332 entity URNs...
-- ✓ 6,332/6,332 valid URN format (100%)
+To load into Neo4j:
+  Use Neo4j's JSON import tools or APOC procedures
 
-Standard 2 (Required Predicates):
-- Checking @id, @type, name presence...
-- ✓ 6,332/6,332 entities have @id (100%)
-- ✓ 6,332/6,332 entities have @type (100%)
-- ✓ 6,309/6,332 entities have name (99.6%)
-- ⚠ 23 entities missing name (composite entities, justified)
-
-Standard 3 (JSON-LD Structure):
-- Parsing JSON-LD output...
-- ✓ Valid JSON syntax
-- ✓ Proper @id/@type usage
-- ✓ References use {"@id": "..."} format
-
-Phase 2 validations PASSED ✓
-Proceeding to Phase 3...
+To query:
+  All entities accessible via URNs
+  All relationships bidirectionally queryable
+  Full semantic graph ready for exploration
 ```
-
-**On Validation Failure**:
-
-Agent must:
-
-1. Identify which standard failed
-2. Report specific violations (entity URNs, field names, counts)
-3. Analyze why failure occurred
-4. Correct the issue
-5. Re-validate until all checks pass
-
-**Example Failure Handling**:
-
-```
-Agent: "Standard 4 (Reference Integrity) validation FAILED"
-
-Broken references found: 127 of 28,528 total (4.5%)
-Target: <2% broken reference rate
-
-Sample broken references:
-- urn:service:foo references urn:dependency:xyz (not found)
-- urn:namespace:prod references urn:cluster:aws-east (not found)
-...
-
-Analysis: Many $ref values could not be resolved to entities.
-Root cause: Some referenced files may not have been processed yet.
-
-Action: Re-running Phase 2 extraction with dependency-order batching
-to ensure referenced entities are extracted before referencing entities.
-
-Re-validation after fix:
-Broken references: 34 of 28,528 total (0.12%)
-Target: <2% broken reference rate ✓
-
-Standard 4 validation PASSED ✓
-```
-
-### Validation as Quality Gate
-
-Validation is **mandatory**, not optional. AI agents must:
-
-- Run all applicable validations after each phase
-- Report validation results clearly
-- Fix failures before proceeding
-- Document validation pass/fail in extraction report
-
-**Quality Gate Rule**:
-❌ Do not proceed to next phase if current phase validations fail
-✓ Only proceed when all validations pass
-
-This ensures extraction quality remains high throughout the process.
 
 ---
 
