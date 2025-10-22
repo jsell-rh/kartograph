@@ -2445,6 +2445,289 @@ Based on baseline analysis, app-interface descriptions contain rich information.
 - Description coverage (% of services with extractable descriptions)
 - Average entities extracted per description field
 
+#### Contact Information & Communication Channel Extraction
+
+**CRITICAL ENHANCEMENT**: Extract contact information as **entities with relationships**, not just as string fields. This enables queries like "How do I contact the team for service X?" or "Who can I reach out to about Y?".
+
+**Problem**: Contact information (Slack channels, emails, GitHub handles) is often stored as string values, making it impossible to query "Show me all services that use Slack channel #platform" or "Find the support contact for this service".
+
+**Solution**: Extract contact points as entities and create "contactVia" relationships.
+
+**Contact Entity Types to Extract**:
+
+1. **SlackChannel** - From slackChannel fields, descriptions, READMEs
+   - URN pattern: `urn:slack-channel:{channel-name}`
+   - Extract from: slackChannel field, descriptions ("reach us at #team-name"), READMEs
+   - Relationship: Service --contactVia--> SlackChannel, SlackChannel --supportsService--> Service
+
+2. **Email** - From owner emails, support addresses, descriptions
+   - URN pattern: `urn:email:{email-address}`
+   - Extract from: Contact fields, descriptions ("contact <team@example.com>")
+   - Relationship: Service --contactVia--> Email, Email --contactFor--> Service
+
+3. **GitHubHandle** - From code component URLs, descriptions
+   - URN pattern: `urn:github:{org-or-user}`
+   - Extract from: GitHub URLs, @mentions in descriptions
+   - Relationship: Service --maintainedBy--> GitHubHandle
+
+4. **JiraProject** - From JIRA links in descriptions
+   - URN pattern: `urn:jira-project:{project-key}`
+   - Extract from: JIRA URLs, project mentions
+   - Relationship: Service --trackedIn--> JiraProject
+
+5. **PagerDutyService** - From escalation policies, on-call references
+   - URN pattern: `urn:pagerduty:{service-id}`
+   - Extract from: PagerDuty links, escalation policies
+   - Relationship: Service --alertsTo--> PagerDutyService
+
+**AI Extraction Process**:
+
+```
+Agent analyzing Service "acs-fleet-manager":
+
+Field: slackChannel = "#acs-fleet-manager-team"
+Decision: Extract as SlackChannel entity
+URN: urn:slack-channel:acs-fleet-manager-team
+Relationships:
+- acs-fleet-manager --contactVia--> urn:slack-channel:acs-fleet-manager-team
+- urn:slack-channel:acs-fleet-manager-team --supportsService--> acs-fleet-manager
+
+Field: description = "Contact team at #acs-alerts or email acs-team@redhat.com"
+Free-text extraction:
+1. Slack channel: #acs-alerts
+   URN: urn:slack-channel:acs-alerts
+   Relationship: acs-fleet-manager --contactVia--> urn:slack-channel:acs-alerts
+   Confidence: HIGH (explicit mention)
+
+2. Email: acs-team@redhat.com
+   URN: urn:email:acs-team-at-redhat-com
+   Relationship: acs-fleet-manager --contactVia--> urn:email:acs-team-at-redhat-com
+   Confidence: HIGH (explicit contact)
+
+Field: architectureDocument = "https://github.com/stackrox/acs-fleet-manager"
+GitHub extraction:
+- Organization: stackrox
+  URN: urn:github:stackrox
+  Relationship: acs-fleet-manager --maintainedBy--> urn:github:stackrox
+  Confidence: HIGH (repo URL)
+```
+
+**Pattern Recognition for Contact Extraction**:
+
+```python
+# AI should identify these patterns:
+
+Slack channels:
+- Field named "slackChannel", "slack", "channel"
+- Patterns: #channel-name, slack.com/channels/C123456
+- Description mentions: "contact us at #team", "reach out on #support"
+
+Emails:
+- Field named "email", "contact", "supportEmail"
+- Patterns: email@domain.com
+- Description mentions: "email team@example.com", "contact: support@domain.com"
+
+GitHub:
+- URLs: github.com/{org}/{repo}
+- @mentions: @username, @org-name
+- Repository references in codeComponents
+
+JIRA:
+- URLs: jira.company.com/projects/PROJ
+- Project keys: PROJ-123 patterns
+
+PagerDuty:
+- URLs: *.pagerduty.com/services/*
+- Service IDs in escalation policies
+```
+
+**Query Capabilities Enabled**:
+
+After extracting contact entities:
+
+1. "Show me all Slack channels for services owned by team X"
+2. "Which services can I contact via #platform-team?"
+3. "Find the support email for service Y"
+4. "List all GitHub organizations maintaining our services"
+5. "Which services are tracked in JIRA project ABC?"
+6. "Show me all contact points for this service" (email + Slack + GitHub)
+
+**Validation**:
+
+```
+Contact Extraction Validation:
+
+SlackChannels: 89 extracted
+- From slackChannel field: 45
+- From descriptions: 31
+- From READMEs: 13
+
+Emails: 156 extracted
+- From owner emails: 98
+- From contact fields: 42
+- From descriptions: 16
+
+GitHubHandles: 78 extracted
+- From repository URLs: 62
+- From @mentions: 16
+
+Relationships created: 323
+- contactVia: 265
+- maintainedBy: 78
+- trackedIn: 24
+- alertsTo: 12
+
+All contact entities have bidirectional relationships ✓
+```
+
+#### README & Documentation Analysis
+
+**Enhancement**: Read and analyze README.md, CONTRIBUTING.md, and documentation files alongside entity definitions.
+
+**Why**: README files often contain:
+
+- Contact information not in structured fields
+- Technology stack details
+- Setup/deployment instructions with tool mentions
+- Links to additional resources
+- Team composition and roles
+
+**AI Process**:
+
+```
+Agent discovers Service "cincinnati" at /data/services/cincinnati/app.yml
+
+Step 1: Check for README
+- Look for: README.md, README, CONTRIBUTING.md in same directory
+- Found: /data/services/cincinnati/README.md
+
+Step 2: Analyze README content
+Section: "Contact"
+- Slack: #cincinnati-team, #cincinnati-alerts
+- Email: cincinnati-team@redhat.com
+- PagerDuty: cincinnati-production-alerts
+
+Section: "Technology Stack"
+- Language: Go 1.19
+- Database: PostgreSQL 14
+- Cache: Redis 6.2
+- Messaging: Kafka
+
+Section: "Links"
+- Docs: https://docs.example.com/cincinnati
+- Grafana: https://grafana.example.com/cincinnati
+- GitHub: https://github.com/openshift/cincinnati
+
+Step 3: Extract entities from README
+Technologies:
+- urn:technology:go → cincinnati --uses--> go
+- urn:technology:postgresql → cincinnati --uses--> postgresql
+- urn:technology:redis → cincinnati --uses--> redis
+
+Contacts (additional to app.yml):
+- urn:slack-channel:cincinnati-alerts → cincinnati --contactVia--> ...
+
+Documentation:
+- urn:documentation:cincinnati-docs → cincinnati --documentedAt--> ...
+```
+
+**README Parsing Pattern**:
+
+```
+Agent: "Analyzing README.md for service X..."
+
+Common sections to parse:
+- "Contact" / "Support" / "Team" → Contact information
+- "Technology" / "Stack" / "Dependencies" → Technology entities
+- "Links" / "Resources" → Documentation links
+- "Contributing" → Development info
+- "Deployment" → Infrastructure details
+- "Monitoring" → Observability links
+
+Extraction confidence:
+- Explicit sections (## Contact): HIGH
+- Inline mentions ("uses PostgreSQL"): MEDIUM
+- Implied tech (package.json → Node.js): MEDIUM
+```
+
+#### Technology Stack & Tool Extraction (Iteration 5 Enhancement)
+
+**Extract technology and tool mentions** from descriptions, READMEs, and configuration to enable queries like "Which services use PostgreSQL?" or "Show me all Python services".
+
+**Technology Entity Types**:
+
+1. **ProgrammingLanguage** - Python, JavaScript, Go, Java, etc.
+   - URN: `urn:language:{language-name}`
+
+2. **Framework** - Django, React, Spring Boot, etc.
+   - URN: `urn:framework:{framework-name}`
+
+3. **Database** - PostgreSQL, MongoDB, Redis, etc.
+   - URN: `urn:database:{db-name}`
+
+4. **CloudProvider** - AWS, GCP, Azure, etc.
+   - URN: `urn:cloud:{provider-name}`
+
+5. **Tool** - Docker, Kubernetes, Jenkins, etc.
+   - URN: `urn:tool:{tool-name}`
+
+**Extraction Patterns**:
+
+```
+Description: "Python microservice using Flask and PostgreSQL, deployed on Kubernetes"
+
+Extracted entities:
+1. urn:language:python
+   - Relationship: service --implementedIn--> python
+   - Confidence: HIGH (explicit mention)
+
+2. urn:framework:flask
+   - Relationship: service --uses--> flask
+   - Confidence: HIGH (explicit mention)
+
+3. urn:database:postgresql
+   - Relationship: service --uses--> postgresql
+   - Confidence: HIGH (explicit mention)
+
+4. urn:tool:kubernetes
+   - Relationship: service --deployedOn--> kubernetes
+   - Confidence: HIGH (deployment context)
+```
+
+**Common Technology Patterns to Recognize**:
+
+```
+Languages:
+- "Python service", "written in Go", "JavaScript application"
+- File extensions in code components (.py → Python, .go → Go)
+- Package managers (package.json → Node.js, requirements.txt → Python)
+
+Frameworks:
+- "using Django", "built with React", "Spring Boot application"
+- Dependencies in package files
+
+Databases:
+- "PostgreSQL database", "stores data in MongoDB", "Redis cache"
+- "uses MySQL for persistence"
+
+Cloud Providers:
+- "deployed on AWS", "running in GCP", "Azure-hosted"
+- URLs: *.amazonaws.com, *.cloud.google.com
+
+Tools:
+- "Docker containers", "Kubernetes deployment", "Jenkins pipeline"
+- "monitored by Prometheus", "logs in Splunk"
+```
+
+**Query Capabilities**:
+
+1. "Show me all services using PostgreSQL"
+2. "Which Python services exist?"
+3. "Find services deployed on AWS"
+4. "List all services using Kubernetes"
+5. "Show me the technology stack for service X"
+6. "Which services use the same tech stack as Y?"
+
 ---
 
 ### Nested Structure Sub-Entity Extraction
