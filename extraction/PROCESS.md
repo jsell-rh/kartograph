@@ -2,7 +2,7 @@
 
 A repository-agnostic methodology for extracting knowledge graphs from configuration repositories, codebases, and structured data sources.
 
-**Audience**: This guide is written for Claude (AI assistant) to follow when extracting knowledge graphs from repositories. Claude will generate repository-specific extraction scripts based on these patterns.
+**Audience**: This guide is written for Claude Code (AI agents) to autonomously execute knowledge graph extraction through intelligent reasoning. Agents analyze, understand, and extract directly - no script generation required.
 
 **Output Format**: JSON-LD (compatible with Dgraph, Neo4j, and any RDF-compliant graph database)
 
@@ -51,314 +51,841 @@ Transforms any structured repository (YAML configs, Kubernetes manifests, Terraf
 - Access to target repository (local clone or API)
 - Target graph database (Dgraph, Neo4j, or compatible)
 
-### Instructions for Claude
+### Instructions for Claude Code Agents
 
-When a user asks you to extract a knowledge graph from a repository:
+**Execution Paradigm: AI-First Reasoning + Deterministic Validation**
 
-1. **Follow this process systematically** - Do not skip phases
-2. **Generate extraction scripts** - Create repository-specific Python scripts based on these patterns
-3. **Use absolute paths from arguments** - Never hardcode paths; use argparse for all inputs
-4. **Validate at each step** - Run validation after each extraction batch
-5. **Report progress** - Show what entities were extracted and validation results
-6. **Ask clarifying questions** - If repository structure is unclear, ask before proceeding
+When executing knowledge graph extraction:
+
+1. **REASON, Don't Script** - Analyze and extract through intelligent reasoning, not template-driven code generation
+2. **UNDERSTAND Semantics** - Grasp what data represents conceptually, not just parse it structurally
+3. **DECIDE Adaptively** - Make extraction decisions based on context and understanding, adapting to unexpected patterns
+4. **VALIDATE Output** - All output must conform to strict standards (URN format, JSON-LD structure, required predicates)
+5. **ASSIGN Confidence** - Score every decision (HIGH/MEDIUM/LOW) and explain your reasoning
+6. **SELF-ASSESS Quality** - Evaluate your own work after each phase; identify potential issues
+7. **ITERATE on Failure** - If deterministic validation fails, analyze why and improve your reasoning
+
+**Core Principle**: You have maximum flexibility in **how** you reason and extract, but output **must** pass all deterministic validations.
+
+**Key Guidelines**:
+
+- Execute autonomously end-to-end (no human intervention required)
+- Follow all iteration patterns (1-7) when applicable
+- Report your reasoning process, not just results
+- Flag uncertainties with MEDIUM/LOW confidence scores
+- Ask clarifying questions only when critically blocked
 
 ---
 
 ## Phase 0: Repository Discovery
 
-**Goal**: Understand the repository structure, file types, and potential entities before writing any extraction code.
+**Goal**: AI agent analyzes and understands repository organization through reasoning (not through script execution).
 
-### Step 1: Initial Scan
+### AI Reasoning Process
 
-```bash
-# Count files by type
-find . -type f | sed 's/.*\.//' | sort | uniq -c | sort -rn
+#### Step 1: Repository Purpose Analysis
 
-# Identify directory structure
-tree -L 3 -d
+**AI Questions to Ask**:
 
-# Look for schema files
-find . -name "*schema*" -o -name "*.json" -o -name "*.graphql" -o -name "openapi*"
-```
+1. "What is this repository's purpose?" (application code, configuration, docs, infrastructure-as-code)
+2. "What problem does it solve?"
+3. "Who are the users and how do they interact with it?"
+4. "What entity types likely exist based on the domain?"
 
-**Output**: Inventory of file types, directory patterns, and potential schema sources.
+**How to Analyze**:
 
-### Step 2: Schema Detection
+- Read README.md and top-level documentation
+- Examine directory names and structure
+- Sample a few representative files
+- Look for patterns in file organization
 
-Automatically detect schema types:
+**AI Reasoning Output**:
 
-| Schema Type      | Indicators                      | Common Locations                        |
-| ---------------- | ------------------------------- | --------------------------------------- |
-| JSON Schema      | `$schema` key, `*.schema.json`  | `/schemas`, `/definitions`              |
-| OpenAPI          | `openapi: 3.x`, `swagger: 2.0`  | `openapi.yaml`, `/api`                  |
-| Kubernetes CRD   | `apiVersion`, `kind`            | Any `.yaml` with standard k8s structure |
-| qontract-schemas | `$ref` patterns, `/schemas` dir | App-interface style repos               |
-| GraphQL          | `*.graphql`, type definitions   | `/schema`, `/graphql`                   |
-| Terraform        | `*.tf`, resource blocks         | Root or `/modules`                      |
-| Ansible          | `*.yml` with tasks/roles        | `/playbooks`, `/roles`                  |
+- Repository type classification (with confidence score)
+- Domain understanding (what this repo manages)
+- Entity type hypotheses (what kinds of things exist here)
+- Organizational pattern description
 
-**Decision Tree**:
+**Example AI Analysis**:
 
 ```
-Schemas found?
-  YES → Proceed to Phase 1 (Schema Analysis)
-  NO → Use heuristic extraction (Phase 2, Option B)
+"Repository: app-interface
+
+Analysis: This is an infrastructure configuration repository managing OpenShift
+services, deployments, and access control.
+
+Purpose: Define and version-control production service configurations
+Users: SRE teams managing production infrastructure
+Data format: YAML files with formal JSON Schema validation
+
+Classification: Configuration Management Repository
+Confidence: HIGH (clear patterns, extensive documentation)
+
+Hypothesized entity types:
+- Service (applications/microservices)
+- Dependency (external services)
+- Team (ownership/accountability)
+- Namespace (Kubernetes deployments)
+- Endpoint (API/service endpoints)
+- User (owners, contacts)
+"
 ```
 
-### Step 3: Sample Analysis
+**Deterministic Validation**: None at this exploratory phase.
 
-**Claude: Read 5-10 representative files from each major directory:**
+#### Step 2: Organizational Pattern Discovery
 
-```python
-# Claude should implement this analysis
-for directory in major_directories:
-    sample_files = random.sample(files_in(directory), min(10, count))
-    for file in sample_files:
-        analyze_structure(file)
-        identify_entity_candidates(file)
-        detect_relationship_patterns(file)
+**AI Questions to Ask**:
+
+1. "How are files organized?" (by entity type, by team, by environment, flat vs nested)
+2. "What naming conventions exist?" (file names, directory names, entity identifiers)
+3. "What cross-reference patterns appear?" ($ref, imports, dependencies)
+4. "Are there formal schemas?" (JSON Schema, OpenAPI, CRDs)
+
+**How to Analyze**:
+
+- Use Glob tool to discover directory structure patterns
+- Sample files from different directories
+- Look for $schema, $ref, imports, or other reference mechanisms
+- Identify schema definition locations
+
+**AI Reasoning Output**:
+
+- Directory organization pattern (e.g., `/data/{entity-type}/{instance-name}/`)
+- File naming conventions (e.g., `app.yml` for services, `service.yml` for dependencies)
+- Reference mechanisms (e.g., `$ref: /path/to/file.yml`)
+- Schema locations and types
+
+**Example AI Analysis**:
+
+```
+"Organizational patterns discovered:
+
+Directory structure:
+- /data/services/{service-name}/app.yml → Service entities
+- /data/dependencies/{dep-name}/service.yml → Dependency entities
+- /data/teams/{team-name}/ → Team entities
+- /qontract-schemas/ → JSON Schema definitions
+
+Pattern: Type-based organization with entity instances in nested directories
+
+File naming:
+- app.yml: Primary service definitions
+- service.yml: Dependency definitions
+- Consistent {name}.yml pattern
+
+Pattern: File names indicate entity type
+
+Cross-references:
+- $schema: /schemas/{type}.yml → Schema validation pointers
+- $ref: /path/to/file.yml → Explicit file references
+- dependencies[].$ref → Relationship references
+
+Pattern: File-path-based referencing with $ref mechanism
+
+Schemas discovered:
+- 156 JSON Schema files in /qontract-schemas/
+- Comprehensive type definitions
+- Formal validation rules
+
+Conclusion: Schema-driven repository with formal validation
+Confidence: HIGH
+"
 ```
 
-**Output**:
+**Deterministic Validation**: None (exploratory reasoning).
 
-- List of potential entity types (e.g., "Service", "Namespace", "User", "Database")
-- Common field patterns (e.g., "name", "owner", "cluster", "dependencies")
-- Reference patterns (e.g., `$ref`, `serviceRef`, YAML anchors)
+#### Step 3: Schema Type Detection
 
-### Step 4: Create Extraction Plan
+**AI Task**: Identify what schema systems are present
 
-Based on discovery, create a structured plan:
+**How to Detect**:
 
-```markdown
-## Extraction Plan for [Repository Name]
+- Search for schema files: `*.schema.json`, `/schemas/`, `openapi.yaml`
+- Read sample files for schema indicators: `$schema` keys, `apiVersion`, type definitions
+- Classify schema system based on patterns
 
-### Repository Type
+**Common Schema Types**:
 
-[e.g., Kubernetes Config Repository, API Definition, Infrastructure as Code]
+| Schema Type      | AI Detection Signals                     | Extraction Strategy             |
+| ---------------- | ---------------------------------------- | ------------------------------- |
+| JSON Schema      | `$schema` key, `*.schema.json` files     | Schema-driven (HIGH confidence) |
+| OpenAPI          | `openapi: 3.x`, `swagger: 2.0` keys     | Schema-driven (HIGH confidence) |
+| Kubernetes CRD   | `apiVersion`, `kind` keys consistently   | Schema-driven (HIGH confidence) |
+| qontract-schemas | `$ref` patterns, `/schemas` directory    | Schema-driven (HIGH confidence) |
+| GraphQL          | `*.graphql` files, type definitions      | Schema-driven (MEDIUM)          |
+| Terraform        | `*.tf` files, resource blocks            | Heuristic (adapt to HCL)        |
+| Ansible          | `*.yml` with tasks/roles                 | Heuristic (playbook structure)  |
+| No Schemas       | No consistent schema references          | Heuristic (pattern discovery)   |
 
-### Schema Approach
+**AI Reasoning Output**:
 
-- [ ] JSON Schema files found: [count]
-- [ ] Use schema-driven extraction
-- [ ] Use heuristic extraction
-- [ ] Hybrid approach needed
+```
+"Schema system: JSON Schema (qontract-schemas style)
+- 156 schema files found in /qontract-schemas/
+- All data files reference schemas via $schema key
+- Formal validation rules defined
 
-### Entity Types Identified
+Extraction strategy: Schema-driven with AI field enhancement
+- Use schemas to understand entity types and required fields
+- Apply Iteration 7 (Maximum Fidelity) to extract ALL fields, not just required
+- Leverage AI to discover implicit patterns schemas may not capture
 
-1. **Service** (~250 files) - `/services/**/*.yaml`
-2. **Namespace** (~150 files) - `/namespaces/**/*.yaml`
-3. **Database** (~50 files) - `/infrastructure/databases/*.yaml`
-   ...
-
-### Relationship Patterns
-
-- Services → Namespaces (via `namespace` field)
-- Services → Databases (via `dependencies[].$ref`)
-- Users → Roles (via `roles[]`)
-  ...
-
-### Extraction Batch Plan
-
-Batch 1: Core entities (Services, Namespaces)
-Batch 2: Infrastructure (Databases, Caches, Storage)
-Batch 3: Access control (Users, Roles, Permissions)
-...
+Confidence: VERY HIGH (comprehensive formal schemas available)
+"
 ```
 
-**Claude: Generate extraction scripts based on this plan.**
+#### Step 4: Sample File Analysis
+
+**AI Task**: Read representative files to validate hypotheses and discover patterns
+
+**How to Sample**:
+
+- Select 5-10 files from each major directory
+- Prioritize different entity types
+- Look for variety in file sizes and complexity
+- Read actual file contents, don't just list files
+
+**AI Questions per Sample**:
+
+1. "Does this file match my organizational hypothesis?" (validation)
+2. "What entity type does it represent?" (classification)
+3. "What fields are present?" (field discovery)
+4. "What relationships does it reference?" (relationship patterns)
+5. "Are there unexpected patterns?" (discovery)
+
+**AI Reasoning Output**:
+
+```
+"Sampled 12 files across 4 directories:
+
+Sample 1: /data/services/cincinnati/app.yml
+- Type: Service (schema: /app-1.yml) ✓
+- Fields: 14 total (name, description, owners, URLs, metadata)
+- Relationships: dependencies[], namespaces[], product
+- Pattern match: Confirmed ✓
+
+Sample 2: /data/services/acs-fleet-manager/app.yml
+- Type: Service (schema: /app-1.yml) ✓
+- Fields: 18 total (richer metadata than Sample 1)
+- Relationships: Similar pattern ✓
+- Observation: Field count varies (not all services have same fields)
+
+Sample 3: /data/dependencies/github/service.yml
+- Type: Dependency (different schema)
+- Fields: 8 total (name, description, endpoints)
+- Pattern: Distinct from Service ✓
+
+... (9 more samples)
+
+Patterns Confirmed:
+✓ Type-based organization accurate
+✓ Schema-driven structure validated
+✓ $ref relationships pervasive
+✓ Field richness varies by entity (7-20 fields observed)
+
+Patterns Discovered:
+! Nested owners with {name, email, role} → Sub-entity candidates (Iteration 4)
+! Free-text descriptions mention entities → Free-text extraction opportunity (Iteration 5)
+! Directory paths correlate to namespaces → Implicit relationships (Iteration 6)
+
+Entity Type Estimates:
+- Service: ~200-300 files (primary entity)
+- Dependency: ~50-100 files
+- Team: ~30-50 files
+- Namespace: ~100-200 files (referenced)
+- User: ~500-1000 (nested in owners) → Sub-entities
+
+Extraction Strategy: Schema-driven + AI enhancements (Iterations 4-7)
+Confidence: HIGH
+"
+```
+
+#### Step 5: Extraction Strategy Decision
+
+**AI Task**: Decide how to approach extraction based on analysis
+
+**Decision Framework**:
+
+```
+Schemas available?
+├─ YES: Are they comprehensive?
+│  ├─ YES: Schema-driven extraction (HIGH confidence)
+│  │       Apply Iteration 7: Extract ALL fields, not just required
+│  │       Apply Iteration 4: Sub-entity extraction where applicable
+│  │       Apply Iteration 5: Free-text entity extraction
+│  │       Apply Iteration 6: Universal inference for implicit relationships
+│  └─ NO:  Hybrid approach (MEDIUM confidence)
+│          Use schemas as guide but rely on AI field discovery
+│
+└─ NO:  Heuristic extraction (MEDIUM-LOW confidence)
+        AI-driven pattern discovery
+        Higher uncertainty, more validation needed
+```
+
+**AI Reasoning Output**:
+
+```
+"Extraction Strategy for app-interface:
+
+Approach: Schema-Driven with AI Enhancements
+
+Rationale:
+✓ 156 comprehensive JSON Schemas available (HIGH confidence)
+✓ All data files reference schemas ($schema keys)
+✓ Schemas define entity types, required fields, validation rules
+✓ Repository is well-structured and consistent
+
+AI Enhancements to Apply:
+1. Iteration 7 (Maximum Fidelity): Extract ALL fields, not just schema-required
+   - Schemas mark many fields 'optional' but they're valuable for complete graph
+   - Target: >80% field coverage, >12 avg predicates per entity
+
+2. Iteration 4 (Sub-Entity Extraction): Extract nested structures as entities
+   - serviceOwners[] → User entities
+   - endpoints[] → Endpoint entities
+   - Criteria: 3+ properties, independent queryability
+
+3. Iteration 5 (Free-Text Extraction): Mine description fields
+   - Extract mentioned services, tools, concepts
+   - Create relationships from natural language
+
+4. Iteration 6 (Universal Inference): Discover implicit relationships
+   - Directory paths → namespace relationships
+   - Naming patterns → team/product relationships
+   - Metadata labels → ownership relationships
+
+5. Iteration 2 (Two-Pass Resolution): Resolve all $ref after extraction
+   - Pass 1: Extract entities, collect $ref values
+   - Pass 2: Resolve $ref to URNs, create relationships
+   - Target: <2% broken references
+
+6. Iteration 3 (Orphan Detection): Link isolated entities
+   - Detect entities with no relationships
+   - Infer connections from context
+   - Target: <0.5% orphan rate
+
+Expected Output:
+- ~6,000-8,000 entities
+- ~25,000-35,000 relationships
+- 15-20 distinct entity types
+- >85% field coverage avg
+- <2% broken references, <0.5% orphans
+
+Confidence: VERY HIGH (schema-driven + proven iteration patterns)
+
+Ready to proceed to Phase 1 (Schema Analysis).
+"
+```
+
+**Deterministic Validation**: None (planning phase).
 
 ---
 
 ## Phase 1: Schema Analysis
 
-**Goal**: Build a comprehensive catalog of entity types and their properties from schemas.
+**Goal**: AI agent understands schemas semantically to guide extraction (not just parse them structurally).
 
 ### When to Use This Phase
 
 - ✅ Repository has JSON Schema, OpenAPI, or other formal schemas
 - ✅ Schemas are up-to-date and representative
-- ❌ Skip if no schemas or schemas are stale/incomplete
+- ❌ Skip if no schemas or schemas are stale/incomplete (use heuristic extraction)
 
-### Step 1: Parse Schema Files
+### AI Reasoning Process
 
-**Claude: For each schema file, analyze its structure:**
+#### Step 1: Schema Semantic Understanding
 
-```python
-# Claude should implement this function
-def analyze_schema(schema_file):
-    schema = load_json_or_yaml(schema_file)
+**AI Task**: For each schema, understand **what** it represents conceptually, not just **how** it's structured.
 
-    entity_type = infer_entity_type(schema)  # e.g., "Service", "Namespace"
-    required_fields = schema.get('required', [])
-    optional_fields = [k for k in schema['properties'].keys() if k not in required_fields]
+**AI Questions per Schema**:
 
-    # Extract relationship patterns
-    references = find_ref_patterns(schema)  # $ref, foreignKey patterns
+1. "What entity type does this schema define?" (Service, Database, User, etc.)
+2. "What are the essential vs nice-to-have characteristics?" (required vs optional semantically)
+3. "What validation rules exist and why?" (understanding intent, not just constraints)
+4. "How do entities of this type relate to others?" (relationship patterns)
+5. "Are there implicit constraints not captured in the schema?" (domain knowledge)
 
-    # Extract validation rules
-    enums = find_enum_fields(schema)
-    formats = find_format_constraints(schema)
+**How to Analyze**:
 
-    return {
-        'entity_type': entity_type,
-        'required': required_fields,
-        'optional': optional_fields,
-        'references': references,
-        'enums': enums,
-        'formats': formats
-    }
+- Read schema file completely
+- Understand `required` fields → essential characteristics
+- Analyze `properties` → all possible fields (for Iteration 7 Maximum Fidelity)
+- Find `$ref` patterns → relationship indicators
+- Check `enum`, `format`, `pattern` → validation rules
+- Read `description` fields → understand semantic meaning
+
+**AI Reasoning Output (per schema)**:
+
+```
+"Schema: /qontract-schemas/app-1.yml
+
+Entity Type: Service (application/microservice)
+Confidence: HIGH (clear naming, comprehensive structure)
+
+Essential Characteristics (required):
+- name: Human-readable service identifier
+- description: Service purpose and functionality
+- serviceOwners: Accountability (people responsible)
+
+Operational Metadata (optional but important):
+- grafanaUrl: Observability dashboard → EXTRACT (critical for ops)
+- slackChannel: Team communication → EXTRACT (enables contact)
+- sopsUrl: Runbook documentation → EXTRACT (incident response)
+- architectureDocument: Design docs → EXTRACT (understanding)
+
+Configuration Metadata (optional):
+- appCode: Financial tracking
+- costCenter: Budget allocation
+- tier: Service criticality (dev/staging/prod)
+- criticality: Impact assessment (low/medium/high/critical)
+
+Nested Structures:
+- serviceOwners[]: Array of {name, email, role}
+  → Sub-entity candidates (Iteration 4: 3+ properties, queryable)
+  → Decision: Extract as User entities
+
+- endpoints[]: Array of {name, url, service}
+  → Sub-entity candidates (Iteration 4: independent queryability)
+  → Decision: Extract as Endpoint entities
+
+Relationships Discovered:
+- dependencies[] (array of $ref) → dependsOn relationship
+- namespaces[] (array of $ref) → deployedIn relationship
+- product.$ref → partOf relationship
+
+Validation Rules:
+- name: Must be lowercase, alphanumeric + hyphens
+- email: Must match RFC 5322 format
+- tier: enum [dev, staging, production]
+
+Semantic Understanding:
+This schema represents a production service/application. The 'required'
+fields ensure basic identifiability and accountability. However, the
+'optional' fields (grafanaUrl, slackChannel, etc.) are critical for
+operational excellence.
+
+Extraction Strategy:
+- Apply Iteration 7 (Maximum Fidelity): Extract ALL fields present,
+  not just 'required' ones
+- Apply Iteration 4 (Sub-Entities): Extract serviceOwners[] and
+  endpoints[] as separate entities
+- URN pattern: urn:service:{name} (normalized)
+
+Expected Field Count: 10-20 fields per service (varies by completeness)
+Expected Sub-Entities: 2-5 owners per service, 1-10 endpoints
+
+Confidence: VERY HIGH
+"
 ```
 
-### Step 2: Build Schema Catalog
+#### Step 2: Cross-Schema Relationship Mapping
 
-Create a mapping of schema types to extraction rules:
+**AI Task**: Discover how different entity types relate to each other
 
-```json
-{
-  "schemas": [
-    {
-      "schema_file": "/schemas/service.schema.json",
-      "entity_type": "Service",
-      "urn_pattern": "urn:service:{name}",
-      "required_predicates": ["name", "description", "owner"],
-      "optional_predicates": ["grafanaUrl", "slackChannel"],
-      "relationships": [
-        {
-          "field": "namespace",
-          "target_type": "Namespace",
-          "predicate": "belongsTo"
-        },
-        {
-          "field": "dependencies[]",
-          "target_type": "Dependency",
-          "predicate": "dependsOn"
-        }
-      ],
-      "file_pattern": "/services/**/*.yaml"
-    }
-  ]
-}
+**AI Questions**:
+
+1. "Which schemas reference other schemas?" ($ref patterns)
+2. "What relationship types exist?" (composition, dependency, ownership)
+3. "Are relationships bidirectional?" (should inverse predicates exist?)
+4. "What implicit relationships might exist?" (naming, directory structure)
+
+**AI Reasoning Output**:
+
+```
+"Cross-Schema Relationship Analysis:
+
+Explicit Relationships (from $ref patterns):
+
+1. Service --dependsOn--> Dependency
+   Source: app-1.yml (dependencies[].$ref)
+   Type: Dependency
+   Cardinality: Many-to-many
+   Bidirectional: YES → Dependency --supportedBy--> Service
+   Confidence: HIGH (explicit $ref)
+
+2. Service --deployedIn--> Namespace
+   Source: app-1.yml (namespaces[].$ref)
+   Type: Deployment
+   Cardinality: One-to-many
+   Bidirectional: YES → Namespace --hosts--> Service
+   Confidence: HIGH (explicit $ref)
+
+3. Service --partOf--> Product
+   Source: app-1.yml (product.$ref)
+   Type: Grouping/Organization
+   Cardinality: Many-to-one
+   Bidirectional: YES → Product --contains--> Service
+   Confidence: HIGH (explicit $ref)
+
+4. Service --hasOwner--> User
+   Source: app-1.yml (serviceOwners[] - nested, not $ref)
+   Type: Ownership/Accountability
+   Cardinality: Many-to-many
+   Bidirectional: YES → User --owns--> Service
+   Confidence: HIGH (will create from sub-entity extraction)
+
+Implicit Relationships (to discover via Iteration 6):
+
+5. Service --uses--> Technology (from descriptions)
+   Pattern: Free-text mentions of databases, tools, platforms
+   Example: "uses PostgreSQL" → Service --uses--> PostgreSQL
+   Confidence: MEDIUM (natural language extraction)
+
+6. Namespace --associatedWith--> Team (from directory/naming)
+   Pattern: Directory paths like /data/teams/{team}/namespaces/
+   Confidence: MEDIUM (path-based inference)
+
+7. Service --exposes--> Endpoint (from sub-entity)
+   Pattern: Endpoints nested in service definition
+   Confidence: HIGH (structural relationship)
+
+Relationship Summary:
+- Explicit (HIGH confidence): 4 types
+- Implicit (MEDIUM confidence): 3 types
+- Total relationship types: 7
+
+Strategy: Create all explicit relationships via $ref resolution (Phase 3),
+create implicit relationships via AI inference (Iteration 6)
+
+Confidence: HIGH
+"
 ```
 
-**Output**: `schema_catalog.json` - Complete extraction blueprint.
+#### Step 3: Extraction Strategy Per Entity Type
 
-### Step 3: Validate Schema Catalog
+**AI Task**: Decide how to extract each entity type based on schema understanding
 
-```python
-# Check that all referenced entity types are defined
-for schema in catalog['schemas']:
-    for rel in schema['relationships']:
-        assert rel['target_type'] in known_entity_types, \
-            f"Unknown target type: {rel['target_type']}"
+**AI Reasoning Output**:
 
-# Check file patterns match actual files
-for schema in catalog['schemas']:
-    matched_files = glob(schema['file_pattern'])
-    assert len(matched_files) > 0, \
-        f"No files match pattern: {schema['file_pattern']}"
 ```
+"Extraction Strategy Decisions:
+
+Entity Type: Service
+├─ Schema: /qontract-schemas/app-1.yml
+├─ File Pattern: /data/services/**/app.yml
+├─ URN Pattern: urn:service:{name}
+├─ Extraction Approach:
+│  ├─ Schema-driven (required fields)
+│  ├─ + Iteration 7 (ALL optional fields too)
+│  ├─ + Iteration 4 (sub-entity extraction for owners/endpoints)
+│  ├─ + Iteration 5 (free-text description mining)
+│  └─ + Iteration 6 (universal inference for implicit rels)
+├─ Expected Fields: 12-20 predicates per entity
+├─ Expected Sub-Entities: 3-10 per service
+└─ Confidence: VERY HIGH
+
+Entity Type: Dependency
+├─ Schema: /qontract-schemas/dependency-1.yml
+├─ File Pattern: /data/dependencies/**/service.yml
+├─ URN Pattern: urn:dependency:{name}
+├─ Extraction Approach:
+│  ├─ Schema-driven
+│  └─ + Iteration 7 (ALL fields)
+├─ Expected Fields: 8-12 predicates per entity
+├─ Expected Sub-Entities: 1-5 per dependency
+└─ Confidence: HIGH
+
+Entity Type: Namespace
+├─ Schema: /qontract-schemas/namespace-1.yml
+├─ File Pattern: /data/namespaces/**/*.yml
+├─ URN Pattern: urn:namespace:{cluster}:{name}
+├─ Extraction Approach:
+│  ├─ Schema-driven
+│  ├─ + Iteration 7 (ALL fields)
+│  └─ + Iteration 6 (infer cluster/team relationships)
+├─ Expected Fields: 10-15 predicates
+└─ Confidence: HIGH
+
+... (additional entity types)
+
+Overall Strategy:
+- Schema-driven foundation (HIGH confidence baseline)
+- Enhanced with all 7 iterations for completeness
+- Expect ~6,000-8,000 total entities
+- Expect >85% field coverage average
+- Expect <2% broken refs, <0.5% orphans
+
+Ready to proceed to Phase 2 (Entity Extraction).
+"
+```
+
+**Deterministic Validation**: None at this phase (understanding/planning only).
 
 ---
 
 ## Phase 2: Entity Extraction
 
-**Goal**: Extract ALL entities with maximum fidelity from repository files.
+**Goal**: AI agent extracts ALL entities with maximum fidelity through intelligent reasoning and field discovery.
 
-**Claude Instructions**:
+### AI Execution Process
 
-- Generate a Python extraction script with argparse for all input/output paths
-- Process files in batches and validate after each batch
-- Use the patterns below as templates, adapting to the repository structure
-- Never hardcode paths - all paths must come from command-line arguments
+#### Step 1: File-by-File Extraction
 
-### Option A: Schema-Driven Extraction
+**AI Task**: Process each file individually, making intelligent decisions about what to extract
 
-Use the schema catalog from Phase 1.
+**For Each File, AI Asks**:
 
-#### Batch Strategy
+1. **Entity Classification**: "What entity type does this file represent?"
+   - Read $schema or file path pattern
+   - Match against Phase 1 understanding
+   - Classify with confidence score
 
-Group schemas by dependency order (extract referenced entities first):
+2. **Field Discovery**: "What fields should I extract?" (NOT from template - from reasoning)
+   - Identify ALL fields present in source file
+   - Categorize each field (identity, descriptive, metadata, config, relationships, etc.)
+   - Apply Iteration 7 (Maximum Fidelity): Extract everything meaningful, not just "required"
+   - Make per-field decisions with reasoning
 
-```python
-# Pseudo-code
-batches = [
-    # Batch 1: No dependencies (leaf nodes)
-    ['Cluster', 'AWSAccount', 'Product'],
+3. **Nested Structure Handling**: "How should I handle nested objects/arrays?"
+   - Check Iteration 4 criteria: Does it have 3+ properties? Is it independently queryable?
+   - Decision: Sub-entity (extract separately) OR inline (include in parent)
+   - If sub-entity: Create bidirectional relationships
 
-    # Batch 2: Depend on Batch 1
-    ['Namespace', 'Environment'],
+4. **URN Generation**: "What URN should this entity have?"
+   - Extract name/identifier from data
+   - Normalize: lowercase, replace spaces/special chars with hyphens
+   - Format: `urn:{entity-type}:{identifier}` or `urn:{entity-type}:{parent}:{identifier}`
+   - Validate format: Must match `^urn:[a-z0-9-]+:[a-z0-9-:]+$`
 
-    # Batch 3: Depend on Batch 1 & 2
-    ['Service', 'Database'],
+5. **Confidence Assessment**: "How confident am I in this extraction?"
+   - HIGH: Schema-guided, all required fields present, clear structure
+   - MEDIUM: Some ambiguity in field interpretation or missing optional fields
+   - LOW: Unclear entity type or significant missing data
 
-    # Batch 4: Everything else
-    ['User', 'Role', 'Alert']
-]
+**AI Reasoning Example (Single File)**:
+
+```
+Agent extracting: /data/services/cincinnati/app.yml
+
+=== STEP 1: ENTITY CLASSIFICATION ===
+File path: /data/services/cincinnati/app.yml
+$schema reference: /app-1.yml
+Match: Service entity type (from Phase 1 analysis)
+Confidence: HIGH ✓
+
+=== STEP 2: FIELD DISCOVERY ===
+Source file has 14 fields total:
+
+Field-by-field decisions:
+
+1. name: "Cincinnati"
+   Category: Identity
+   Decision: EXTRACT ✓ (required, primary identifier)
+
+2. description: "OpenShift Update Service that provides..."
+   Category: Descriptive
+   Decision: EXTRACT ✓ (required, semantic value)
+
+3. serviceOwners: [{name, email, role}, {name, email, role}]
+   Category: Contact/Ownership
+   Sub-entity check:
+   - Properties per item: 3 ✓ (meets Iteration 4 criteria)
+   - Independently queryable: YES ("find services owned by X") ✓
+   Decision: EXTRACT as User sub-entities ✓
+   Relationship: Service --hasOwner--> User, User --owns--> Service
+
+4. grafanaUrl: "https://grafana.example.com/d/cincinnati"
+   Category: Resources
+   Schema: Optional field
+   Decision: EXTRACT ✓ (Iteration 7: Don't skip optional operational metadata)
+
+5. slackChannel: "#cincinnati-team"
+   Category: Contact
+   Schema: Optional field
+   Decision: EXTRACT ✓ (enables team communication)
+
+6. sopsUrl: "https://github.com/org/cincinnati/docs/sops"
+   Category: Resources
+   Schema: Optional field
+   Decision: EXTRACT ✓ (critical for incident response)
+
+7. architectureDocument: "https://docs.example.com/arch/cincinnati"
+   Category: Resources
+   Schema: Optional field
+   Decision: EXTRACT ✓ (valuable documentation)
+
+8. appCode: "CINC-001"
+   Category: Configuration/Metadata
+   Schema: Optional field
+   Decision: EXTRACT ✓ (financial tracking identifier)
+
+9. costCenter: "Engineering"
+   Category: Configuration/Metadata
+   Schema: Optional field
+   Decision: EXTRACT ✓ (budget allocation)
+
+10. tier: "production"
+    Category: Type/Classification
+    Schema: Optional field
+    Decision: EXTRACT ✓ (criticality indicator)
+
+11. criticality: "high"
+    Category: Status/State
+    Schema: Optional field
+    Decision: EXTRACT ✓ (impact assessment)
+
+12. dependencies: [$ref, $ref, ...]
+    Category: Relationships
+    Decision: Defer to Phase 3 (Two-Pass Resolution - Iteration 2)
+    Action: Store as _pending_refs for later resolution
+
+13. $schema: "/app-1.yml"
+    Category: Structural metadata
+    Decision: SKIP ✗ (not domain data)
+
+14. apiVersion: "v1"
+    Category: Structural metadata
+    Decision: SKIP ✗ (not domain data)
+
+Fields extracted: 12 of 14 total
+Structural metadata skipped: 2
+Field coverage: 85.7% ✓ (exceeds Iteration 7 target of >80%)
+
+=== STEP 3: URN GENERATION ===
+Entity name: "Cincinnati"
+Normalization: "cincinnati" (already lowercase, no special chars)
+Entity type: Service
+URN: urn:service:cincinnati
+Validation: Matches ^urn:[a-z0-9-]+:[a-z0-9-:]+$ ✓
+
+=== STEP 4: SUB-ENTITY EXTRACTION ===
+serviceOwners[0]:
+- name: "John Doe"
+- email: "jdoe@example.com"
+- role: "technical_lead"
+URN: urn:user:jdoe@example.com (email as unique identifier)
+Entity created ✓
+
+serviceOwners[1]:
+- name: "Jane Smith"
+- email: "jsmith@example.com"
+URN: urn:user:jsmith@example.com
+Entity created ✓
+
+Bidirectional relationships created:
+- urn:service:cincinnati --hasOwner--> urn:user:jdoe@example.com ✓
+- urn:user:jdoe@example.com --owns--> urn:service:cincinnati ✓
+- urn:service:cincinnati --hasOwner--> urn:user:jsmith@example.com ✓
+- urn:user:jsmith@example.com --owns--> urn:service:cincinnati ✓
+
+=== STEP 5: CONFIDENCE ASSESSMENT ===
+Schema match: HIGH ✓
+Required fields present: 100% ✓
+Field coverage: 85.7% ✓
+Sub-entity decisions: Applied criteria correctly ✓
+URN validation: Passed ✓
+
+Overall confidence: HIGH
+
+=== OUTPUT ===
+Main entity:
+{
+  "@id": "urn:service:cincinnati",
+  "@type": "Service",
+  "name": "Cincinnati",
+  "description": "OpenShift Update Service that provides...",
+  "onboardingStatus": "OnBoarded",
+  "grafanaUrl": "https://grafana.example.com/d/cincinnati",
+  "slackChannel": "#cincinnati-team",
+  "sopsUrl": "https://github.com/org/cincinnati/docs/sops",
+  "architectureDocument": "https://docs.example.com/arch/cincinnati",
+  "appCode": "CINC-001",
+  "costCenter": "Engineering",
+  "tier": "production",
+  "criticality": "high",
+  "hasOwner": [
+    {"@id": "urn:user:jdoe@example.com"},
+    {"@id": "urn:user:jsmith@example.com"}
+  ],
+  "_pending_refs": {
+    "dependencies": [/* $ref values for Phase 3 */]
+  }
+}
+
+Sub-entities created: 2 User entities
+Total predicates: 14 (exceeds Iteration 7 target of 12+) ✓
 ```
 
-#### Extraction Pattern
+#### Maximum Fidelity Field Extraction
 
-For each entity type in the batch:
+**CRITICAL (Iteration 7)**: Extract EVERY field from source data unless it is clearly irrelevant or metadata-only. The goal is to achieve 12+ predicates per entity (up from baseline 6.8).
 
-```python
-def extract_entity_type(schema_config, output_file):
-    """
-    Extract entities of a single type.
+**Problem**: The baseline extraction averaged only 6.8 predicates per entity, indicating that many available fields in the source YAML were not being extracted. This limits queryability and loses valuable context.
 
-    Args:
-        schema_config: Entry from schema_catalog.json
-        output_file: Path to append JSON-LD output
-    """
-    entities = []
+**Solution**: Systematic field extraction with categorization to ensure completeness.
 
-    # Find all files matching the pattern
-    files = glob(schema_config['file_pattern'])
+**Field Categories to Extract**:
 
-    for filepath in files:
-        data = load_yaml_or_json(filepath)
+1. **Identity Fields**: name, id, path, labels
+2. **Type/Classification**: @type, kind, category, tier
+3. **Descriptive**: description, summary, purpose, scope
+4. **Metadata**: created, modified, version, schema
+5. **Configuration**: settings, parameters, options, flags
+6. **Relationships**: references, dependencies, links, associations
+7. **Resources**: URLs, endpoints, repositories, documentation links
+8. **Contact/Ownership**: owners, maintainers, contacts, teams
+9. **Status/State**: status, state, health, onboardingStatus
 
-        # Create entity with URN
-        urn = generate_urn(schema_config['urn_pattern'], data)
+**Extraction Strategy by Field Type**:
 
-        entity = {
-            "@id": urn,
-            "@type": schema_config['entity_type']
-        }
+**Scalar Values** (strings, numbers, booleans):
 
-        # Extract ALL required fields
-        for field in schema_config['required_predicates']:
-            value = get_nested_field(data, field)
-            if value is None:
-                log_error(f"Missing required field '{field}' in {filepath}")
-            entity[field] = value
+- Extract ALL scalar fields at the top level
+- Extract ALL scalar fields in nested objects (unless creating sub-entity)
+- Include even if optional in schema
+- Never skip a field because it "seems unimportant"
 
-        # Extract ALL optional fields that exist
-        for field in schema_config['optional_predicates']:
-            value = get_nested_field(data, field)
-            if value is not None:
-                entity[field] = value
+**Arrays**:
 
-        # Extract relationships
-        for rel in schema_config['relationships']:
-            ref_value = get_nested_field(data, rel['field'])
-            if ref_value:
-                # Convert $ref to URN
-                target_urn = resolve_reference(ref_value, rel['target_type'])
-                entity[rel['predicate']] = {"@id": target_urn}
+- Extract ALL array fields
+- Preserve array structure (don't flatten)
+- Handle arrays of scalars (tags, labels)
+- Handle arrays of objects (create sub-entities if meet criteria, otherwise inline)
 
-        entities.append(entity)
+**Objects**:
 
-    # Write to JSON-LD file
-    append_jsonld(output_file, entities)
+- Check if should be sub-entity (see Section 6.8 decision criteria)
+- If sub-entity: Extract as separate entity with relationship
+- If inline: Extract all properties recursively
 
-    return len(entities)
-```
+**Timestamps**:
 
-#### Maximum Fidelity Rule
+- Extract ALL timestamp fields (created, modified, deployed, etc.)
+- Preserve original format (ISO 8601, Unix epoch, etc.)
+- Extract even if null or missing (use null value)
 
-**CRITICAL**: Extract EVERY meaningful field, even if it seems unimportant.
+**Null/Missing Values**:
 
-❌ **Wrong** (minimal extraction):
+- Extract field with null value if defined in schema
+- Distinguish between "field not present" vs "field is null"
+- Optional fields: Extract if present, omit if absent
+
+**Repository-Agnostic Discovery**:
+
+Claude Code should discover available fields by:
+
+1. **Schema Analysis** (if schemas available):
+   - Read all properties from schema
+   - Extract both required AND optional fields
+   - Check for nested properties
+   - Note: Don't skip optional fields!
+
+2. **Sample File Analysis** (if no schemas):
+   - Read 5-10 sample files of each entity type
+   - Identify all fields that appear in any sample
+   - Build union of all fields (not intersection)
+   - Extract ALL discovered fields
+
+3. **Field Discovery Iteration**:
+   - Start with required fields
+   - Add all optional fields from schema
+   - Add all fields found in samples
+   - Add fields found through relationships (referenced objects)
+
+**Examples**:
+
+❌ **Wrong** (minimal extraction, 3 predicates):
 
 ```json
 {
@@ -368,7 +895,7 @@ def extract_entity_type(schema_config, output_file):
 }
 ```
 
-✅ **Right** (maximum detail):
+✅ **Right** (maximum fidelity, 12+ predicates):
 
 ```json
 {
@@ -386,11 +913,92 @@ def extract_entity_type(schema_config, output_file):
   "sopsUrl": "https://github.com/org/cincinnati/docs/sops",
   "architectureDocument": "https://docs.example.com/arch/cincinnati",
   "appCode": "CINC-001",
-  "costCenter": "Engineering"
+  "costCenter": "Engineering",
+  "tier": "production",
+  "criticality": "high",
+  "dependencies": [{"@id": "urn:dependency:github"}]
 }
 ```
 
-**Why?** You can't predict future queries. Extract everything now, filter later.
+**Why Maximum Fidelity Matters**:
+
+- **Future Queries**: You can't predict what queries users will run. Extract everything now, filter during queries.
+- **Context Preservation**: Optional fields often contain critical context (URLs, contacts, settings).
+- **Analytics**: Rich data enables better analytics, reporting, and insights.
+- **Debugging**: Complete field extraction helps debug issues and understand configurations.
+- **Discovery**: Users discover valuable information through exploration when all fields are present.
+
+**Common Mistakes to Avoid**:
+
+❌ **Skipping optional fields**: "This field is optional in the schema, so I'll skip it"
+
+- ✅ Extract it anyway if present in the data
+
+❌ **Assuming irrelevance**: "This field doesn't seem important"
+
+- ✅ Extract it - you can't predict future importance
+
+❌ **Flattening nested objects**: "I'll just extract the name from this nested object"
+
+- ✅ Extract the full object (or create sub-entity if it meets criteria)
+
+❌ **Ignoring arrays**: "This array has 10 items, too many to extract"
+
+- ✅ Extract the full array - arrays are critical for relationships
+
+❌ **Skipping null values**: "This field is null, so I'll omit it"
+
+- ✅ Extract with null value - it indicates the field was checked but empty
+
+**Validation**:
+
+After extraction, validate field completeness:
+
+```python
+def validate_field_completeness(entity, source_data, schema=None):
+    """
+    Validate that all meaningful fields were extracted.
+
+    Returns warnings for fields that exist in source but not in entity.
+    """
+    warnings = []
+
+    # Get all fields from source data (excluding metadata)
+    metadata_fields = ['$schema', 'apiVersion', 'kind']
+    source_fields = set(source_data.keys()) - set(metadata_fields)
+
+    # Get all fields in extracted entity (excluding internal)
+    entity_fields = set(k for k in entity.keys() if not k.startswith('_'))
+
+    # Find missing fields
+    missing_fields = source_fields - entity_fields
+
+    if missing_fields:
+        warnings.append(
+            f"Entity {entity['@id']} missing {len(missing_fields)} source fields: "
+            f"{', '.join(list(missing_fields)[:5])}"
+        )
+
+    # Calculate field coverage
+    coverage = len(entity_fields) / len(source_fields) if source_fields else 0
+
+    if coverage < 0.8:  # Less than 80% of source fields extracted
+        warnings.append(
+            f"Low field coverage for {entity['@id']}: "
+            f"{coverage:.1%} ({len(entity_fields)}/{len(source_fields)} fields)"
+        )
+
+    return warnings
+```
+
+**Expected Impact**:
+
+| Metric | Baseline | Target (Iteration 7) | Improvement |
+|--------|----------|---------------------|-------------|
+| **Avg predicates per entity** | 6.8 | 12+ | +76% (almost 2x) |
+| **Field extraction coverage** | Unknown | >80% | High fidelity |
+| **Queryable fields** | Limited | Comprehensive | Maximum discovery |
+| **Context preservation** | Minimal | Complete | Full source fidelity |
 
 ### Option B: Heuristic Extraction
 
@@ -2754,9 +3362,7 @@ def validate_entity_quality(entities):
 
 ## Phase 3: Relationship Resolution
 
-**Goal**: Validate all references resolve to actual entities and create bidirectional edges.
-
-**Note**: When using the Two-Pass Extraction Strategy (see Phase 2), most of this validation happens proactively during Pass 2. This phase provides additional validation patterns for single-pass extraction or post-extraction validation.
+**Goal**: AI agent resolves all `$ref` values to URNs, infers implicit relationships, and creates bidirectional edges.
 
 ### Proactive Reference Validation Pattern
 
@@ -3815,7 +4421,7 @@ def infer_naming_based_relationships(entities, entity_index):
         'deployment': 'Deployment',
         'service': 'Service',
         'configmap': 'ConfigMap',
-        'secret': 'Secret',
+        'secret': 'Secret',  # pragma: allowlist secret
         'ingress': 'Ingress',
         'route': 'Route',
         'test': 'Test',
@@ -5080,6 +5686,417 @@ See [load_neo4j.py](#load_neo4jpy) for implementation.
 
 ---
 
+## Deterministic Validation Standards
+
+**Purpose**: This section defines ALL validation rules that AI-extracted output MUST pass. AI agents have flexibility in **how** they reason and extract, but output **must** conform to these strict standards.
+
+### Validation Philosophy
+
+```
+┌──────────────────────────────────────┐
+│   AI Reasoning (Flexible/Adaptive)   │
+│   - Decides what to extract          │
+│   - Infers relationships             │
+│   - Handles edge cases               │
+│   - Adapts to patterns               │
+└──────────────┬───────────────────────┘
+               │ Produces
+               ↓
+┌──────────────────────────────────────┐
+│  Deterministic Validation (Strict)   │
+│  - URN format compliance             │
+│  - Required predicates present       │
+│  - JSON-LD structure valid           │
+│  - Reference integrity verified      │
+│  - Iteration targets met             │
+└──────────────────────────────────────┘
+```
+
+AI agents must self-validate their output against these standards and iterate until all checks pass.
+
+### Standard 1: URN Format Validation
+
+**Rule**: All `@id` values must conform to URN standard format.
+
+**Format**:
+
+```regex
+^urn:[a-z0-9-]+:[a-z0-9-:]+$
+```
+
+**Components**:
+
+- Prefix: `urn:`
+- Type segment: lowercase alphanumeric + hyphens only
+- Identifier segments: lowercase alphanumeric + hyphens + colons only (for hierarchical URNs)
+- Minimum: 3 segments (e.g., `urn:service:name`)
+
+**Allowed**:
+
+- `urn:service:api-gateway` ✓
+- `urn:namespace:prod-cluster:frontend` ✓
+- `urn:user:john-doe` ✓
+
+**Not Allowed**:
+
+- `urn:Service:ApiGateway` ✗ (uppercase)
+- `urn:service:API_Gateway` ✗ (underscores)
+- `urn:service:my service` ✗ (spaces)
+- `service:api-gateway` ✗ (missing urn: prefix)
+- `urn:service` ✗ (too few segments)
+
+**Normalization Rules**:
+
+1. Convert to lowercase
+2. Replace spaces with hyphens
+3. Replace underscores with hyphens
+4. Remove special characters (except hyphens and colons)
+5. Collapse multiple hyphens to single hyphen
+6. Remove leading/trailing hyphens
+
+**Validation Check**:
+
+- **Requirement**: 100% of entities must have valid URN format
+- **How to check**: Regex match all `@id` values
+- **On failure**: Report invalid URNs for correction
+
+### Standard 2: Required Predicates Validation
+
+**Rule**: ALL entities must have these three predicates.
+
+**Required Predicates**:
+
+```json
+{
+  "@id": "urn:entity-type:identifier",
+  "@type": "EntityType",
+  "name": "Human-readable name"
+}
+```
+
+**Validation Rules**:
+
+1. `@id`: Must be present, non-empty, valid URN format
+2. `@type`: Must be present, non-empty, start with uppercase letter
+3. `name`: Must be present, non-empty string (human-readable)
+
+**Exceptions**:
+
+- `name` may be omitted for composite/edge entities where URN is self-descriptive
+- Example: `urn:service:foo:depends-on:service:bar` (relationship entity)
+
+**Validation Check**:
+
+- **Requirement**: 100% of entities must have @id, @type, name (unless justified exception)
+- **How to check**: Verify all three keys exist and have non-empty values
+- **On failure**: Report entities missing required predicates
+
+### Standard 3: JSON-LD Structure Validation
+
+**Rule**: Output must be valid JSON-LD format.
+
+**Valid Structures**:
+
+Option A: JSON-LD with @context (preferred):
+
+```json
+{
+  "@context": "https://schema.org/",
+  "@graph": [
+    {
+      "@id": "urn:service:foo",
+      "@type": "Service",
+      "name": "Foo"
+    }
+  ]
+}
+```
+
+Option B: JSON-LD array (acceptable):
+
+```json
+[
+  {
+    "@id": "urn:service:foo",
+    "@type": "Service",
+    "name": "Foo"
+  }
+]
+```
+
+Option C: Single entity (for testing):
+
+```json
+{
+  "@id": "urn:service:foo",
+  "@type": "Service",
+  "name": "Foo"
+}
+```
+
+**JSON-LD Requirements**:
+
+1. Must be valid JSON syntax (parseable)
+2. Must use @id, @type keywords
+3. References to other entities must use `{"@id": "urn:..."}`
+4. Arrays of references: `[{"@id": "urn:..."}, {"@id": "urn:..."}]`
+
+**Validation Check**:
+
+- **Requirement**: Output must parse as valid JSON and follow JSON-LD conventions
+- **How to check**: JSON parse, verify @id/@type usage
+- **On failure**: Report JSON syntax errors or structure violations
+
+### Standard 4: Reference Integrity Validation
+
+**Rule**: All relationship references must point to entities that exist in the graph.
+
+**What to Check**:
+
+1. All `{"@id": "urn:..."}` references (single)
+2. All `[{"@id": "urn:..."}, ...]` references (arrays)
+3. All referenced URNs must exist in the entity index
+
+**Broken Reference Example**:
+
+```json
+{
+  "@id": "urn:service:foo",
+  "dependsOn": [
+    {"@id": "urn:service:bar"},
+    {"@id": "urn:service:baz"}
+  ]
+}
+```
+
+If `urn:service:baz` doesn't exist in the graph → broken reference.
+
+**Validation Check**:
+
+- **Requirement**: <2% broken reference rate (Iteration 2 target)
+- **How to check**:
+  1. Build entity index (set of all @id values)
+  2. Find all references in all entities
+  3. Check each reference exists in index
+  4. Calculate: (broken refs / total refs) × 100
+- **On failure**: Report broken references, must be <2%
+
+**Two-Pass Resolution** (Iteration 2):
+
+- Pass 1: Extract all entities, build entity index
+- Pass 2: Resolve all $ref values to URNs, validate existence
+- This ensures <2% broken reference rate
+
+### Standard 5: Iteration-Specific Targets
+
+**Iteration 1: Mandatory Name/Type Enforcement**
+
+- **Target**: <5% missing names, 0% missing types
+- **Validation**:
+  - Count entities missing `name` predicate
+  - Count entities missing `@type` predicate
+  - Calculate percentages
+- **Pass criteria**: Missing names <5%, missing types = 0%
+
+**Iteration 2: Two-Pass Reference Resolution**
+
+- **Target**: <2% broken reference rate
+- **Validation**:
+  - Use Reference Integrity check (Standard 4)
+  - Calculate broken ref rate
+- **Pass criteria**: Broken refs <2%
+
+**Iteration 3: Orphan Detection & Linking**
+
+- **Target**: <0.5% orphan rate
+- **Validation**:
+  - Orphan = entity with zero incoming or outgoing relationships
+  - Count entities with degree = 0
+  - Calculate: (orphans / total entities) × 100
+- **Pass criteria**: Orphan rate <0.5%
+
+**Iteration 4: Sub-Entity Extraction**
+
+- **Target**: Sub-entities created for nested structures meeting criteria
+- **Validation**:
+  - Check nested objects with 3+ properties were extracted as entities
+  - Verify bidirectional relationships created (parent↔sub-entity)
+  - Ensure sub-entities have own URNs and are queryable
+- **Pass criteria**: All qualifying structures extracted, bidirectional rels present
+
+**Iteration 5: Free-Text Entity Extraction**
+
+- **Target**: Entities extracted from description/text fields where meaningful
+- **Validation**:
+  - Check for entities with `_extracted_from_text: true` annotation
+  - Verify relationships created from free-text mentions
+- **Pass criteria**: Free-text extraction applied where applicable (MEDIUM confidence acceptable)
+
+**Iteration 6: Universal Inference**
+
+- **Target**: Implicit relationships discovered from patterns
+- **Validation**:
+  - Check for relationships with `_inferred: true` annotation
+  - Verify inference confidence scores present
+  - Confirm multiple inference patterns applied (directory, naming, labels, text)
+- **Pass criteria**: Inference patterns applied, confidence scores assigned
+
+**Iteration 7: Maximum Fidelity Field Extraction**
+
+- **Target**: >80% field coverage, >12 avg predicates per entity
+- **Validation**:
+  - Calculate field coverage: (extracted fields / source fields) × 100 per entity
+  - Average across all entities
+  - Calculate avg predicates: total predicates / total entities
+- **Pass criteria**: Avg coverage >80%, avg predicates >12
+
+**Combined Validation Check**:
+
+```
+Iteration Targets Validation Report:
+
+✓ Iteration 1: Names 98% present (target >95%) ✓
+✓ Iteration 1: Types 100% present (target 100%) ✓
+✓ Iteration 2: Broken refs 1.2% (target <2%) ✓
+✓ Iteration 3: Orphans 0.3% (target <0.5%) ✓
+✓ Iteration 4: 2,104 sub-entities created ✓
+✓ Iteration 5: 156 entities from free-text ✓
+✓ Iteration 6: 342 inferred relationships ✓
+✓ Iteration 7: Field coverage 87.3% avg (target >80%) ✓
+✓ Iteration 7: Predicates 13.2 avg (target >12) ✓
+
+All iteration targets PASSED ✓
+```
+
+### Standard 6: Bidirectional Relationship Consistency
+
+**Rule**: Relationships should be bidirectional where semantically appropriate.
+
+**Examples**:
+
+Forward relationship:
+
+```json
+{
+  "@id": "urn:service:foo",
+  "dependsOn": [{"@id": "urn:service:bar"}]
+}
+```
+
+Reverse relationship (should also exist):
+
+```json
+{
+  "@id": "urn:service:bar",
+  "supportedBy": [{"@id": "urn:service:foo"}]
+}
+```
+
+**Common Bidirectional Pairs**:
+
+- `dependsOn` ↔ `supportedBy` / `requiredBy`
+- `hasOwner` ↔ `owns`
+- `partOf` ↔ `contains` / `includes`
+- `deployedIn` ↔ `hosts`
+- `uses` ↔ `usedBy`
+
+**Validation Check**:
+
+- **Requirement**: Verify bidirectional relationships exist for major relationship types
+- **How to check**: For each relationship, verify inverse exists
+- **On failure**: Report missing inverse relationships
+
+### Validation Execution
+
+**When to Validate**:
+
+1. **After Phase 2** (Entity Extraction): Validate URN format, required predicates, JSON-LD structure
+2. **After Phase 3** (Relationship Resolution): Validate reference integrity, bidirectional consistency
+3. **After Phase 3.5** (Final Validation): Validate all iteration targets, final quality check
+
+**How to Validate**:
+
+AI agent should implement validation logic or use provided validation functions.
+
+**Example Validation Flow**:
+
+```
+Agent: "Phase 2 extraction complete. Running Standard 1-3 validations..."
+
+Standard 1 (URN Format):
+- Checking 6,332 entity URNs...
+- ✓ 6,332/6,332 valid URN format (100%)
+
+Standard 2 (Required Predicates):
+- Checking @id, @type, name presence...
+- ✓ 6,332/6,332 entities have @id (100%)
+- ✓ 6,332/6,332 entities have @type (100%)
+- ✓ 6,309/6,332 entities have name (99.6%)
+- ⚠ 23 entities missing name (composite entities, justified)
+
+Standard 3 (JSON-LD Structure):
+- Parsing JSON-LD output...
+- ✓ Valid JSON syntax
+- ✓ Proper @id/@type usage
+- ✓ References use {"@id": "..."} format
+
+Phase 2 validations PASSED ✓
+Proceeding to Phase 3...
+```
+
+**On Validation Failure**:
+
+Agent must:
+
+1. Identify which standard failed
+2. Report specific violations (entity URNs, field names, counts)
+3. Analyze why failure occurred
+4. Correct the issue
+5. Re-validate until all checks pass
+
+**Example Failure Handling**:
+
+```
+Agent: "Standard 4 (Reference Integrity) validation FAILED"
+
+Broken references found: 127 of 28,528 total (4.5%)
+Target: <2% broken reference rate
+
+Sample broken references:
+- urn:service:foo references urn:dependency:xyz (not found)
+- urn:namespace:prod references urn:cluster:aws-east (not found)
+...
+
+Analysis: Many $ref values could not be resolved to entities.
+Root cause: Some referenced files may not have been processed yet.
+
+Action: Re-running Phase 2 extraction with dependency-order batching
+to ensure referenced entities are extracted before referencing entities.
+
+Re-validation after fix:
+Broken references: 34 of 28,528 total (0.12%)
+Target: <2% broken reference rate ✓
+
+Standard 4 validation PASSED ✓
+```
+
+### Validation as Quality Gate
+
+Validation is **mandatory**, not optional. AI agents must:
+
+- Run all applicable validations after each phase
+- Report validation results clearly
+- Fix failures before proceeding
+- Document validation pass/fail in extraction report
+
+**Quality Gate Rule**:
+❌ Do not proceed to next phase if current phase validations fail
+✓ Only proceed when all validations pass
+
+This ensures extraction quality remains high throughout the process.
+
+---
+
 ## Best Practices
 
 ### 1. Entity Naming
@@ -6252,6 +7269,269 @@ Track these metrics to validate free-text extraction quality:
    - Time to process description fields
    - API call count (if using external AI service)
    - Extraction throughput (entities/descriptions per minute)
+
+### 6.11 Maximum Fidelity Field Extraction
+
+**New Best Practice (Iteration 7)**: Extract ALL fields from source data to maximize entity richness and queryability. Goal: 12+ predicates per entity (up from baseline 6.8).
+
+**Problem**: The baseline extraction averaged only 6.8 predicates per entity, indicating that many available fields in the source YAML were not being extracted. This limits:
+
+- **Queryability**: Cannot query by fields that weren't extracted
+- **Context preservation**: Missing optional fields that contain critical information (URLs, contacts, settings)
+- **Analytics capability**: Insufficient data for reporting and insights
+- **Future-proofing**: Can't predict what queries users will run later
+
+**Solution**: Systematic field extraction guided by AI reasoning to ensure completeness.
+
+#### Field Categories to Extract
+
+Extract fields across ALL categories, not just the obvious ones:
+
+1. **Identity Fields**: name, id, path, labels, tags
+2. **Type/Classification**: @type, kind, category, tier, criticality
+3. **Descriptive**: description, summary, purpose, scope, notes
+4. **Metadata**: created, modified, version, schema, source
+5. **Configuration**: settings, parameters, options, flags, env vars
+6. **Relationships**: references, dependencies, links, associations
+7. **Resources**: URLs, endpoints, repositories, documentation links
+8. **Contact/Ownership**: owners, maintainers, contacts, teams, emails
+9. **Status/State**: status, state, health, phase, onboardingStatus
+
+#### AI Reasoning Framework for Claude Code
+
+When encountering a source file, Claude Code should reason:
+
+**Question 1**: "What fields are present in this source data?"
+
+- Analyze ALL keys in the YAML/JSON, not just required fields
+- Check nested objects for additional fields
+- Don't skip fields that seem optional or unimportant
+
+**Question 2**: "Which fields should I extract?"
+
+- **DEFAULT: Extract ALL fields** unless clearly irrelevant
+- Relevance check: Is this field actual data, or just structural metadata?
+  - Extract: `name`, `description`, `grafanaUrl`, `slackChannel`, `tier`, `costCenter`
+  - Skip: `$schema`, `apiVersion` (structural metadata, not entity data)
+
+**Question 3**: "How should I handle this field type?"
+
+- **Scalar** (string/number/boolean): Extract directly
+- **Array**: Preserve array structure, check if items should be sub-entities
+- **Object**: Check if should be sub-entity (see Section 6.8), otherwise extract all properties
+- **Null**: Extract with null value if field is defined in schema
+- **Timestamp**: Extract in original format, preserve timezone
+
+**Example AI Reasoning Process**:
+
+```
+Input File: data/services/cincinnati/app.yml
+
+Claude Code Analysis:
+"I see a service definition with many fields. Let me categorize them:
+
+Required fields (must extract):
+- name: "Cincinnati"
+- description: "OpenShift Update Service that provides..."
+
+Optional fields (should extract ALL of these):
+- grafanaUrl: "https://grafana.example.com/d/cincinnati"
+- slackChannel: "#cincinnati-team"
+- sopsUrl: "https://github.com/..."
+- architectureDocument: "https://docs.example.com/..."
+- appCode: "CINC-001"
+- costCenter: "Engineering"
+- tier: "production"
+- criticality: "high"
+
+Nested objects (check for sub-entity extraction):
+- serviceOwners: [...] → Extract as User entities (Section 6.8)
+- endpoints: [...] → Extract as Endpoint entities
+- codeComponents: [...] → Extract as CodeComponent entities
+
+Skip (structural metadata):
+- $schema: /app/app-1.yml
+- apiVersion: v1
+
+Result: Extract 12+ predicates from this service
+- Identity: name
+- Descriptive: description
+- Resources: grafanaUrl, sopsUrl, architectureDocument
+- Contact: slackChannel, serviceOwners (sub-entities)
+- Configuration: appCode, costCenter, tier, criticality
+- Relationships: endpoints, codeComponents (sub-entities)
+- Dependencies: dependencies array
+"
+```
+
+#### Examples: Before and After
+
+**Before (Minimal Extraction - 3 predicates)**:
+
+```json
+{
+  "@id": "urn:service:cincinnati",
+  "@type": "Service",
+  "name": "Cincinnati"
+}
+```
+
+**After (Maximum Fidelity - 12+ predicates)**:
+
+```json
+{
+  "@id": "urn:service:cincinnati",
+  "@type": "Service",
+  "name": "Cincinnati",
+  "description": "OpenShift Update Service that provides...",
+  "onboardingStatus": "OnBoarded",
+  "grafanaUrl": "https://grafana.example.com/d/cincinnati",
+  "slackChannel": "#cincinnati-team",
+  "sopsUrl": "https://github.com/org/cincinnati/docs/sops",
+  "architectureDocument": "https://docs.example.com/arch/cincinnati",
+  "appCode": "CINC-001",
+  "costCenter": "Engineering",
+  "tier": "production",
+  "criticality": "high",
+  "hasOwner": [{"@id": "urn:user:jdoe@example.com"}],
+  "hasEndpoint": [{"@id": "urn:endpoint:api.example.com"}],
+  "hasCodeComponent": [{"@id": "urn:code-component:cincinnati:api"}],
+  "dependencies": [{"@id": "urn:dependency:github"}]
+}
+```
+
+#### Common Mistakes to Avoid
+
+**Mistake 1: Skipping optional fields**
+
+```
+❌ "This field is optional in the schema, so I'll skip it"
+✅ Extract it anyway if present in the data
+```
+
+**Mistake 2: Assuming irrelevance**
+
+```
+❌ "costCenter doesn't seem important for a service"
+✅ Extract it - you can't predict future queries ("Show services by cost center")
+```
+
+**Mistake 3: Flattening complex fields**
+
+```
+❌ Extract only owner email: "owner_email": "jdoe@example.com"
+✅ Extract full owner as sub-entity or preserve structure
+```
+
+**Mistake 4: Ignoring arrays**
+
+```
+❌ "This serviceOwners array has 5 items, too many"
+✅ Extract full array - all 5 owners are important
+```
+
+**Mistake 5: Skipping null values**
+
+```
+❌ "grafanaUrl is null, I'll omit it"
+✅ Include it: "grafanaUrl": null - shows field was checked but empty
+```
+
+#### Expected Impact (Iteration 7)
+
+| Metric | Baseline | Target | Improvement |
+|--------|----------|--------|-------------|
+| **Avg predicates per entity** | 6.8 | 12+ | +76% (almost 2x) |
+| **Field extraction coverage** | Unknown | >80% | High fidelity |
+| **Services with rich metadata** | Low | High | Comprehensive context |
+| **Queryable dimensions** | Limited | Extensive | Enable complex queries |
+
+**Examples of New Query Capabilities**:
+
+After increasing field extraction:
+
+1. **Resource queries**: "Show all services with Grafana dashboards"
+2. **Team queries**: "Find services in cost center Engineering"
+3. **Criticality queries**: "List all high-criticality services"
+4. **Documentation queries**: "Show services with architecture documents"
+5. **Tier queries**: "Find all production-tier services"
+6. **Status queries**: "Show services with onboardingStatus = OnBoarded"
+
+#### Validation
+
+Track these metrics to ensure maximum fidelity:
+
+```python
+def validate_field_coverage(entity, source_data):
+    """
+    Validate that most source fields were extracted.
+
+    Returns coverage percentage and missing fields.
+    """
+    # Exclude structural metadata
+    metadata_fields = {'$schema', 'apiVersion', 'kind'}
+    source_fields = set(source_data.keys()) - metadata_fields
+
+    # Get extracted fields (exclude internal)
+    entity_fields = set(k for k in entity.keys() if not k.startswith('_'))
+
+    # Calculate coverage
+    coverage = len(entity_fields) / len(source_fields) if source_fields else 0
+
+    # Find missing fields
+    missing = source_fields - entity_fields
+
+    return {
+        'coverage': coverage,
+        'source_field_count': len(source_fields),
+        'extracted_field_count': len(entity_fields),
+        'missing_fields': list(missing)
+    }
+
+# Target: >80% coverage
+# Alert if coverage < 80% for investigation
+```
+
+**Metrics to Track**:
+
+- Average predicates per entity (target: 12+)
+- Field extraction coverage (target: >80%)
+- Entities with < 5 predicates (target: <5% of entities)
+- Most commonly missed fields (for improvement)
+- Queryable dimensions enabled (count of unique predicates)
+
+**When to Extract vs Skip**:
+
+**ALWAYS Extract**:
+
+- All scalar values (strings, numbers, booleans)
+- All arrays (preserve full structure)
+- All objects that don't meet sub-entity criteria
+- All URLs, contacts, documentation links
+- All status, tier, criticality indicators
+- All timestamps, versions, identifiers
+
+**SKIP Only**:
+
+- Structural metadata: `$schema`, `apiVersion`
+- Internal processing fields: `_cache`, `_temp`
+- Duplicate data already captured elsewhere
+- Binary data (images, compiled code) - link to resource instead
+
+**Repository-Agnostic Application**:
+
+This principle works for ANY repository type:
+
+- **YAML configs**: Extract ALL top-level + nested fields
+- **JSON APIs**: Extract ALL properties from API responses
+- **Python packages**: Extract ALL metadata from setup.py, **init**.py
+- **npm packages**: Extract ALL fields from package.json
+- **Terraform**: Extract ALL resource attributes
+- **Kubernetes**: Extract ALL spec fields + all metadata labels/annotations
+
+**Implementation Note for Claude Code**:
+
+When generating extraction scripts, default to extracting ALL fields. Add explicit skip logic only for known structural metadata. Better to extract too much than too little - graph queries can filter, but can't query missing data.
 
 ### 7. Handle Schema Drift
 
