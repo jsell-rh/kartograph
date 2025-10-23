@@ -355,9 +355,10 @@ async def main(argv: list[str] | None = None) -> int:
             validator=validator,
         )
 
-        # Set up progress display
+        # Set up progress display (only in verbose mode AND not in JSON logging mode)
+        # Rich terminal UI doesn't work well in CI/JSON mode
         progress_display = None
-        if config.logging.verbose:
+        if config.logging.verbose and not config.logging.json_logging:
             from kg_extractor.progress import ProgressDisplay
 
             # Count chunks first for progress bar
@@ -395,8 +396,17 @@ async def main(argv: list[str] | None = None) -> int:
 
         # Set event callback for verbose mode (streaming agent activity)
         if progress_display:
+            # Rich terminal display
             orchestrator.event_callback = lambda activity, activity_type="info": progress_display.log_agent_activity(
                 activity, activity_type
+            )
+        elif config.logging.verbose:
+            # Verbose mode with JSON logging - log to logger instead
+            orchestrator.event_callback = (
+                lambda activity, activity_type="info": logger.debug(
+                    f"Agent activity: {activity}",
+                    extra={"activity_type": activity_type},
+                )
             )
 
         # Run extraction
