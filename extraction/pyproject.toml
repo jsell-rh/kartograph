@@ -10,6 +10,7 @@ authors = [
 ]
 
 dependencies = [
+    "claude-agent-sdk>=0.1.0",
     "anthropic[vertex]>=0.39.0",
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
@@ -73,6 +74,10 @@ strict_concatenate = true
 
 [[tool.mypy.overrides]]
 module = "anthropic.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "claude_agent_sdk.*"
 ignore_missing_imports = true
 
 [tool.ruff]
