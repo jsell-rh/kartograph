@@ -1,3 +1,18 @@
 """YAML-based Jinja2 prompt template system."""
 
-__all__ = []
+from kg_extractor.prompts.loader import DiskPromptLoader, InMemoryPromptLoader
+from kg_extractor.prompts.models import (
+    PromptMetadata,
+    PromptTemplate,
+    PromptVariable,
+    TemplateError,
+)
+
+__all__ = [
+    "DiskPromptLoader",
+    "InMemoryPromptLoader",
+    "PromptMetadata",
+    "PromptTemplate",
+    "PromptVariable",
+    "TemplateError",
+]
