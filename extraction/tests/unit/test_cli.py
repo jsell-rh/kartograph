@@ -132,12 +132,47 @@ def test_build_config_from_args():
             ]
         )
 
-        config = build_config_from_args(args)
+        config = build_config_from_args(args, cwd=Path(tmpdir))
 
         assert isinstance(config, ExtractionConfig)
         assert config.data_dir == data_dir
         assert config.auth.auth_method == "api_key"
         assert config.auth.api_key == "test-key"  # pragma: allowlist secret
+
+
+def test_config_priority_flags_over_env_vars(monkeypatch):
+    """Test CLI flags override environment variables."""
+    from extractor import build_config_from_args, parse_args
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir) / "data"
+        data_dir.mkdir()
+
+        # Set environment variables
+        monkeypatch.setenv("EXTRACTOR_AUTH__AUTH_METHOD", "api_key")
+        monkeypatch.setenv(
+            "EXTRACTOR_AUTH__API_KEY", "env-var-key"
+        )  # pragma: allowlist secret
+        monkeypatch.setenv("EXTRACTOR_LOGGING__LOG_LEVEL", "DEBUG")
+
+        args = parse_args(
+            [
+                "--data-dir",
+                str(data_dir),
+                "--auth-method",
+                "api_key",
+                "--api-key",
+                "cli-flag-key",  # pragma: allowlist secret
+                "--log-level",
+                "ERROR",
+            ]
+        )
+
+        config = build_config_from_args(args, cwd=Path(tmpdir))
+
+        # CLI flags should override environment variables
+        assert config.auth.api_key == "cli-flag-key"  # pragma: allowlist secret
+        assert config.logging.log_level == "ERROR"
 
 
 def test_setup_logging():

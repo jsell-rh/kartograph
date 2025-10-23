@@ -149,56 +149,89 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def build_config_from_args(args: argparse.Namespace) -> ExtractionConfig:
+def build_config_from_args(
+    args: argparse.Namespace, cwd: Path | None = None
+) -> ExtractionConfig:
     """
     Build ExtractionConfig from parsed arguments.
 
+    Configuration priority (highest to lowest):
+    1. CLI flags
+    2. Environment variables
+    3. .env file (automatically loaded by pydantic-settings from current directory)
+    4. Defaults
+
     Args:
         args: Parsed command-line arguments
+        cwd: Working directory (unused, kept for compatibility)
 
     Returns:
         ExtractionConfig instance
     """
-    # Build auth config
-    auth_config = AuthConfig(
-        auth_method=args.auth_method,
-        api_key=args.api_key,
-        vertex_project_id=args.vertex_project_id,
-        vertex_region=args.vertex_region,
-        vertex_credentials_file=args.vertex_credentials_file,
-    )
+    # Build config dict with CLI args to override env/file settings
+    config_dict = {"data_dir": args.data_dir}
 
-    # Build chunking config
-    chunking_config = ChunkingConfig(
-        strategy=args.chunking_strategy,
-        target_size_mb=args.chunk_size_mb,
-        max_files_per_chunk=args.max_files_per_chunk,
-    )
+    # Auth overrides - only include if there are CLI overrides
+    auth_dict = {}
+    if args.auth_method:
+        auth_dict["auth_method"] = args.auth_method
+    if args.api_key:
+        auth_dict["api_key"] = args.api_key
+    if args.vertex_project_id:
+        auth_dict["vertex_project_id"] = args.vertex_project_id
+    if args.vertex_region != "us-central1":  # Only override if not default
+        auth_dict["vertex_region"] = args.vertex_region
+    if args.vertex_credentials_file:
+        auth_dict["vertex_credentials_file"] = args.vertex_credentials_file
 
-    # Build deduplication config
-    dedup_config = DeduplicationConfig(
-        strategy=args.dedup_strategy,
-        urn_merge_strategy=args.urn_merge_strategy,
-    )
+    # Only include auth if we have CLI overrides, otherwise let pydantic load from env
+    if auth_dict:
+        config_dict["auth"] = auth_dict
 
-    # Build logging config
-    logging_config = LoggingConfig(
-        log_level=args.log_level,
-        log_file=args.log_file,
-        json_logging=args.json_logging,
-    )
+    # Chunking overrides - only include if there are CLI overrides
+    chunking_dict = {}
+    if args.chunking_strategy != "hybrid":  # Only override if not default
+        chunking_dict["strategy"] = args.chunking_strategy
+    if args.chunk_size_mb != 10:  # Only override if not default
+        chunking_dict["target_size_mb"] = args.chunk_size_mb
+    if args.max_files_per_chunk != 100:  # Only override if not default
+        chunking_dict["max_files_per_chunk"] = args.max_files_per_chunk
 
-    # Build main config
-    config = ExtractionConfig(
-        data_dir=args.data_dir,
-        output_file=args.output_file,
-        resume=args.resume,
-        auth=auth_config,
-        chunking=chunking_config,
-        deduplication=dedup_config,
-        logging=logging_config,
-        validation=ValidationConfig(),
-    )
+    if chunking_dict:
+        config_dict["chunking"] = chunking_dict
+
+    # Deduplication overrides - only include if there are CLI overrides
+    dedup_dict = {}
+    if args.dedup_strategy != "urn":  # Only override if not default
+        dedup_dict["strategy"] = args.dedup_strategy
+    if args.urn_merge_strategy != "merge_predicates":  # Only override if not default
+        dedup_dict["urn_merge_strategy"] = args.urn_merge_strategy
+
+    if dedup_dict:
+        config_dict["deduplication"] = dedup_dict
+
+    # Logging overrides - only include if there are CLI overrides
+    logging_dict = {}
+    if args.log_level != "INFO":  # Only override if not default
+        logging_dict["log_level"] = args.log_level
+    if args.log_file:
+        logging_dict["log_file"] = args.log_file
+    if args.json_logging:
+        logging_dict["json_logging"] = args.json_logging
+
+    if logging_dict:
+        config_dict["logging"] = logging_dict
+
+    # Top-level overrides
+    if args.output_file != Path(
+        "knowledge_graph.jsonld"
+    ):  # Only override if not default
+        config_dict["output_file"] = args.output_file
+    if args.resume:
+        config_dict["resume"] = args.resume
+
+    # Create config - pydantic-settings will load from .env (in current dir) and env vars, then override with our dict
+    config = ExtractionConfig(**config_dict)
 
     return config
 
