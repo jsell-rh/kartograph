@@ -42,6 +42,7 @@ class AgentClient:
         allowed_tools: list[str] | None = None,
         max_retries: int = 3,
         timeout_seconds: int = 300,
+        log_prompts: bool = False,
     ):
         """
         Initialize Agent SDK client.
@@ -52,11 +53,13 @@ class AgentClient:
             allowed_tools: List of tools agent can use (default: Read, Grep, Glob)
             max_retries: Maximum retry attempts on failures
             timeout_seconds: Timeout for agent operations in seconds
+            log_prompts: Log full prompts and responses for debugging
         """
         self.auth_config = auth_config
         self.model = model
         self.max_retries = max_retries
         self.timeout_seconds = timeout_seconds
+        self.log_prompts = log_prompts
 
         # Configure agent options
         options = ClaudeAgentOptions(
@@ -95,9 +98,26 @@ class AgentClient:
         Raises:
             RuntimeError: If no response received
         """
+        import logging
+
         from claude_agent_sdk.types import ResultMessage, StreamEvent
 
+        logger = logging.getLogger("kg_extractor.llm")
+
         await self._ensure_connected()
+
+        # Log prompt if enabled
+        if self.log_prompts:
+            logger.debug(
+                "=" * 80
+                + "\n"
+                + "PROMPT TO AGENT SDK:\n"
+                + "=" * 80
+                + "\n"
+                + prompt
+                + "\n"
+                + "=" * 80
+            )
 
         # Send query
         await self.client.query(prompt)
@@ -142,6 +162,19 @@ class AgentClient:
 
         if result_text is None:
             raise RuntimeError("No response received from agent")
+
+        # Log response if enabled
+        if self.log_prompts:
+            logger.debug(
+                "=" * 80
+                + "\n"
+                + "RESPONSE FROM AGENT SDK:\n"
+                + "=" * 80
+                + "\n"
+                + result_text
+                + "\n"
+                + "=" * 80
+            )
 
         return result_text
 

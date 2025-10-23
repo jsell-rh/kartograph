@@ -340,7 +340,11 @@ async def main(argv: list[str] | None = None) -> int:
         deduplicator = URNDeduplicator(config=config.deduplication)
 
         # Create LLM client
-        llm_client = AgentClient(auth_config=config.auth, model=config.llm.model)
+        llm_client = AgentClient(
+            auth_config=config.auth,
+            model=config.llm.model,
+            log_prompts=config.logging.log_llm_prompts,
+        )
 
         # Create prompt loader
         prompt_loader = DiskPromptLoader(template_dir=config.prompt_template_dir)
@@ -399,6 +403,12 @@ async def main(argv: list[str] | None = None) -> int:
             # Rich terminal display
             orchestrator.event_callback = lambda activity, activity_type="info": progress_display.log_agent_activity(
                 activity, activity_type
+            )
+            # Set stats callback to update entity/error counts
+            orchestrator.stats_callback = (
+                lambda entities=0, validation_errors=0: progress_display.update_stats(
+                    entities=entities, validation_errors=validation_errors
+                )
             )
         elif config.logging.verbose:
             # Verbose mode with JSON logging - log to logger instead

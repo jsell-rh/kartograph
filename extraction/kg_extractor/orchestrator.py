@@ -126,6 +126,13 @@ class ExtractionOrchestrator:
                 all_entities.extend(result.entities)
                 all_validation_errors.extend(result.validation_errors)
 
+                # Report stats (for verbose mode progress display)
+                if hasattr(self, "stats_callback") and self.stats_callback:
+                    self.stats_callback(
+                        entities=len(result.entities),
+                        validation_errors=len(result.validation_errors),
+                    )
+
             chunks_processed += 1
 
             # Report progress
