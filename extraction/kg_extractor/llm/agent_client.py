@@ -18,9 +18,21 @@ class AgentClient:
     """
     Agent SDK client for knowledge graph extraction.
 
+    Implements: LLMClient protocol (via structural subtyping)
+
     Uses Claude Agent SDK with tools (Read, Grep, Glob) for file-based extraction.
     The agent can read schema files, analyze data files, and extract entities using
     multi-step reasoning.
+
+    Protocol Methods:
+        - generate(): Simple text completion
+        - extract_entities(): Tool-based KG extraction with file access
+
+    The Agent SDK approach enables:
+        - Tool-based file reading (Read, Grep, Glob)
+        - Multi-step reasoning and validation
+        - Session-based context preservation
+        - Incremental processing without loading all files into prompts
     """
 
     def __init__(
