@@ -410,8 +410,22 @@ Begin the extraction now by reading the files.
             Parsed dictionary with entities and metadata
 
         Raises:
+            PromptTooLongError: If the response indicates a 413 error
             ValueError: If response cannot be parsed as valid JSON
         """
+        from kg_extractor.exceptions import PromptTooLongError
+
+        # Check for 413 error (prompt too long)
+        if (
+            "API Error: 413" in response
+            or '"error":{"type":"invalid_request_error","message":"Prompt is too long"'
+            in response
+        ):
+            raise PromptTooLongError(
+                "Prompt exceeds model context window. Chunk needs to be split into smaller pieces.",
+                chunk_size=None,  # Will be filled in by orchestrator
+            )
+
         # Agent may return JSON in markdown code block or raw JSON
         json_text = response.strip()
 

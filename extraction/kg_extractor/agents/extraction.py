@@ -3,15 +3,10 @@
 from pathlib import Path
 from typing import Any
 
+from kg_extractor.exceptions import ExtractionError, PromptTooLongError
 from kg_extractor.models import Entity, ExtractionResult, ValidationError
 from kg_extractor.prompts.protocol import PromptLoader
 from kg_extractor.validation.entity_validator import EntityValidator
-
-
-class ExtractionError(Exception):
-    """Error during entity extraction."""
-
-    pass
 
 
 class ExtractionAgent:
