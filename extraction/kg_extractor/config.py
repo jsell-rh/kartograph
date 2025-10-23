@@ -203,6 +203,10 @@ class LoggingConfig(BaseModel):
         default=False,
         description="Log full LLM prompts (for debugging)",
     )
+    verbose: bool = Field(
+        default=False,
+        description="Enable verbose mode with rich progress display and agent activity",
+    )
 
 
 class ExtractionConfig(BaseSettings):

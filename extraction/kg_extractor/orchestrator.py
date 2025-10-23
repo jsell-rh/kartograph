@@ -109,11 +109,18 @@ class ExtractionOrchestrator:
                     self.config.context_dirs[0] if self.config.context_dirs else None
                 )
 
-                result = await self.extraction_agent.extract(
-                    files=chunk.files,
-                    chunk_id=chunk.chunk_id,
-                    schema_dir=schema_dir,
-                )
+                # Prepare extraction kwargs (may include event_callback for verbose mode)
+                extract_kwargs = {
+                    "files": chunk.files,
+                    "chunk_id": chunk.chunk_id,
+                    "schema_dir": schema_dir,
+                }
+
+                # Add event_callback if configured (for verbose mode)
+                if hasattr(self, "event_callback") and self.event_callback:
+                    extract_kwargs["event_callback"] = self.event_callback
+
+                result = await self.extraction_agent.extract(**extract_kwargs)
 
                 # Collect entities and errors
                 all_entities.extend(result.entities)

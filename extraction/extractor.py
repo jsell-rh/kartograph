@@ -145,6 +145,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Use JSON-formatted logs",
     )
+    log_group.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Enable verbose mode with beautiful progress display and agent activity",
+    )
 
     return parser.parse_args(argv)
 
@@ -218,6 +224,8 @@ def build_config_from_args(
         logging_dict["log_file"] = args.log_file
     if args.json_logging:
         logging_dict["json_logging"] = args.json_logging
+    if args.verbose:
+        logging_dict["verbose"] = args.verbose
 
     if logging_dict:
         config_dict["logging"] = logging_dict
@@ -347,6 +355,34 @@ async def main(argv: list[str] | None = None) -> int:
             validator=validator,
         )
 
+        # Set up progress display
+        progress_display = None
+        if config.logging.verbose:
+            from kg_extractor.progress import ProgressDisplay
+
+            # Count chunks first for progress bar
+            files = file_system.list_files(
+                directory=config.data_dir,
+                pattern="**/*",
+            )
+            chunks = chunker.create_chunks(files)
+            total_chunks = len(chunks)
+
+            progress_display = ProgressDisplay(
+                total_chunks=total_chunks, verbose=config.logging.verbose
+            )
+
+        # Create progress callback
+        def progress_callback(current: int, total: int, msg: str) -> None:
+            if progress_display:
+                # Update progress display
+                if "Processed chunk" in msg:
+                    chunk_id = msg.split()[-1]
+                    progress_display.advance_chunk()
+            else:
+                # Fall back to logger
+                logger.info(f"Progress: {current}/{total} - {msg}")
+
         # Create orchestrator
         orchestrator = ExtractionOrchestrator(
             config=config,
@@ -354,28 +390,55 @@ async def main(argv: list[str] | None = None) -> int:
             chunker=chunker,
             extraction_agent=extraction_agent,
             deduplicator=deduplicator,
-            progress_callback=lambda current, total, msg: logger.info(
-                f"Progress: {current}/{total} - {msg}"
-            ),
+            progress_callback=progress_callback,
         )
 
+        # Set event callback for verbose mode (streaming agent activity)
+        if progress_display:
+            orchestrator.event_callback = lambda activity, activity_type="info": progress_display.log_agent_activity(
+                activity, activity_type
+            )
+
         # Run extraction
-        logger.info("Beginning extraction...")
-        result = await orchestrator.extract()
+        if progress_display:
+            progress_display.start()
+        else:
+            logger.info("Beginning extraction...")
 
-        # Log metrics
-        logger.info(f"Extraction complete!")
-        logger.info(f"  Total chunks: {result.metrics.total_chunks}")
-        logger.info(f"  Chunks processed: {result.metrics.chunks_processed}")
-        logger.info(f"  Entities extracted: {result.metrics.entities_extracted}")
-        logger.info(f"  Validation errors: {result.metrics.validation_errors}")
-        logger.info(f"  Duration: {result.metrics.duration_seconds:.2f}s")
+        try:
+            result = await orchestrator.extract()
 
-        # Write output
-        write_jsonld(result.entities, config.output_file)
+            if progress_display:
+                progress_display.stop()
+                progress_display.print_success(
+                    total_entities=result.metrics.entities_extracted,
+                    total_chunks=result.metrics.chunks_processed,
+                    duration=result.metrics.duration_seconds,
+                )
+            else:
+                # Log metrics
+                logger.info(f"Extraction complete!")
+                logger.info(f"  Total chunks: {result.metrics.total_chunks}")
+                logger.info(f"  Chunks processed: {result.metrics.chunks_processed}")
+                logger.info(
+                    f"  Entities extracted: {result.metrics.entities_extracted}"
+                )
+                logger.info(f"  Validation errors: {result.metrics.validation_errors}")
+                logger.info(f"  Duration: {result.metrics.duration_seconds:.2f}s")
 
-        logger.info("Extraction pipeline complete!")
-        return 0
+            # Write output
+            write_jsonld(result.entities, config.output_file)
+
+            if not progress_display:
+                logger.info("Extraction pipeline complete!")
+
+            return 0
+
+        except Exception as e:
+            if progress_display:
+                progress_display.stop()
+                progress_display.print_error(str(e))
+            raise
 
     except Exception as e:
         logger.error(f"Extraction failed: {e}", exc_info=True)

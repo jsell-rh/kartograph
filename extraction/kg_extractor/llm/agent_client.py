@@ -81,12 +81,13 @@ class AgentClient:
             await self.client.connect()
             self._connected = True
 
-    async def _send_and_receive(self, prompt: str) -> str:
+    async def _send_and_receive(self, prompt: str, event_callback: Any = None) -> str:
         """
         Send prompt and receive response from Agent SDK.
 
         Args:
             prompt: Prompt to send
+            event_callback: Optional callback for streaming events (for verbose mode)
 
         Returns:
             Text response from agent
@@ -94,7 +95,7 @@ class AgentClient:
         Raises:
             RuntimeError: If no response received
         """
-        from claude_agent_sdk.types import ResultMessage
+        from claude_agent_sdk.types import ResultMessage, StreamEvent
 
         await self._ensure_connected()
 
@@ -104,9 +105,40 @@ class AgentClient:
         # Receive response stream
         result_text = None
         async for message in self.client.receive_response():
+            # Handle result message
             if isinstance(message, ResultMessage):
                 result_text = message.result
                 break
+
+            # Handle streaming events (tool usage, etc.) in verbose mode
+            if isinstance(message, StreamEvent) and event_callback:
+                try:
+                    event_data = message.event
+                    event_type = event_data.get("type", "unknown")
+
+                    # Extract useful information based on event type
+                    if event_type == "content_block_start":
+                        content = event_data.get("content_block", {})
+                        if content.get("type") == "tool_use":
+                            tool_name = content.get("name", "unknown")
+                            event_callback(
+                                f"Using tool: {tool_name}", activity_type="tool"
+                            )
+
+                    elif event_type == "content_block_delta":
+                        delta = event_data.get("delta", {})
+                        if delta.get("type") == "text_delta":
+                            # Agent is thinking/responding
+                            text = delta.get("text", "")
+                            if text.strip():
+                                event_callback(
+                                    f"Thinking: {text[:50]}...",
+                                    activity_type="thinking",
+                                )
+
+                except Exception:
+                    # Silently ignore parsing errors for events
+                    pass
 
         if result_text is None:
             raise RuntimeError("No response received from agent")
@@ -168,6 +200,7 @@ class AgentClient:
         data_files: list[Path],
         schema_dir: Path | None = None,
         system_instructions: str | None = None,
+        event_callback: Any = None,
     ) -> dict[str, Any]:
         """
         Extract entities using agent-based reasoning with tools.
@@ -204,7 +237,7 @@ class AgentClient:
         for attempt in range(self.max_retries):
             try:
                 # Send extraction request to agent
-                response = await self._send_and_receive(prompt)
+                response = await self._send_and_receive(prompt, event_callback)
 
                 # Parse and validate response
                 result = self._parse_extraction_result(response)
