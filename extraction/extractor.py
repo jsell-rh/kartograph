@@ -151,6 +151,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable verbose mode with beautiful progress display and agent activity",
     )
+    log_group.add_argument(
+        "--log-prompts",
+        action="store_true",
+        help="Log full LLM prompts and responses (for debugging)",
+    )
 
     return parser.parse_args(argv)
 
@@ -226,6 +231,8 @@ def build_config_from_args(
         logging_dict["json_logging"] = args.json_logging
     if args.verbose:
         logging_dict["verbose"] = args.verbose
+    if args.log_prompts:
+        logging_dict["log_llm_prompts"] = args.log_prompts
 
     if logging_dict:
         config_dict["logging"] = logging_dict

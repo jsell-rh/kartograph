@@ -312,3 +312,26 @@ async def test_cli_main_invalid_config():
     )
 
     assert exit_code == 1
+
+
+def test_cli_log_prompts_flag():
+    """Test --log-prompts flag is properly parsed and passed to config."""
+    from extractor import build_config_from_args, parse_args
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        data_dir = Path(tmpdir) / "data"
+        data_dir.mkdir()
+
+        args = parse_args(
+            [
+                "--data-dir",
+                str(data_dir),
+                "--log-prompts",
+            ]
+        )
+
+        assert args.log_prompts is True
+
+        # Build config and verify it's passed through
+        config = build_config_from_args(args)
+        assert config.logging.log_llm_prompts is True
