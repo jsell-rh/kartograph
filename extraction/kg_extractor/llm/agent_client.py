@@ -73,6 +73,45 @@ class AgentClient:
             os.environ["ANTHROPIC_API_KEY"] = auth_config.api_key
 
         self.client = ClaudeSDKClient(options=options)
+        self._connected = False
+
+    async def _ensure_connected(self) -> None:
+        """Ensure client is connected to Claude Agent SDK."""
+        if not self._connected:
+            await self.client.connect()
+            self._connected = True
+
+    async def _send_and_receive(self, prompt: str) -> str:
+        """
+        Send prompt and receive response from Agent SDK.
+
+        Args:
+            prompt: Prompt to send
+
+        Returns:
+            Text response from agent
+
+        Raises:
+            RuntimeError: If no response received
+        """
+        from claude_agent_sdk.types import ResultMessage
+
+        await self._ensure_connected()
+
+        # Send query
+        await self.client.query(prompt)
+
+        # Receive response stream
+        result_text = None
+        async for message in self.client.receive_response():
+            if isinstance(message, ResultMessage):
+                result_text = message.result
+                break
+
+        if result_text is None:
+            raise RuntimeError("No response received from agent")
+
+        return result_text
 
     async def generate(
         self,
@@ -106,10 +145,8 @@ class AgentClient:
         last_exception = None
         for attempt in range(self.max_retries):
             try:
-                # Send message to agent
-                response = await self.client.send_message(full_prompt)
-
-                # Agent SDK returns text response
+                # Send and receive response
+                response = await self._send_and_receive(full_prompt)
                 return response
 
             except Exception as e:
@@ -167,7 +204,7 @@ class AgentClient:
         for attempt in range(self.max_retries):
             try:
                 # Send extraction request to agent
-                response = await self.client.send_message(prompt)
+                response = await self._send_and_receive(prompt)
 
                 # Parse and validate response
                 result = self._parse_extraction_result(response)
