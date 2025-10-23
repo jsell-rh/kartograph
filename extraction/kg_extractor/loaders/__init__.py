@@ -1,3 +1,6 @@
-"""JSON-LD loaders for graph databases (Dgraph, Neo4j)."""
+"""File system and data loading interfaces."""
 
-__all__ = []
+from kg_extractor.loaders.file_system import DiskFileSystem, InMemoryFileSystem
+from kg_extractor.loaders.protocol import FileSystem
+
+__all__ = ["FileSystem", "DiskFileSystem", "InMemoryFileSystem"]
