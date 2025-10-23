@@ -3,7 +3,6 @@
 
 import argparse
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -22,6 +21,7 @@ from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.llm.agent_client import AgentClient
 from kg_extractor.loaders.file_system import DiskFileSystem
 from kg_extractor.orchestrator import ExtractionOrchestrator
+from kg_extractor.output import JSONLDGraph
 from kg_extractor.prompts.loader import DiskPromptLoader
 from kg_extractor.validation.entity_validator import EntityValidator
 
@@ -260,18 +260,11 @@ def write_jsonld(entities: list, output_file: Path) -> None:
         output_file: Output file path
     """
     # Build JSON-LD graph
-    graph = {
-        "@context": {
-            "@vocab": "http://schema.org/",
-            "urn": "@id",
-        },
-        "@graph": [entity.model_dump(by_alias=True) for entity in entities],
-    }
+    graph = JSONLDGraph()
+    graph.add_entities(entities)
 
-    # Write to file
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_file, "w") as f:
-        json.dump(graph, f, indent=2)
+    # Save to file
+    graph.save(output_file)
 
     logger.info(f"Wrote {len(entities)} entities to {output_file}")
 
