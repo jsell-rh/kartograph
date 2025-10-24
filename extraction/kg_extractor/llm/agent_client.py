@@ -130,6 +130,8 @@ class AgentClient:
         result_text = None
         messages_received = []
         error_message = None
+        current_tool_name = None  # Track current tool being used
+        current_tool_input = ""  # Accumulate tool input from deltas
         async for message in self.client.receive_response():
             # Track message types for debugging
             messages_received.append(type(message).__name__)
@@ -151,28 +153,45 @@ class AgentClient:
                     event_data = message.event
                     event_type = event_data.get("type", "unknown")
 
+                    # Log event for debugging (only if log_prompts enabled)
+                    if self.log_prompts:
+                        logger.debug(f"Agent SDK Event: {event_type}")
+                        if event_type in ["content_block_start", "content_block_delta"]:
+                            logger.debug(f"  Event data: {event_data}")
+
                     # Extract useful information based on event type
                     if event_type == "content_block_start":
                         content = event_data.get("content_block", {})
                         if content.get("type") == "tool_use":
                             tool_name = content.get("name", "unknown")
+                            current_tool_name = tool_name
+                            current_tool_input = ""  # Reset for new tool
                             tool_input = content.get("input", {})
 
-                            # Special handling for Read tool - report file being read
-                            if tool_name == "Read" and "file_path" in tool_input:
-                                file_path = tool_input["file_path"]
-                                event_callback(
-                                    f"Reading file: {file_path}",
-                                    activity_type="file",
+                            # Log what we have
+                            if self.log_prompts:
+                                logger.debug(
+                                    f"  Tool: {tool_name}, Input available: {bool(tool_input)}"
                                 )
-                            else:
-                                event_callback(
-                                    f"Using tool: {tool_name}", activity_type="tool"
-                                )
+
+                            # Report tool usage (file tracking happens in delta/stop events)
+                            event_callback(
+                                f"Using tool: {tool_name}", activity_type="tool"
+                            )
 
                     elif event_type == "content_block_delta":
                         delta = event_data.get("delta", {})
-                        if delta.get("type") == "text_delta":
+
+                        # Check for input_json_delta (tool input being built)
+                        if delta.get("type") == "input_json_delta":
+                            # Accumulate the partial JSON
+                            current_tool_input += delta.get("partial_json", "")
+                            if self.log_prompts:
+                                logger.debug(
+                                    f"  Input JSON delta: {delta.get('partial_json', '')[:100]}"
+                                )
+
+                        elif delta.get("type") == "text_delta":
                             # Agent is thinking/responding
                             text = delta.get("text", "")
                             if text.strip():
@@ -180,6 +199,27 @@ class AgentClient:
                                     f"Thinking: {text[:50]}...",
                                     activity_type="thinking",
                                 )
+
+                    elif event_type == "content_block_stop":
+                        # Tool input is complete - parse and report file if Read tool
+                        if current_tool_name == "Read" and current_tool_input:
+                            try:
+                                import json
+
+                                tool_input = json.loads(current_tool_input)
+                                if "file_path" in tool_input:
+                                    file_path = tool_input["file_path"]
+                                    event_callback(
+                                        f"Reading file: {file_path}",
+                                        activity_type="file",
+                                    )
+                                    if self.log_prompts:
+                                        logger.debug(f"  File being read: {file_path}")
+                            except json.JSONDecodeError:
+                                if self.log_prompts:
+                                    logger.debug(
+                                        f"  Failed to parse tool input: {current_tool_input[:100]}"
+                                    )
 
                 except Exception:
                     # Silently ignore parsing errors for events
