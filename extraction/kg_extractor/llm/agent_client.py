@@ -156,9 +156,19 @@ class AgentClient:
                         content = event_data.get("content_block", {})
                         if content.get("type") == "tool_use":
                             tool_name = content.get("name", "unknown")
-                            event_callback(
-                                f"Using tool: {tool_name}", activity_type="tool"
-                            )
+                            tool_input = content.get("input", {})
+
+                            # Special handling for Read tool - report file being read
+                            if tool_name == "Read" and "file_path" in tool_input:
+                                file_path = tool_input["file_path"]
+                                event_callback(
+                                    f"Reading file: {file_path}",
+                                    activity_type="file",
+                                )
+                            else:
+                                event_callback(
+                                    f"Using tool: {tool_name}", activity_type="tool"
+                                )
 
                     elif event_type == "content_block_delta":
                         delta = event_data.get("delta", {})

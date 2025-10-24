@@ -56,6 +56,7 @@ class ProgressDisplay:
 
         self.chunk_task: TaskID | None = None
         self.current_chunk_info: dict[str, Any] = {}
+        self.current_file: str | None = None  # Currently processing file
         self.agent_activity: list[str] = []
         self.stats: dict[str, int | float] = {
             "entities": 0,
@@ -107,6 +108,7 @@ class ProgressDisplay:
             "files": files,
             "size_mb": size_mb,
         }
+        self.current_file = None  # Reset current file for new chunk
         self.agent_activity = []  # Reset activity for new chunk
 
         if self.live:
@@ -120,15 +122,42 @@ class ProgressDisplay:
         if self.live:
             self.live.update(self._build_display())
 
+    def set_current_file(self, file_path: Path | str | None) -> None:
+        """
+        Set the currently processing file.
+
+        Args:
+            file_path: Path to the file being processed, or None to clear
+        """
+        if file_path:
+            # Extract just the filename
+            if isinstance(file_path, Path):
+                self.current_file = file_path.name
+            else:
+                self.current_file = Path(file_path).name
+        else:
+            self.current_file = None
+
+        if self.live:
+            self.live.update(self._build_display())
+
     def log_agent_activity(self, activity: str, activity_type: str = "info") -> None:
         """
         Log agent activity (only shown in verbose mode).
 
         Args:
             activity: Activity description
-            activity_type: Type of activity (info, tool, thinking, result)
+            activity_type: Type of activity (info, tool, thinking, result, file)
         """
         if self.verbose:
+            # Handle file activity specially - update current file
+            if activity_type == "file":
+                # Extract filename from activity like "Reading file: /path/to/file.yaml"
+                if ":" in activity:
+                    file_part = activity.split(":", 1)[1].strip()
+                    self.set_current_file(file_part)
+                return
+
             # Keep only last 10 activities
             if len(self.agent_activity) >= 10:
                 self.agent_activity.pop(0)
@@ -254,6 +283,12 @@ class ProgressDisplay:
             chunk_table.add_row(
                 "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
             )
+
+            # Show current file being processed (verbose mode)
+            if self.verbose and self.current_file:
+                chunk_table.add_row(
+                    "Current File:", Text(self.current_file, style="bold yellow")
+                )
 
             # Show filenames (just names, not full paths)
             if files and self.verbose:
