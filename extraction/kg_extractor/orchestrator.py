@@ -330,11 +330,15 @@ class ExtractionOrchestrator:
         # time_based strategy would need additional tracking
 
         if should_save:
+            # Serialize entities to JSON-LD format
+            serialized_entities = [entity.to_jsonld() for entity in all_entities]
+
             checkpoint = Checkpoint(
                 checkpoint_id="latest",
                 config_hash=self.config.compute_hash(),
                 chunks_processed=chunks_processed,
                 entities_extracted=len(all_entities),
+                entities=serialized_entities,
                 timestamp=datetime.now(),
                 metadata={
                     "total_chunks": total_chunks,
@@ -360,16 +364,19 @@ class ExtractionOrchestrator:
 
         Returns:
             List of Entity objects reconstructed from checkpoint
-
-        Note:
-            Currently checkpoints don't store entities, so this returns empty list.
-            In future, we could serialize entities to checkpoint metadata.
         """
-        # TODO: Implement entity serialization/deserialization in checkpoints
-        # For now, return empty list - this means resumption will re-extract all entities
-        # but skip already-processed chunks
-        logger.warning(
-            "Checkpoint entity restoration not yet implemented. "
-            "Entities will be re-extracted on resume."
-        )
-        return []
+        entities: list[Entity] = []
+
+        for entity_dict in checkpoint.entities:
+            try:
+                entity = Entity.from_dict(entity_dict)
+                entities.append(entity)
+            except Exception as e:
+                # Log but don't fail - we can continue with partial data
+                logger.warning(
+                    f"Failed to restore entity {entity_dict.get('@id', 'unknown')}: {e}"
+                )
+                continue
+
+        logger.info(f"Restored {len(entities)} entities from checkpoint")
+        return entities

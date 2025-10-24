@@ -8,6 +8,115 @@ import pytest
 
 
 @pytest.mark.asyncio
+async def test_checkpoint_saves_and_restores_entities(tmp_path):
+    """Test that checkpoint saves entities and restores them correctly."""
+    from kg_extractor.checkpoint.disk_store import DiskCheckpointStore
+    from kg_extractor.checkpoint.models import Checkpoint
+    from kg_extractor.chunking.models import Chunk
+    from kg_extractor.config import (
+        AuthConfig,
+        CheckpointConfig,
+        ChunkingConfig,
+        DeduplicationConfig,
+        ExtractionConfig,
+    )
+    from kg_extractor.models import Entity
+    from kg_extractor.orchestrator import ExtractionOrchestrator
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+
+    # Create config with checkpoint enabled
+    config = ExtractionConfig(
+        data_dir=data_dir,
+        checkpoint=CheckpointConfig(
+            enabled=True,
+            strategy="per_chunk",
+            checkpoint_dir=checkpoint_dir,
+        ),
+        auth=AuthConfig(auth_method="api_key", api_key="test"),
+        chunking=ChunkingConfig(strategy="count"),
+        deduplication=DeduplicationConfig(strategy="urn"),
+    )
+
+    # Create test entities
+    test_entities = [
+        Entity(
+            id="urn:Service:api-1",
+            type="Service",
+            name="API Service 1",
+            description="Test service",
+            properties={"language": "Python"},
+        ),
+        Entity(
+            id="urn:Service:api-2",
+            type="Service",
+            name="API Service 2",
+            properties={"language": "Go"},
+        ),
+    ]
+
+    # Mock extraction agent to return test entities
+    mock_agent = MagicMock()
+    mock_result = MagicMock()
+    mock_result.entities = test_entities
+    mock_result.validation_errors = []
+    mock_agent.extract = AsyncMock(return_value=mock_result)
+
+    # Mock file system and chunker
+    mock_fs = MagicMock()
+    mock_fs.list_files = MagicMock(return_value=[Path("/test/file1.py")])
+
+    mock_chunker = MagicMock()
+    mock_chunker.create_chunks = MagicMock(
+        return_value=[
+            Chunk(
+                chunk_id="chunk-001",
+                files=[Path("/test/file1.py")],
+                total_size_bytes=1024,
+            )
+        ]
+    )
+
+    # Create orchestrator and run extraction
+    orchestrator = ExtractionOrchestrator(
+        config=config,
+        file_system=mock_fs,
+        chunker=mock_chunker,
+        extraction_agent=mock_agent,
+    )
+
+    result = await orchestrator.extract()
+
+    # Verify entities were extracted
+    assert len(result.entities) == 2
+    assert result.entities[0].id == "urn:Service:api-1"
+    assert result.entities[1].id == "urn:Service:api-2"
+
+    # Verify checkpoint was saved with entities
+    checkpoint_store = DiskCheckpointStore(checkpoint_dir=checkpoint_dir)
+    checkpoint = checkpoint_store.load_checkpoint("latest")
+
+    assert checkpoint is not None
+    assert len(checkpoint.entities) == 2
+    assert checkpoint.entities[0]["@id"] == "urn:Service:api-1"
+    assert checkpoint.entities[0]["@type"] == "Service"
+    assert checkpoint.entities[0]["name"] == "API Service 1"
+    assert checkpoint.entities[0]["language"] == "Python"
+    assert checkpoint.entities[1]["@id"] == "urn:Service:api-2"
+
+    # Test restoration
+    restored_entities = orchestrator._entities_from_checkpoint_data(checkpoint)
+    assert len(restored_entities) == 2
+    assert restored_entities[0].id == "urn:Service:api-1"
+    assert restored_entities[0].name == "API Service 1"
+    assert restored_entities[0].properties["language"] == "Python"
+    assert restored_entities[1].id == "urn:Service:api-2"
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_saves_checkpoint_per_chunk():
     """Test orchestrator saves checkpoint after each chunk when strategy is per_chunk."""
     from kg_extractor.checkpoint.disk_store import DiskCheckpointStore

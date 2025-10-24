@@ -28,6 +28,10 @@ class Checkpoint(BaseModel):
         ge=0,
         description="Total number of entities extracted so far",
     )
+    entities: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Serialized entities (JSON-LD format) extracted so far",
+    )
     timestamp: datetime = Field(
         description="When this checkpoint was created",
     )
