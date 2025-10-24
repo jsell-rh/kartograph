@@ -103,6 +103,22 @@ class ProgressDisplay:
 
     def start(self) -> None:
         """Start the live display."""
+        # Remove console handlers from root logger to prevent interference with Rich Live
+        # This allows initial startup messages to be shown, but stops logging output
+        # once the progress display takes over
+        import logging
+
+        root_logger = logging.getLogger()
+        # Remove only StreamHandler instances (keep file handlers)
+        handlers_to_remove = [
+            h
+            for h in root_logger.handlers
+            if isinstance(h, logging.StreamHandler)
+            and not isinstance(h, logging.FileHandler)
+        ]
+        for handler in handlers_to_remove:
+            root_logger.removeHandler(handler)
+
         self.chunk_task = self.progress.add_task(
             "Processing chunks", total=self.total_chunks
         )
