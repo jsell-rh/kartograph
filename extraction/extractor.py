@@ -411,6 +411,13 @@ async def main(argv: list[str] | None = None) -> int:
             orchestrator.event_callback = lambda activity, activity_type="info": progress_display.log_agent_activity(
                 activity, activity_type
             )
+            # Set chunk callback to update chunk details
+            orchestrator.chunk_callback = lambda chunk_num, chunk_id, files, size_mb: progress_display.update_chunk(
+                chunk_num=chunk_num,
+                chunk_id=chunk_id,
+                files=files,
+                size_mb=size_mb,
+            )
             # Set stats callback to update entity/error counts
             orchestrator.stats_callback = (
                 lambda entities=0, validation_errors=0: progress_display.update_stats(

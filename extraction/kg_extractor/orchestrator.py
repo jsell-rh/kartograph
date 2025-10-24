@@ -151,6 +151,16 @@ class ExtractionOrchestrator:
         # 3. Process each chunk (with retry on prompt-too-long errors)
         while chunk_index < len(chunks_to_process):
             chunk = chunks_to_process[chunk_index]
+
+            # Report chunk update (for progress display)
+            if hasattr(self, "chunk_callback") and self.chunk_callback:
+                self.chunk_callback(
+                    chunk_num=chunk_index + 1,
+                    chunk_id=chunk.chunk_id,
+                    files=chunk.files,
+                    size_mb=chunk.total_size_bytes / (1024 * 1024),
+                )
+
             # Extract entities from chunk
             if self.extraction_agent:
                 # Use first context dir as schema dir if available
