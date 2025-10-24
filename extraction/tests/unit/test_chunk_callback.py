@@ -21,6 +21,12 @@ async def test_orchestrator_calls_chunk_callback(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()
 
+    # Create test files
+    file1 = data_dir / "file1.py"
+    file2 = data_dir / "file2.py"
+    file1.write_text("# test file 1\n" * 50)  # ~1KB
+    file2.write_text("# test file 2\n" * 100)  # ~2KB
+
     config = ExtractionConfig(
         data_dir=data_dir,
         auth=AuthConfig(auth_method="api_key", api_key="test"),
@@ -34,24 +40,29 @@ async def test_orchestrator_calls_chunk_callback(tmp_path):
     mock_result.entities = []
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     # Mock file system
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(
-        return_value=[Path("/test/file1.py"), Path("/test/file2.py")]
-    )
+    mock_fs.list_files = MagicMock(return_value=[file1, file2])
 
     # Mock chunker
     mock_chunker = MagicMock()
     test_chunks = [
         Chunk(
             chunk_id="chunk-001",
-            files=[Path("/test/file1.py")],
+            files=[file1],
             total_size_bytes=1024,
         ),
         Chunk(
             chunk_id="chunk-002",
-            files=[Path("/test/file2.py")],
+            files=[file2],
             total_size_bytes=2048,
         ),
     ]
@@ -88,13 +99,13 @@ async def test_orchestrator_calls_chunk_callback(tmp_path):
     # Check first chunk
     assert chunk_updates[0]["chunk_num"] == 1
     assert chunk_updates[0]["chunk_id"] == "chunk-001"
-    assert chunk_updates[0]["files"] == [Path("/test/file1.py")]
+    assert chunk_updates[0]["files"] == [file1]
     assert chunk_updates[0]["size_mb"] == pytest.approx(1024 / (1024 * 1024))
 
     # Check second chunk
     assert chunk_updates[1]["chunk_num"] == 2
     assert chunk_updates[1]["chunk_id"] == "chunk-002"
-    assert chunk_updates[1]["files"] == [Path("/test/file2.py")]
+    assert chunk_updates[1]["files"] == [file2]
     assert chunk_updates[1]["size_mb"] == pytest.approx(2048 / (1024 * 1024))
 
 
@@ -112,6 +123,10 @@ async def test_orchestrator_chunk_callback_with_stats(tmp_path):
 
     data_dir = tmp_path / "data"
     data_dir.mkdir()
+
+    # Create test file
+    file1 = data_dir / "file1.py"
+    file1.write_text("# test file 1\n" * 50)  # ~1KB
 
     config = ExtractionConfig(
         data_dir=data_dir,
@@ -132,16 +147,23 @@ async def test_orchestrator_chunk_callback_with_stats(tmp_path):
     ]
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(return_value=[Path("/test/file1.py")])
+    mock_fs.list_files = MagicMock(return_value=[file1])
 
     mock_chunker = MagicMock()
     mock_chunker.create_chunks = MagicMock(
         return_value=[
             Chunk(
                 chunk_id="chunk-001",
-                files=[Path("/test/file1.py")],
+                files=[file1],
                 total_size_bytes=1024,
             )
         ]

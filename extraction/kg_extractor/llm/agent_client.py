@@ -802,23 +802,34 @@ Begin the extraction now by reading the files. When complete, respond with ONLY 
                 json_text = json_text[json_start:json_end].strip()
 
         # Strategy 2: Try to find JSON object boundaries
-        # Look for the first { and last } to extract JSON from surrounding text
-        first_brace = json_text.find("{")
-        last_brace = json_text.rfind("}")
+        # Look for { positions and try parsing from each one (in case there are other { } in text)
+        # Try all possible starting positions to find the actual JSON object
+        pos = 0
+        while pos < len(json_text):
+            first_brace = json_text.find("{", pos)
+            if first_brace == -1:
+                break
 
-        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
-            potential_json = json_text[first_brace : last_brace + 1]
+            last_brace = json_text.rfind("}")
+            if last_brace > first_brace:
+                potential_json = json_text[first_brace : last_brace + 1]
 
-            # Try parsing this potential JSON
-            try:
-                result = json.loads(potential_json)
+                # Try parsing this potential JSON
+                try:
+                    result = json.loads(potential_json)
 
-                # Validate it has the expected structure before accepting
-                if "entities" in result:
-                    json_text = potential_json
-            except json.JSONDecodeError:
-                # If it doesn't parse, we'll try the original text
-                pass
+                    # Validate it has the expected structure before accepting
+                    if "entities" in result:
+                        json_text = potential_json
+                        break  # Found valid JSON, stop searching
+                except json.JSONDecodeError:
+                    # Try next starting position
+                    pos = first_brace + 1
+                    continue
+            else:
+                break
+
+            pos = first_brace + 1
 
         # Parse JSON
         try:

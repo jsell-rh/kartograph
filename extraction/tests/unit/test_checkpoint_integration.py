@@ -58,23 +58,34 @@ async def test_checkpoint_saves_and_restores_entities(tmp_path):
         ),
     ]
 
+    # Create actual test files
+    test_file = data_dir / "file1.py"
+    test_file.write_text("# test file\n" * 50)  # ~600 bytes
+
     # Mock extraction agent to return test entities
     mock_agent = MagicMock()
     mock_result = MagicMock()
     mock_result.entities = test_entities
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     # Mock file system and chunker
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(return_value=[Path("/test/file1.py")])
+    mock_fs.list_files = MagicMock(return_value=[test_file])
 
     mock_chunker = MagicMock()
     mock_chunker.create_chunks = MagicMock(
         return_value=[
             Chunk(
                 chunk_id="chunk-001",
-                files=[Path("/test/file1.py")],
+                files=[test_file],
                 total_size_bytes=1024,
             )
         ]
@@ -96,7 +107,12 @@ async def test_checkpoint_saves_and_restores_entities(tmp_path):
     assert result.entities[1].id == "urn:Service:api-2"
 
     # Verify checkpoint was saved with entities
-    checkpoint_store = DiskCheckpointStore(checkpoint_dir=checkpoint_dir)
+    # Checkpoint is saved in a subdirectory based on data_dir hash
+    data_dir_hash = config.compute_data_dir_hash()
+    checkpoint_subdir = checkpoint_dir / data_dir_hash
+    checkpoint_store = DiskCheckpointStore(
+        checkpoint_dir=checkpoint_subdir, data_dir=data_dir
+    )
     checkpoint = checkpoint_store.load_checkpoint("latest")
 
     assert checkpoint is not None
@@ -149,6 +165,13 @@ async def test_orchestrator_saves_checkpoint_per_chunk(tmp_path):
         deduplication=DeduplicationConfig(strategy="urn"),
     )
 
+    # Create actual test files
+    test_files = []
+    for i in range(4):
+        test_file = data_dir / f"file{i}.py"
+        test_file.write_text(f"# test file {i}\n" * 50)
+        test_files.append(test_file)
+
     # Mock checkpoint store
     mock_store = MagicMock(spec=DiskCheckpointStore)
     mock_store.load_checkpoint = MagicMock(side_effect=FileNotFoundError)
@@ -159,12 +182,17 @@ async def test_orchestrator_saves_checkpoint_per_chunk(tmp_path):
     mock_result.entities = []
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     # Mock file system
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(
-        return_value=[Path(f"/test/file{i}.py") for i in range(4)]
-    )
+    mock_fs.list_files = MagicMock(return_value=test_files)
 
     # Mock chunker
     from kg_extractor.chunking.models import Chunk
@@ -174,11 +202,13 @@ async def test_orchestrator_saves_checkpoint_per_chunk(tmp_path):
         return_value=[
             Chunk(
                 chunk_id="chunk-001",
-                files=[Path("/test/file0.py"), Path("/test/file1.py")],
+                files=[test_files[0], test_files[1]],
+                total_size_bytes=2048,
             ),
             Chunk(
                 chunk_id="chunk-002",
-                files=[Path("/test/file2.py"), Path("/test/file3.py")],
+                files=[test_files[2], test_files[3]],
+                total_size_bytes=2048,
             ),
         ]
     )
@@ -237,6 +267,14 @@ async def test_orchestrator_saves_checkpoint_every_n(tmp_path):
         deduplication=DeduplicationConfig(strategy="urn"),
     )
 
+    # Create actual test files
+    data_dir = tmp_path / "data"
+    test_files = []
+    for i in range(5):
+        test_file = data_dir / f"file{i}.py"
+        test_file.write_text(f"# test file {i}\n" * 50)
+        test_files.append(test_file)
+
     mock_store = MagicMock(spec=DiskCheckpointStore)
     mock_store.load_checkpoint = MagicMock(side_effect=FileNotFoundError)
 
@@ -245,16 +283,23 @@ async def test_orchestrator_saves_checkpoint_every_n(tmp_path):
     mock_result.entities = []
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(
-        return_value=[Path(f"/test/file{i}.py") for i in range(5)]
-    )
+    mock_fs.list_files = MagicMock(return_value=test_files)
 
     mock_chunker = MagicMock()
     mock_chunker.create_chunks = MagicMock(
         return_value=[
-            Chunk(chunk_id=f"chunk-{i:03d}", files=[Path(f"/test/file{i}.py")])
+            Chunk(
+                chunk_id=f"chunk-{i:03d}", files=[test_files[i]], total_size_bytes=1024
+            )
             for i in range(5)
         ]
     )
@@ -319,6 +364,14 @@ async def test_orchestrator_resumes_from_checkpoint(tmp_path):
         metadata={"total_chunks": 4},
     )
 
+    # Create actual test files
+    data_dir = tmp_path / "data"
+    test_files = []
+    for i in range(4):
+        test_file = data_dir / f"file{i}.py"
+        test_file.write_text(f"# test file {i}\n" * 50)
+        test_files.append(test_file)
+
     mock_store = MagicMock(spec=DiskCheckpointStore)
     mock_store.load_checkpoint = MagicMock(return_value=existing_checkpoint)
 
@@ -327,21 +380,26 @@ async def test_orchestrator_resumes_from_checkpoint(tmp_path):
     mock_result.entities = []
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(
-        return_value=[Path(f"/test/file{i}.py") for i in range(4)]
-    )
+    mock_fs.list_files = MagicMock(return_value=test_files)
 
     mock_chunker = MagicMock()
     chunks = [
-        Chunk(chunk_id=f"chunk-{i:03d}", files=[Path(f"/test/file{i}.py")])
+        Chunk(chunk_id=f"chunk-{i:03d}", files=[test_files[i]], total_size_bytes=1024)
         for i in range(4)
     ]
     mock_chunker.create_chunks = MagicMock(return_value=chunks)
 
     # Patch compute_hash to return matching hash
-    with patch.object(config, "compute_hash", return_value=config_hash):
+    with patch.object(type(config), "compute_hash", return_value=config_hash):
         orchestrator = ExtractionOrchestrator(
             config=config,
             file_system=mock_fs,
@@ -403,6 +461,14 @@ async def test_orchestrator_ignores_checkpoint_with_mismatched_config(tmp_path):
         metadata={},
     )
 
+    # Create actual test files
+    data_dir = tmp_path / "data"
+    test_files = []
+    for i in range(4):
+        test_file = data_dir / f"file{i}.py"
+        test_file.write_text(f"# test file {i}\n" * 50)
+        test_files.append(test_file)
+
     mock_store = MagicMock(spec=DiskCheckpointStore)
     mock_store.load_checkpoint = MagicMock(return_value=existing_checkpoint)
 
@@ -411,21 +477,26 @@ async def test_orchestrator_ignores_checkpoint_with_mismatched_config(tmp_path):
     mock_result.entities = []
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(
-        return_value=[Path(f"/test/file{i}.py") for i in range(4)]
-    )
+    mock_fs.list_files = MagicMock(return_value=test_files)
 
     mock_chunker = MagicMock()
     chunks = [
-        Chunk(chunk_id=f"chunk-{i:03d}", files=[Path(f"/test/file{i}.py")])
+        Chunk(chunk_id=f"chunk-{i:03d}", files=[test_files[i]], total_size_bytes=1024)
         for i in range(4)
     ]
     mock_chunker.create_chunks = MagicMock(return_value=chunks)
 
     # Current hash is different
-    with patch.object(config, "compute_hash", return_value="new_hash_current"):
+    with patch.object(type(config), "compute_hash", return_value="new_hash_current"):
         orchestrator = ExtractionOrchestrator(
             config=config,
             file_system=mock_fs,
@@ -470,18 +541,32 @@ async def test_orchestrator_checkpoint_disabled(tmp_path):
         deduplication=DeduplicationConfig(strategy="urn"),
     )
 
+    # Create actual test file
+    data_dir = tmp_path / "data"
+    test_file = data_dir / "file.py"
+    test_file.write_text("# test file\n" * 50)
+
     mock_agent = MagicMock()
     mock_result = MagicMock()
     mock_result.entities = []
     mock_result.validation_errors = []
     mock_agent.extract = AsyncMock(return_value=mock_result)
+    # Add llm_client mock
+    mock_agent.llm_client = MagicMock()
+    mock_agent.llm_client.last_usage = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_cost_usd": 0.01,
+    }
 
     mock_fs = MagicMock()
-    mock_fs.list_files = MagicMock(return_value=[Path("/test/file.py")])
+    mock_fs.list_files = MagicMock(return_value=[test_file])
 
     mock_chunker = MagicMock()
     mock_chunker.create_chunks = MagicMock(
-        return_value=[Chunk(chunk_id="chunk-001", files=[Path("/test/file.py")])]
+        return_value=[
+            Chunk(chunk_id="chunk-001", files=[test_file], total_size_bytes=1024)
+        ]
     )
 
     orchestrator = ExtractionOrchestrator(

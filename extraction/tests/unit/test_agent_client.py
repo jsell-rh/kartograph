@@ -48,7 +48,21 @@ async def test_agent_client_generate_basic():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value="Test response from agent")
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result="Test response from agent",
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -59,8 +73,8 @@ async def test_agent_client_generate_basic():
             temperature=0.0,
         )
 
-        # Should call send_message
-        mock_client.send_message.assert_called_once_with("Test prompt")
+        # Should call query with prompt
+        mock_client.query.assert_called_once_with("Test prompt")
         assert response == "Test response from agent"
 
 
@@ -77,7 +91,21 @@ async def test_agent_client_generate_with_system():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value="Response")
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result="Response",
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -88,7 +116,7 @@ async def test_agent_client_generate_with_system():
         )
 
         # Should combine system and user prompts
-        call_args = mock_client.send_message.call_args[0][0]
+        call_args = mock_client.query.call_args[0][0]
         assert "You are a helpful assistant" in call_args
         assert "User prompt" in call_args
 
@@ -104,18 +132,33 @@ async def test_agent_client_generate_retry_on_failure():
         api_key="test-key",  # pragma: allowlist secret
     )
 
+    call_count = 0
+
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
 
-        # Fail twice, then succeed
-        mock_client.send_message = AsyncMock(
-            side_effect=[
-                Exception("Agent Error 1"),
-                Exception("Agent Error 2"),
-                "Success after retries",
-            ]
-        )
+        # Fail twice, then succeed on third try
+        async def mock_query(prompt):
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                raise Exception(f"Agent Error {call_count}")
 
+        mock_client.query = AsyncMock(side_effect=mock_query)
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result="Success after retries",
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth, max_retries=3)
@@ -123,7 +166,7 @@ async def test_agent_client_generate_retry_on_failure():
         response = await client.generate(prompt="Test")
 
         # Should have retried 3 times total
-        assert mock_client.send_message.call_count == 3
+        assert call_count == 3
         assert response == "Success after retries"
 
 
@@ -159,7 +202,21 @@ async def test_agent_client_extract_entities_basic():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value=agent_response)
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -196,7 +253,21 @@ async def test_agent_client_extract_entities_with_schema():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value=agent_response)
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -208,7 +279,7 @@ async def test_agent_client_extract_entities_with_schema():
         )
 
         # Should include schema and instructions in prompt
-        call_args = mock_client.send_message.call_args[0][0]
+        call_args = mock_client.query.call_args[0][0]
         assert "/schemas" in call_args
         assert "Extract carefully" in call_args
         assert "/test/file.py" in call_args
@@ -230,7 +301,21 @@ async def test_agent_client_extract_entities_parse_raw_json():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value=agent_response)
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -257,7 +342,21 @@ async def test_agent_client_extract_entities_invalid_json():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value=agent_response)
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -282,7 +381,21 @@ async def test_agent_client_extract_entities_missing_entities_field():
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
-        mock_client.send_message = AsyncMock(return_value=agent_response)
+        mock_client.connect = AsyncMock()
+        mock_client.query = AsyncMock()
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth)
@@ -303,15 +416,33 @@ async def test_agent_client_extract_entities_retry():
     )
 
     success_response = '{"entities": [], "metadata": {}}'
+    call_count = 0
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
+        mock_client.connect = AsyncMock()
 
-        # Fail once, then succeed
-        mock_client.send_message = AsyncMock(
-            side_effect=[Exception("Temporary error"), success_response]
-        )
+        # Fail once, then succeed on second try
+        async def mock_query(prompt):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("Temporary error")
 
+        mock_client.query = AsyncMock(side_effect=mock_query)
+
+        async def mock_receive_response():
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=success_response,
+            )
+
+        mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
 
         client = AgentClient(auth_config=auth, max_retries=2)
@@ -319,7 +450,7 @@ async def test_agent_client_extract_entities_retry():
         result = await client.extract_entities(data_files=[Path("/test/file.py")])
 
         # Should have retried
-        assert mock_client.send_message.call_count == 2
+        assert call_count == 2
         assert "entities" in result
 
 
