@@ -251,6 +251,25 @@ class AgentClient:
             if isinstance(message, ResultMessage):
                 result_text = message.result
 
+                # DEBUG: Log the raw usage structure
+                if message.usage:
+                    logger.debug(f"ResultMessage.usage type: {type(message.usage)}")
+                    logger.debug(f"ResultMessage.usage: {message.usage}")
+                    # If it's a dict, show keys
+                    if isinstance(message.usage, dict):
+                        logger.debug(
+                            f"ResultMessage.usage keys: {list(message.usage.keys())}"
+                        )
+                    # If it's an object, show attributes
+                    else:
+                        logger.debug(
+                            f"ResultMessage.usage attributes: {dir(message.usage)}"
+                        )
+                else:
+                    logger.debug(f"ResultMessage.usage is None or empty")
+
+                logger.debug(f"ResultMessage.total_cost_usd: {message.total_cost_usd}")
+
                 # Capture usage stats for cost tracking
                 self.last_usage = {
                     "input_tokens": (
