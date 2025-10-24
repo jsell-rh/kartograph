@@ -161,10 +161,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Use JSON-formatted logs",
     )
     log_group.add_argument(
-        "--verbose",
-        "-v",
+        "--show-progress",
+        "-p",
+        dest="verbose",  # Keep internal name for backward compatibility
         action="store_true",
-        help="Enable verbose mode with beautiful progress display and agent activity",
+        help="Show rich progress display with live updates and statistics",
     )
     log_group.add_argument(
         "--log-prompts",
