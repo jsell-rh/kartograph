@@ -227,10 +227,17 @@ def test_mcp_server_has_valid_structure():
     import importlib.util
     import sys
 
+    # Find the MCP server file relative to this test file
+    test_dir = Path(__file__).parent
+    extraction_root = test_dir.parent.parent
+    mcp_server_path = (
+        extraction_root / "kg_extractor" / "llm" / "extraction_mcp_server.py"
+    )
+
     # Load the MCP server module without triggering package imports
     spec = importlib.util.spec_from_file_location(
         "extraction_mcp_server",
-        "/home/jsell/code/kartograph-kg-production/extraction/kg_extractor/llm/extraction_mcp_server.py",
+        str(mcp_server_path),
     )
     mcp_module = importlib.util.module_from_spec(spec)
 
