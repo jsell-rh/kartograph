@@ -133,6 +133,15 @@ class OrchestrationResult:
 
         print("=" * 70)
 
+        # Show warning if estimates were way off
+        if act_input > 0:
+            token_error = abs(est_input - act_input) / act_input * 100
+            if token_error > 20:
+                print(
+                    "\n⚠️  Token estimation was >20% off. Consider adjusting heuristics in "
+                    "kg_extractor/cost_estimator.py (CHARS_PER_TOKEN, OUTPUT_RATIO, etc.)"
+                )
+
 
 class ExtractionOrchestrator:
     """
@@ -179,8 +188,16 @@ class ExtractionOrchestrator:
 
         # Initialize checkpoint store if enabled
         if config.checkpoint.enabled and checkpoint_store is None:
+            # Create data-dir-specific checkpoint directory to avoid conflicts
+            # Each data directory gets its own checkpoint subdirectory
+            data_dir_hash = config.compute_data_dir_hash()
+            checkpoint_subdir = config.checkpoint.checkpoint_dir / data_dir_hash
+
             self.checkpoint_store: DiskCheckpointStore | None = DiskCheckpointStore(
-                checkpoint_dir=config.checkpoint.checkpoint_dir
+                checkpoint_dir=checkpoint_subdir, data_dir=config.data_dir
+            )
+            logger.debug(
+                f"Using checkpoint directory: {checkpoint_subdir} (hash: {data_dir_hash})"
             )
         else:
             self.checkpoint_store = checkpoint_store

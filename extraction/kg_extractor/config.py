@@ -306,10 +306,12 @@ class ExtractionConfig(BaseSettings):
         """
         Compute configuration hash for checkpoint validation.
 
-        Only includes fields that affect extraction results.
+        Includes fields that affect extraction results, including the data source.
+        This ensures checkpoints are only compatible with the same data + config.
         """
         # Fields that affect results (exclude logging, checkpointing, etc.)
         relevant_config = {
+            "data_dir": str(self.data_dir.absolute()),  # Include data source!
             "chunking": self.chunking.model_dump(),
             "deduplication": self.deduplication.model_dump(),
             "validation": self.validation.model_dump(),
@@ -318,3 +320,13 @@ class ExtractionConfig(BaseSettings):
 
         config_json = json.dumps(relevant_config, sort_keys=True)
         return hashlib.sha256(config_json.encode()).hexdigest()[:16]
+
+    def compute_data_dir_hash(self) -> str:
+        """
+        Compute hash of data directory path for checkpoint isolation.
+
+        Returns a short hash uniquely identifying this data directory.
+        Used to create isolated checkpoint directories per dataset.
+        """
+        data_dir_str = str(self.data_dir.absolute())
+        return hashlib.sha256(data_dir_str.encode()).hexdigest()[:16]

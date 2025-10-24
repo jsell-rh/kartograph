@@ -1,6 +1,7 @@
 """Disk-based checkpoint store implementation."""
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from kg_extractor.checkpoint.models import Checkpoint
@@ -14,22 +15,27 @@ class DiskCheckpointStore:
 
     Stores checkpoints as JSON files in a directory on disk.
     Each checkpoint is saved as {checkpoint_id}.json.
+
+    Also maintains a metadata.json file for human readability.
     """
 
-    def __init__(self, checkpoint_dir: Path):
+    def __init__(self, checkpoint_dir: Path, data_dir: Path | None = None):
         """
         Initialize disk checkpoint store.
 
         Args:
             checkpoint_dir: Directory to store checkpoint files
+            data_dir: Optional data directory path for metadata tracking
         """
         self.checkpoint_dir = checkpoint_dir
+        self.data_dir = data_dir
 
     def save_checkpoint(self, checkpoint: Checkpoint) -> None:
         """
         Save a checkpoint to disk.
 
         Creates the checkpoint directory if it doesn't exist.
+        Also updates metadata file for human readability.
 
         Args:
             checkpoint: Checkpoint to save
@@ -43,6 +49,9 @@ class DiskCheckpointStore:
 
         with checkpoint_file.open("w", encoding="utf-8") as f:
             json.dump(checkpoint_data, f, indent=2, default=str)
+
+        # Update metadata file
+        self._update_metadata()
 
     def load_checkpoint(self, checkpoint_id: str) -> Checkpoint | None:
         """
@@ -90,3 +99,30 @@ class DiskCheckpointStore:
 
         if checkpoint_file.exists():
             checkpoint_file.unlink()
+
+    def _update_metadata(self) -> None:
+        """
+        Update metadata file for human readability.
+
+        Stores information about when the checkpoint was created/updated
+        and what data directory it corresponds to.
+        """
+        metadata_file = self.checkpoint_dir / "metadata.json"
+
+        # Load existing metadata if present
+        if metadata_file.exists():
+            with metadata_file.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        else:
+            metadata = {
+                "created_at": datetime.now().isoformat(),
+            }
+
+        # Update metadata
+        metadata["last_updated"] = datetime.now().isoformat()
+        if self.data_dir:
+            metadata["data_dir"] = str(self.data_dir.absolute())
+
+        # Save metadata
+        with metadata_file.open("w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
