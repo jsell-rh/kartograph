@@ -493,6 +493,9 @@ async def main(argv: list[str] | None = None) -> int:
             # Write output
             write_jsonld(result.entities, config.output_file)
 
+            # Print cost comparison (if dry-run was performed) or actual costs
+            result.print_cost_comparison()
+
             # Export metrics if requested
             if args.metrics_output:
                 # Determine format from extension

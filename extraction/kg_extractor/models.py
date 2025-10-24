@@ -198,6 +198,22 @@ class ExtractionMetrics(BaseModel):
         ge=0.0,
         description="Total extraction duration in seconds",
     )
+    # Actual usage stats from LLM API
+    actual_input_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Actual input tokens consumed (from API)",
+    )
+    actual_output_tokens: int = Field(
+        default=0,
+        ge=0,
+        description="Actual output tokens generated (from API)",
+    )
+    actual_cost_usd: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Actual cost in USD (from API)",
+    )
 
     @property
     def progress_percentage(self) -> float:

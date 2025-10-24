@@ -28,6 +28,14 @@ class CostEstimate:
         """Human-readable summary."""
         return (
             f"Cost Estimate Summary:\n"
+            f"\n"
+            f"⚠️  WARNING: These are ROUGH ESTIMATES based on heuristics.\n"
+            f"    Actual costs may vary by 2-3x depending on:\n"
+            f"    - File content and structure\n"
+            f"    - Complexity of extraction\n"
+            f"    - Number of relationships found\n"
+            f"    - Tool calls and retries\n"
+            f"\n"
             f"  Files: {self.total_files}\n"
             f"  Chunks: {self.total_chunks}\n"
             f"  Total Size: {self.total_size_bytes / (1024 * 1024):.2f} MB\n"
@@ -35,7 +43,9 @@ class CostEstimate:
             f"  Estimated Output Tokens: {self.estimated_output_tokens:,}\n"
             f"  Estimated Cost: ${self.estimated_cost_usd:.2f}\n"
             f"  Estimated Duration: {self.estimated_duration_seconds / 60:.1f} minutes\n"
-            f"  Model: {self.model}"
+            f"  Model: {self.model}\n"
+            f"\n"
+            f"💡 Run with actual extraction to see real costs and improve estimates."
         )
 
 

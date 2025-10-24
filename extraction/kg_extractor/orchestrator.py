@@ -32,6 +32,7 @@ class OrchestrationResult:
         entities: list[Entity],
         metrics: ExtractionMetrics,
         validation_errors: list[ValidationError] | None = None,
+        cost_estimate: CostEstimate | None = None,
     ):
         """
         Initialize orchestration result.
@@ -40,10 +41,12 @@ class OrchestrationResult:
             entities: Final deduplicated entities
             metrics: Extraction metrics
             validation_errors: Optional validation errors from all chunks
+            cost_estimate: Optional cost estimate (if dry-run was performed first)
         """
         self.entities = entities
         self.metrics = metrics
         self.validation_errors = validation_errors or []
+        self.cost_estimate = cost_estimate
 
     def get_validation_report(self) -> ValidationReport:
         """
@@ -62,6 +65,81 @@ class OrchestrationResult:
             MetricsExporter instance
         """
         return MetricsExporter(self.metrics, self.entities)
+
+    def print_cost_comparison(self) -> None:
+        """Print cost estimate vs actual comparison if estimate exists."""
+        if not self.cost_estimate:
+            # No estimate - just show actuals
+            print("\n" + "=" * 70)
+            print("ACTUAL COSTS")
+            print("=" * 70)
+            print(f"  Input Tokens: {self.metrics.actual_input_tokens:,}")
+            print(f"  Output Tokens: {self.metrics.actual_output_tokens:,}")
+            print(f"  Total Cost: ${self.metrics.actual_cost_usd:.4f}")
+            print(f"  Duration: {self.metrics.duration_seconds / 60:.1f} minutes")
+            print("=" * 70)
+            return
+
+        # We have an estimate - show comparison
+        print("\n" + "=" * 70)
+        print("COST ESTIMATION ACCURACY")
+        print("=" * 70)
+
+        print(f"\n{'Metric':<25} {'Estimated':>15} {'Actual':>15} {'Error':>10}")
+        print("-" * 70)
+
+        # Input tokens
+        est_input = self.cost_estimate.estimated_input_tokens
+        act_input = self.metrics.actual_input_tokens
+        if act_input > 0:
+            error = abs(est_input - act_input) / act_input * 100
+            print(
+                f"{'Input Tokens':<25} {est_input:>15,} {act_input:>15,} {error:>9.1f}%"
+            )
+
+        # Output tokens
+        est_output = self.cost_estimate.estimated_output_tokens
+        act_output = self.metrics.actual_output_tokens
+        if act_output > 0:
+            error = abs(est_output - act_output) / act_output * 100
+            print(
+                f"{'Output Tokens':<25} {est_output:>15,} {act_output:>15,} {error:>9.1f}%"
+            )
+
+        # Cost
+        est_cost = self.cost_estimate.estimated_cost_usd
+        act_cost = self.metrics.actual_cost_usd
+        if act_cost > 0:
+            error = abs(est_cost - act_cost) / act_cost * 100
+            print(
+                f"{'Cost (USD)':<25} ${est_cost:>14.4f} ${act_cost:>14.4f} {error:>9.1f}%"
+            )
+
+        # Duration
+        est_duration = self.cost_estimate.estimated_duration_seconds / 60
+        act_duration = self.metrics.duration_seconds / 60
+        if act_duration > 0:
+            error = (
+                abs(
+                    self.cost_estimate.estimated_duration_seconds
+                    - self.metrics.duration_seconds
+                )
+                / self.metrics.duration_seconds
+                * 100
+            )
+            print(
+                f"{'Duration (minutes)':<25} {est_duration:>15.1f} {act_duration:>15.1f} {error:>9.1f}%"
+            )
+
+        print("=" * 70)
+
+        # Show improvement suggestions
+        if act_input > 0:
+            token_error = abs(est_input - act_input) / act_input * 100
+            if token_error > 20:
+                print(
+                    "\n⚠️  Token estimation was >20% off. Estimates will improve with more runs."
+                )
 
 
 class ExtractionOrchestrator:
@@ -115,6 +193,9 @@ class ExtractionOrchestrator:
         else:
             self.checkpoint_store = checkpoint_store
 
+        # Store dry-run estimate for cost comparison (set by dry_run() method)
+        self._dry_run_estimate: CostEstimate | None = None
+
     async def extract(self) -> OrchestrationResult:
         """
         Execute the full extraction workflow.
@@ -144,6 +225,11 @@ class ExtractionOrchestrator:
         all_validation_errors: list[ValidationError] = []
         chunks_processed = 0
         chunk_index = 0
+
+        # Track actual usage across all chunks for cost comparison
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cost_usd = 0.0
 
         # Attempt to resume from checkpoint if requested
         if self.config.resume and self.checkpoint_store:
@@ -208,6 +294,17 @@ class ExtractionOrchestrator:
                     # Collect entities and errors
                     all_entities.extend(result.entities)
                     all_validation_errors.extend(result.validation_errors)
+
+                    # Collect actual usage stats from agent client (if available)
+                    if (
+                        hasattr(self.extraction_agent, "llm_client")
+                        and hasattr(self.extraction_agent.llm_client, "last_usage")
+                        and self.extraction_agent.llm_client.last_usage
+                    ):
+                        usage = self.extraction_agent.llm_client.last_usage
+                        total_input_tokens += usage.get("input_tokens", 0)
+                        total_output_tokens += usage.get("output_tokens", 0)
+                        total_cost_usd += usage.get("total_cost_usd", 0.0)
 
                     # Report stats (for verbose mode progress display)
                     if hasattr(self, "stats_callback") and self.stats_callback:
@@ -301,12 +398,17 @@ class ExtractionOrchestrator:
             entities_extracted=len(final_entities),
             validation_errors=len(all_validation_errors),
             duration_seconds=duration,
+            # Add actual usage stats from LLM API
+            actual_input_tokens=total_input_tokens,
+            actual_output_tokens=total_output_tokens,
+            actual_cost_usd=total_cost_usd,
         )
 
         return OrchestrationResult(
             entities=final_entities,
             metrics=metrics,
             validation_errors=all_validation_errors,
+            cost_estimate=self._dry_run_estimate,  # Include estimate if dry-run was performed
         )
 
     def _load_checkpoint(self) -> Checkpoint | None:
@@ -444,6 +546,9 @@ class ExtractionOrchestrator:
         # 3. Estimate cost
         estimator = CostEstimator(self.config.llm)
         estimate = estimator.estimate_chunks(chunks)
+
+        # Store estimate for later comparison with actual costs
+        self._dry_run_estimate = estimate
 
         logger.info("Dry run complete")
         logger.info(f"Estimated cost: ${estimate.estimated_cost_usd:.2f}")
