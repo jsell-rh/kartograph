@@ -251,39 +251,6 @@ class AgentClient:
             if isinstance(message, ResultMessage):
                 result_text = message.result
 
-                # DEBUG: Log ALL ResultMessage attributes to find cumulative usage
-                logger.debug("=" * 80)
-                logger.debug("ResultMessage attributes:")
-                for attr in dir(message):
-                    if not attr.startswith("_"):
-                        try:
-                            value = getattr(message, attr)
-                            # Skip methods
-                            if not callable(value):
-                                logger.debug(f"  {attr}: {value}")
-                        except Exception as e:
-                            logger.debug(f"  {attr}: <error accessing: {e}>")
-                logger.debug("=" * 80)
-
-                # DEBUG: Log the raw usage structure
-                if message.usage:
-                    logger.debug(f"ResultMessage.usage type: {type(message.usage)}")
-                    logger.debug(f"ResultMessage.usage: {message.usage}")
-                    # If it's a dict, show keys
-                    if isinstance(message.usage, dict):
-                        logger.debug(
-                            f"ResultMessage.usage keys: {list(message.usage.keys())}"
-                        )
-                    # If it's an object, show attributes
-                    else:
-                        logger.debug(
-                            f"ResultMessage.usage attributes: {dir(message.usage)}"
-                        )
-                else:
-                    logger.debug(f"ResultMessage.usage is None or empty")
-
-                logger.debug(f"ResultMessage.total_cost_usd: {message.total_cost_usd}")
-
                 # Capture usage stats for cost tracking
                 # Per Agent SDK docs: https://docs.claude.com/en/api/agent-sdk/cost-tracking.md
                 # ResultMessage.usage contains CUMULATIVE usage across all turns, with fields:
