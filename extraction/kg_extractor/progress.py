@@ -65,6 +65,8 @@ class ProgressDisplay:
             "average_degree": 0.0,
             "graph_density": 0.0,
             "running_cost_usd": 0.0,
+            "running_input_tokens": 0,
+            "running_output_tokens": 0,
         }
         self.all_entities: list[Any] = []  # Track all entities for graph metrics
 
@@ -193,6 +195,8 @@ class ProgressDisplay:
         entities: list[Any] | None = None,
         validation_errors: int = 0,
         cost_usd: float = 0.0,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
     ) -> None:
         """
         Update extraction statistics.
@@ -201,6 +205,8 @@ class ProgressDisplay:
             entities: List of entities extracted (to count and analyze)
             validation_errors: Number of validation errors (incremental)
             cost_usd: Cost for this chunk in USD (incremental)
+            input_tokens: Input tokens for this chunk (incremental)
+            output_tokens: Output tokens for this chunk (incremental)
         """
         if entities:
             # Add entities to tracking
@@ -216,6 +222,8 @@ class ProgressDisplay:
 
         self.stats["validation_errors"] += validation_errors
         self.stats["running_cost_usd"] += cost_usd
+        self.stats["running_input_tokens"] += input_tokens
+        self.stats["running_output_tokens"] += output_tokens
 
         if self.live:
             self.live.update(self._build_display())
@@ -318,20 +326,19 @@ class ProgressDisplay:
 
             components.append(chunk_table)
 
-        # Statistics
-        stats_table = Table.grid(padding=(0, 2))
-        stats_table.add_column(style="bold green")
-        stats_table.add_column()
+        # Statistics - Two column layout
+        # Left column: Entity/Graph stats
+        left_stats = Table.grid(padding=(0, 2))
+        left_stats.add_column(style="bold green")
+        left_stats.add_column()
 
-        stats_table.add_row("Entities:", str(self.stats["entities"]))
-        stats_table.add_row("Relationships:", str(self.stats["relationships"]))
+        left_stats.add_row("Entities:", str(self.stats["entities"]))
+        left_stats.add_row("Relationships:", str(self.stats["relationships"]))
 
         # Show graph metrics in verbose mode
         if self.verbose:
-            stats_table.add_row(
-                "Average Degree:", f"{self.stats['average_degree']:.2f}"
-            )
-            stats_table.add_row(
+            left_stats.add_row("Average Degree:", f"{self.stats['average_degree']:.2f}")
+            left_stats.add_row(
                 "Graph Density:",
                 (
                     f"{self.stats['graph_density']:.4f}"
@@ -340,7 +347,7 @@ class ProgressDisplay:
                 ),
             )
 
-        stats_table.add_row(
+        left_stats.add_row(
             "Validation Errors:",
             (
                 Text(str(self.stats["validation_errors"]), style="red bold")
@@ -349,15 +356,31 @@ class ProgressDisplay:
             ),
         )
 
-        # Show running cost
-        running_cost = self.stats["running_cost_usd"]
-        if running_cost > 0:
-            stats_table.add_row(
-                "Running Cost:",
-                Text(f"${running_cost:.4f}", style="bold yellow"),
-            )
+        # Right column: Cost/Token stats
+        right_stats = Table.grid(padding=(0, 2))
+        right_stats.add_column(style="bold cyan")
+        right_stats.add_column()
 
-        components.append(stats_table)
+        # Always show running cost (even when $0.0000)
+        running_cost = self.stats["running_cost_usd"]
+        right_stats.add_row(
+            "Running Cost:",
+            Text(f"${running_cost:.4f}", style="bold yellow"),
+        )
+
+        # Show token counts
+        input_tokens = self.stats["running_input_tokens"]
+        output_tokens = self.stats["running_output_tokens"]
+        right_stats.add_row("Input Tokens:", f"{input_tokens:,}")
+        right_stats.add_row("Output Tokens:", f"{output_tokens:,}")
+
+        # Combine left and right stats in a container
+        stats_container = Table.grid(padding=(0, 4))
+        stats_container.add_column()  # Left column
+        stats_container.add_column()  # Right column
+        stats_container.add_row(left_stats, right_stats)
+
+        components.append(stats_container)
 
         # Agent activity (verbose mode only)
         if self.verbose and self.agent_activity:

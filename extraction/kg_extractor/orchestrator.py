@@ -297,14 +297,18 @@ class ExtractionOrchestrator:
 
                     # Collect actual usage stats from agent client (if available)
                     chunk_cost = 0.0
+                    chunk_input_tokens = 0
+                    chunk_output_tokens = 0
                     if (
                         hasattr(self.extraction_agent, "llm_client")
                         and hasattr(self.extraction_agent.llm_client, "last_usage")
                         and self.extraction_agent.llm_client.last_usage
                     ):
                         usage = self.extraction_agent.llm_client.last_usage
-                        total_input_tokens += usage.get("input_tokens", 0)
-                        total_output_tokens += usage.get("output_tokens", 0)
+                        chunk_input_tokens = usage.get("input_tokens", 0)
+                        chunk_output_tokens = usage.get("output_tokens", 0)
+                        total_input_tokens += chunk_input_tokens
+                        total_output_tokens += chunk_output_tokens
                         chunk_cost = usage.get("total_cost_usd", 0.0)
                         total_cost_usd += chunk_cost
 
@@ -314,6 +318,8 @@ class ExtractionOrchestrator:
                             entities=result.entities,  # Pass actual entities for relationship counting
                             validation_errors=len(result.validation_errors),
                             cost_usd=chunk_cost,  # Pass cost for this chunk
+                            input_tokens=chunk_input_tokens,  # Pass input tokens for this chunk
+                            output_tokens=chunk_output_tokens,  # Pass output tokens for this chunk
                         )
 
                     chunks_processed += 1

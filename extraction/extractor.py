@@ -433,11 +433,13 @@ async def main(argv: list[str] | None = None) -> int:
                 files=files,
                 size_mb=size_mb,
             )
-            # Set stats callback to update entity/error/cost counts
-            orchestrator.stats_callback = lambda entities=0, validation_errors=0, cost_usd=0.0: progress_display.update_stats(
+            # Set stats callback to update entity/error/cost/token counts
+            orchestrator.stats_callback = lambda entities=0, validation_errors=0, cost_usd=0.0, input_tokens=0, output_tokens=0: progress_display.update_stats(
                 entities=entities,
                 validation_errors=validation_errors,
                 cost_usd=cost_usd,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
             )
         elif config.logging.verbose:
             # Verbose mode with JSON logging - log to logger instead
