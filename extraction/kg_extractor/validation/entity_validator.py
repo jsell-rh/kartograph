@@ -7,6 +7,38 @@ from kg_extractor.config import ValidationConfig
 from kg_extractor.models import Entity, ValidationError
 
 
+def extract_urn_references(value: Any) -> set[str]:
+    """
+    Extract URN references from a value (could be dict, list, string, etc.).
+
+    Args:
+        value: Value to extract URNs from
+
+    Returns:
+        Set of URN strings found
+    """
+    urns = set()
+
+    if isinstance(value, dict):
+        # Check if this is a reference object {"@id": "urn:..."}
+        if "@id" in value and isinstance(value["@id"], str):
+            if value["@id"].startswith("urn:"):
+                urns.add(value["@id"])
+        # Recursively check all values
+        for v in value.values():
+            urns.update(extract_urn_references(v))
+    elif isinstance(value, list):
+        # Recursively check all list items
+        for item in value:
+            urns.update(extract_urn_references(item))
+    elif isinstance(value, str):
+        # Direct URN string
+        if value.startswith("urn:"):
+            urns.add(value)
+
+    return urns
+
+
 class EntityValidator:
     """
     Entity validator for knowledge graph extraction.
@@ -218,6 +250,118 @@ class EntityValidator:
                     entity_id=entity_id,
                     field="@type",
                     message="Type name must be alphanumeric (or contain underscores)",
+                    severity="error",
+                )
+            )
+
+        return errors
+
+    def validate_graph(self, entities: list[Entity]) -> list[ValidationError]:
+        """
+        Validate a complete graph of entities.
+
+        Checks for:
+        - Orphaned entities (no relationships to/from other entities)
+        - Broken references (URNs that don't exist in graph)
+
+        Args:
+            entities: List of all entities in the graph
+
+        Returns:
+            List of validation errors
+        """
+        errors = []
+
+        # Build entity ID set for reference checking
+        entity_ids = {entity.id for entity in entities}
+
+        # Check each entity
+        for entity in entities:
+            # Check for orphaned entities
+            if self.config.detect_orphans:
+                errors.extend(self._detect_orphaned_entity(entity, entity_ids))
+
+            # Check for broken references
+            if self.config.detect_broken_refs:
+                errors.extend(self._detect_broken_references(entity, entity_ids))
+
+        return errors
+
+    def _detect_orphaned_entity(
+        self, entity: Entity, all_entity_ids: set[str]
+    ) -> list[ValidationError]:
+        """
+        Detect if entity has no relationships (orphaned).
+
+        An entity is orphaned if:
+        - It has no properties that reference other entities
+        - No other entities reference it
+
+        Args:
+            entity: Entity to check
+            all_entity_ids: Set of all entity IDs in graph
+
+        Returns:
+            List of validation errors
+        """
+        errors = []
+
+        # Check if entity has any outgoing references
+        entity_dict = entity.to_jsonld()
+        referenced_urns = extract_urn_references(entity_dict)
+
+        # Remove self-reference
+        referenced_urns.discard(entity.id)
+
+        # Filter to only URNs that exist in the graph
+        outgoing_refs = referenced_urns & all_entity_ids
+
+        # For now, just check outgoing references
+        # Checking incoming would require scanning all entities which is expensive
+        # We could add that as an optional check later
+        if not outgoing_refs:
+            errors.append(
+                ValidationError(
+                    entity_id=entity.id,
+                    field="relationships",
+                    message="Entity has no relationships to other entities (orphaned)",
+                    severity="warning",
+                )
+            )
+
+        return errors
+
+    def _detect_broken_references(
+        self, entity: Entity, all_entity_ids: set[str]
+    ) -> list[ValidationError]:
+        """
+        Detect broken references (URNs that don't exist in graph).
+
+        Args:
+            entity: Entity to check
+            all_entity_ids: Set of all entity IDs in graph
+
+        Returns:
+            List of validation errors
+        """
+        errors = []
+
+        # Extract all URN references from entity
+        entity_dict = entity.to_jsonld()
+        referenced_urns = extract_urn_references(entity_dict)
+
+        # Remove self-reference
+        referenced_urns.discard(entity.id)
+
+        # Find broken references (URNs that don't exist in graph)
+        broken_refs = referenced_urns - all_entity_ids
+
+        for broken_ref in broken_refs:
+            errors.append(
+                ValidationError(
+                    entity_id=entity.id,
+                    field="reference",
+                    message=f"References non-existent entity: {broken_ref}",
                     severity="error",
                 )
             )

@@ -149,6 +149,14 @@ class ValidationConfig(BaseModel):
         default=False,
         description="Fail extraction if validation errors occur",
     )
+    detect_orphans: bool = Field(
+        default=True,
+        description="Detect orphaned entities (no relationships)",
+    )
+    detect_broken_refs: bool = Field(
+        default=True,
+        description="Detect broken references (URNs that don't exist)",
+    )
 
 
 class LLMConfig(BaseModel):

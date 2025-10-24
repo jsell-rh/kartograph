@@ -16,6 +16,8 @@ from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.exceptions import PromptTooLongError
 from kg_extractor.loaders.file_system import DiskFileSystem
 from kg_extractor.models import Entity, ExtractionMetrics, ValidationError
+from kg_extractor.validation.entity_validator import EntityValidator
+from kg_extractor.validation.report import ValidationReport
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,15 @@ class OrchestrationResult:
         self.entities = entities
         self.metrics = metrics
         self.validation_errors = validation_errors or []
+
+    def get_validation_report(self) -> ValidationReport:
+        """
+        Get validation report for errors.
+
+        Returns:
+            ValidationReport instance
+        """
+        return ValidationReport(self.validation_errors)
 
 
 class ExtractionOrchestrator:
@@ -82,6 +93,7 @@ class ExtractionOrchestrator:
         self.chunker = chunker or HybridChunker(config=config.chunking)
         self.extraction_agent = extraction_agent
         self.deduplicator = deduplicator or URNDeduplicator(config=config.deduplication)
+        self.validator = EntityValidator(config=config.validation)
         self.progress_callback = progress_callback
 
         # Initialize checkpoint store if enabled
@@ -258,7 +270,19 @@ class ExtractionOrchestrator:
         else:
             final_entities = []
 
-        # 5. Calculate metrics
+        # 5. Validate final graph (orphans, broken references)
+        if final_entities:
+            graph_validation_errors = self.validator.validate_graph(final_entities)
+            all_validation_errors.extend(graph_validation_errors)
+
+            if graph_validation_errors:
+                logger.info(
+                    f"Graph validation found {len(graph_validation_errors)} issues "
+                    f"({sum(1 for e in graph_validation_errors if e.severity == 'error')} errors, "
+                    f"{sum(1 for e in graph_validation_errors if e.severity == 'warning')} warnings)"
+                )
+
+        # 6. Calculate metrics
         duration = time.time() - start_time
         metrics = ExtractionMetrics(
             total_chunks=len(chunks),
