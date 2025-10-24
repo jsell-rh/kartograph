@@ -207,8 +207,8 @@ def test_in_memory_checkpoint_store_list_checkpoints():
         store.save_checkpoint(checkpoint)
 
     checkpoints = store.list_checkpoints()
-    # 3 chunk checkpoints + 1 metadata file
-    assert len(checkpoints) == 4
+    # In-memory store has 3 checkpoints (no metadata file like disk store)
+    assert len(checkpoints) == 3
     assert "chunk-000" in checkpoints
 
 

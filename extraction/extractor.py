@@ -445,6 +445,12 @@ async def main(argv: list[str] | None = None) -> int:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
             )
+            # Set init callback to initialize progress from checkpoint
+            orchestrator.init_progress_callback = (
+                lambda chunks_completed: progress_display.set_initial_progress(
+                    chunks_completed=chunks_completed
+                )
+            )
         elif config.logging.verbose:
             # Verbose mode with JSON logging - log to logger instead
             orchestrator.event_callback = (

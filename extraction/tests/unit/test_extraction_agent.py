@@ -137,10 +137,12 @@ async def test_extraction_agent_with_schema_dir():
         schema_dir=Path("/schemas"),
     )
 
-    # Verify LLM was called with schema_dir
+    # Verify LLM was called and schema_dir was rendered into the prompt
     mock_llm.extract_entities.assert_called_once()
     call_args = mock_llm.extract_entities.call_args
-    assert call_args[1]["schema_dir"] == Path("/schemas")
+    # schema_dir is rendered into the prompt, check it's in the prompt string
+    prompt = call_args[1]["prompt"]
+    assert "/schemas" in prompt  # Schema dir should be rendered in the prompt
 
 
 @pytest.mark.asyncio

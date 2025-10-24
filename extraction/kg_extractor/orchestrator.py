@@ -274,6 +274,31 @@ class ExtractionOrchestrator:
                     all_entities = self._entities_from_checkpoint_data(checkpoint)
                     logger.info(f"Loaded {len(all_entities)} entities from checkpoint")
 
+                    # Update progress display with checkpoint state
+                    # This ensures stats (entities, relationships) reflect work already done
+                    if hasattr(self, "stats_callback") and self.stats_callback:
+                        # Pass all entities to initialize stats (entities + relationships)
+                        self.stats_callback(
+                            entities=all_entities,
+                            validation_errors=0,  # Not tracked in checkpoint
+                            cost_usd=0.0,  # Will be incremented from this point
+                            input_tokens=0,  # Will be incremented from this point
+                            output_tokens=0,  # Will be incremented from this point
+                        )
+                        logger.debug(
+                            f"Initialized progress display with {len(all_entities)} entities from checkpoint"
+                        )
+
+                    # Update chunk progress counter to reflect checkpoint state
+                    if (
+                        hasattr(self, "init_progress_callback")
+                        and self.init_progress_callback
+                    ):
+                        self.init_progress_callback(chunks_completed=chunks_processed)
+                        logger.debug(
+                            f"Set initial chunk progress to {chunks_processed}"
+                        )
+
         # Convert to list for dynamic modification (chunk splitting on 413 errors)
         chunks_to_process = list(chunks)
         total_chunks = len(chunks_to_process)

@@ -171,6 +171,24 @@ class ProgressDisplay:
         if self.live:
             self.live.update(self._build_display())
 
+    def set_initial_progress(self, chunks_completed: int) -> None:
+        """
+        Set initial chunk progress when resuming from checkpoint.
+
+        This updates the progress bar to reflect chunks already processed,
+        without recording fake chunk durations.
+
+        Args:
+            chunks_completed: Number of chunks already completed
+        """
+        if self.chunk_task is not None and chunks_completed > 0:
+            # Update progress bar to show chunks already done
+            self.progress.update(self.chunk_task, completed=chunks_completed)
+            self.chunks_completed = chunks_completed
+
+        if self.live:
+            self.live.update(self._build_display())
+
     def advance_chunk(self) -> None:
         """Advance to next chunk."""
         if self.chunk_task is not None:
