@@ -11,13 +11,30 @@ from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
     Progress,
+    ProgressColumn,
     SpinnerColumn,
+    Task,
     TaskID,
     TextColumn,
     TimeElapsedColumn,
 )
 from rich.table import Table
 from rich.text import Text
+
+
+class ETAColumn(ProgressColumn):
+    """Custom column to display estimated time remaining."""
+
+    def __init__(self, progress_display: "ProgressDisplay"):
+        super().__init__()
+        self.progress_display = progress_display
+
+    def render(self, task: Task) -> Text:
+        """Render the ETA."""
+        eta = self.progress_display._calculate_eta()
+        if eta:
+            return Text(f"• {eta}", style="bold yellow")
+        return Text("")
 
 
 class ProgressDisplay:
@@ -56,6 +73,7 @@ class ProgressDisplay:
             MofNCompleteColumn(),
             TextColumn("•"),
             TimeElapsedColumn(),
+            ETAColumn(self),  # Custom ETA column
             console=self.console,
         )
 
@@ -355,11 +373,6 @@ class ProgressDisplay:
             chunk_table.add_row(
                 "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
             )
-
-            # Show ETA if we have enough data
-            eta = self._calculate_eta()
-            if eta:
-                chunk_table.add_row("ETA:", Text(eta, style="bold yellow"))
 
             # Show current file being processed (verbose mode)
             if self.verbose and self.current_file:
