@@ -73,8 +73,16 @@ class AgentClient:
         }
 
         # Configure agent options
+        # Default tools include file access tools + MCP submission tool
+        default_tools = [
+            "Read",
+            "Grep",
+            "Glob",
+            "mcp__extraction__submit_extraction_results",  # MCP tool for structured submission
+        ]
+
         options = ClaudeAgentOptions(
-            allowed_tools=allowed_tools or ["Read", "Grep", "Glob"],
+            allowed_tools=allowed_tools or default_tools,
             permission_mode="acceptEdits",  # Auto-accept tool use for automation
             mcp_servers=mcp_config,
         )
