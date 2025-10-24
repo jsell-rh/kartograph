@@ -80,11 +80,11 @@ class PromptTemplate(BaseModel):
             ValueError: Missing required variable
             TemplateError: Invalid template syntax or undefined variable
         """
-        # Validate required variables
+        # Validate required variables (excluding those with defaults)
         missing = [
             name
             for name, var in self.variables.items()
-            if var.required and name not in kwargs
+            if var.required and name not in kwargs and var.default is None
         ]
         if missing:
             raise ValueError(f"Missing required variables: {', '.join(missing)}")

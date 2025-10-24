@@ -173,6 +173,55 @@ def test_template_mentions_tools():
     assert "metadata" in full_text
 
 
+def test_template_required_with_default():
+    """Test that required variables with defaults don't cause validation errors."""
+    from pathlib import Path
+
+    from kg_extractor.prompts.models import (
+        PromptMetadata,
+        PromptTemplate,
+        PromptVariable,
+    )
+
+    # Create template with required variable that has a default
+    template = PromptTemplate(
+        metadata=PromptMetadata(
+            name="test_required_default",
+            version="1.0.0",
+            description="Test required with default",
+            created="2025-01-23",
+        ),
+        variables={
+            "required_with_default": PromptVariable(
+                type="str",
+                required=True,
+                default="default_value",
+                description="Required but has default",
+            ),
+            "required_no_default": PromptVariable(
+                type="str",
+                required=True,
+                description="Required with no default",
+            ),
+        },
+        system_prompt="Value: {{ required_with_default }}",
+        user_prompt="Other: {{ required_no_default }}",
+    )
+
+    # Should work: required_with_default not provided but has default
+    system, user = template.render(required_no_default="provided")
+    assert "default_value" in system
+    assert "provided" in user
+
+    # Should fail: required_no_default not provided and no default
+    try:
+        template.render()  # Missing required_no_default
+        assert False, "Should have raised ValueError"
+    except ValueError as e:
+        assert "required_no_default" in str(e)
+        assert "required_with_default" not in str(e)  # Should NOT complain about this
+
+
 def test_mcp_server_has_valid_structure():
     """Test MCP server defines correct tool with proper schema."""
     import importlib.util
