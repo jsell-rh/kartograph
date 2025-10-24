@@ -73,6 +73,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Export validation report (JSON/Markdown based on extension)",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Estimate cost and preview extraction without calling LLM",
+    )
 
     # Authentication
     auth_group = parser.add_argument_group("authentication")
@@ -442,6 +447,21 @@ async def main(argv: list[str] | None = None) -> int:
                     extra={"activity_type": activity_type},
                 )
             )
+
+        # Run dry-run or extraction
+        if args.dry_run:
+            # Dry run mode - estimate cost without calling LLM
+            logger.info("Running in dry-run mode (no LLM calls will be made)")
+            estimate = orchestrator.dry_run()
+
+            # Print estimate
+            print("\n" + "=" * 60)
+            print("DRY RUN - COST ESTIMATE")
+            print("=" * 60)
+            print(estimate)
+            print("=" * 60)
+            print("\nNo extraction performed. Run without --dry-run to execute.")
+            return 0
 
         # Run extraction
         if progress_display:

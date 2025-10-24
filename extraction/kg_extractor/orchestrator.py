@@ -12,6 +12,7 @@ from kg_extractor.checkpoint.models import Checkpoint
 from kg_extractor.chunking.hybrid_chunker import HybridChunker
 from kg_extractor.chunking.models import Chunk
 from kg_extractor.config import ExtractionConfig
+from kg_extractor.cost_estimator import CostEstimate, CostEstimator
 from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.exceptions import PromptTooLongError
 from kg_extractor.loaders.file_system import DiskFileSystem
@@ -414,3 +415,40 @@ class ExtractionOrchestrator:
 
         logger.info(f"Restored {len(entities)} entities from checkpoint")
         return entities
+
+    def dry_run(self) -> CostEstimate:
+        """
+        Perform dry run to estimate cost and preview extraction.
+
+        Does not call LLM or create output files.
+
+        Returns:
+            CostEstimate with detailed breakdown
+
+        Raises:
+            Exception: If file discovery or chunking fails
+        """
+        logger.info("Starting dry run (no LLM calls will be made)")
+
+        # 1. Discover files
+        files = self.file_system.list_files(
+            directory=self.config.data_dir,
+            pattern="**/*",
+        )
+        logger.info(f"Discovered {len(files)} files")
+
+        # 2. Create chunks
+        chunks = self.chunker.create_chunks(files)
+        logger.info(f"Would process {len(chunks)} chunks")
+
+        # 3. Estimate cost
+        estimator = CostEstimator(self.config.llm)
+        estimate = estimator.estimate_chunks(chunks)
+
+        logger.info("Dry run complete")
+        logger.info(f"Estimated cost: ${estimate.estimated_cost_usd:.2f}")
+        logger.info(
+            f"Estimated duration: {estimate.estimated_duration_seconds / 60:.1f} minutes"
+        )
+
+        return estimate
