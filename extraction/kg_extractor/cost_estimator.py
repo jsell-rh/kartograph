@@ -1,0 +1,222 @@
+"""Cost estimation for LLM-based extraction."""
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from kg_extractor.chunking.models import Chunk
+from kg_extractor.config import LLMConfig
+
+
+@dataclass
+class CostEstimate:
+    """
+    Cost estimate for extraction run.
+
+    Provides detailed breakdown of expected costs and processing time.
+    """
+
+    total_files: int
+    total_chunks: int
+    total_size_bytes: int
+    estimated_input_tokens: int
+    estimated_output_tokens: int
+    estimated_cost_usd: float
+    estimated_duration_seconds: float
+    model: str
+
+    def __str__(self) -> str:
+        """Human-readable summary."""
+        return (
+            f"Cost Estimate Summary:\n"
+            f"\n"
+            f"⚠️  NOTE: Estimates calibrated for Agent SDK with prompt caching.\n"
+            f"    Actual costs may vary ±20-30% depending on:\n"
+            f"    - File content complexity and structure\n"
+            f"    - Number of entities and relationships found\n"
+            f"    - Tool call patterns and retries\n"
+            f"    - Cache hit/miss ratios\n"
+            f"\n"
+            f"  Files: {self.total_files}\n"
+            f"  Chunks: {self.total_chunks}\n"
+            f"  Total Size: {self.total_size_bytes / (1024 * 1024):.2f} MB\n"
+            f"  Estimated Input Tokens: {self.estimated_input_tokens:,}\n"
+            f"  Estimated Output Tokens: {self.estimated_output_tokens:,}\n"
+            f"  Estimated Cost: ${self.estimated_cost_usd:.2f}\n"
+            f"  Estimated Duration: {self.estimated_duration_seconds / 60:.1f} minutes\n"
+            f"  Model: {self.model}\n"
+            f"\n"
+            f"💡 Watch realtime ETA during extraction for actual progress."
+        )
+
+
+class CostEstimator:
+    """
+    Estimate costs for LLM-based extraction.
+
+    Provides token and cost estimates before running extraction.
+    """
+
+    # Token estimation constants
+    # Average characters per token (rough estimate for English text)
+    CHARS_PER_TOKEN = 4
+
+    # Agent SDK overhead multipliers
+    # The Agent SDK uses prompt caching and multiple API turns, which significantly
+    # increases token usage beyond just file size:
+    # - Prompt caching creates cache entries (cache_creation_input_tokens)
+    # - Multiple tool-calling turns reprocess context (10-20 turns per chunk)
+    # - Tool results are fed back as input
+    # Based on real-world data: 2,115 estimated → 50,992 actual (~24x)
+    AGENT_SDK_INPUT_MULTIPLIER = 20.0  # Conservative estimate for caching + turns
+    AGENT_SDK_OUTPUT_MULTIPLIER = 1.0  # Output is more predictable
+
+    # Model pricing (per million tokens) - updated for Claude 3.5 Sonnet (2024-10-22)
+    MODEL_PRICING = {
+        "claude-3-5-sonnet-20241022": {
+            "input": 3.00,  # $3 per million input tokens
+            "output": 15.00,  # $15 per million output tokens
+        },
+        "claude-3-5-sonnet-latest": {
+            "input": 3.00,
+            "output": 15.00,
+        },
+        # Fallback for other models
+        "default": {
+            "input": 3.00,
+            "output": 15.00,
+        },
+    }
+
+    # Processing speed estimates (tokens per second)
+    # Agent SDK with tool use is slower than raw API due to:
+    # - Tool call latency (Read, Grep, Glob operations)
+    # - Multiple API round trips (10-20 per chunk)
+    # - Network overhead
+    # Based on real-world data: 0.1min estimated → 0.6min actual (6x slower)
+    PROCESSING_SPEED = {
+        "input_tokens_per_second": 200,  # Much slower with tool use
+        "output_tokens_per_second": 50,  # Output generation is slower
+    }
+
+    def __init__(self, llm_config: LLMConfig):
+        """
+        Initialize cost estimator.
+
+        Args:
+            llm_config: LLM configuration with model info
+        """
+        self.llm_config = llm_config
+        self.model = llm_config.model
+
+    def estimate_tokens_from_text(self, text: str) -> int:
+        """
+        Estimate token count from text.
+
+        Uses character-based heuristic (4 chars per token for English).
+
+        Args:
+            text: Input text
+
+        Returns:
+            Estimated token count
+        """
+        return len(text) // self.CHARS_PER_TOKEN
+
+    def estimate_tokens_from_file(self, file_path: Path) -> int:
+        """
+        Estimate token count from file.
+
+        Args:
+            file_path: Path to file
+
+        Returns:
+            Estimated token count
+        """
+        try:
+            content = file_path.read_text(encoding="utf-8", errors="ignore")
+            return self.estimate_tokens_from_text(content)
+        except Exception:
+            # Fallback: estimate from file size (1 token per 4 bytes)
+            return file_path.stat().st_size // self.CHARS_PER_TOKEN
+
+    def estimate_chunk(self, chunk: Chunk) -> tuple[int, int]:
+        """
+        Estimate input and output tokens for a chunk.
+
+        Args:
+            chunk: Chunk to estimate
+
+        Returns:
+            Tuple of (input_tokens, output_tokens)
+        """
+        # Estimate base input tokens from chunk files
+        base_input_tokens = sum(
+            self.estimate_tokens_from_file(file) for file in chunk.files
+        )
+
+        # Add overhead for prompt template (estimated ~2000 tokens)
+        base_input_tokens += 2000
+
+        # Apply Agent SDK multiplier to account for:
+        # - Prompt caching (cache_creation_input_tokens)
+        # - Multiple API turns (tool calling loops)
+        # - Tool results being fed back as context
+        # Real-world data shows 20-24x actual vs base estimate
+        input_tokens = int(base_input_tokens * self.AGENT_SDK_INPUT_MULTIPLIER)
+
+        # Estimate output tokens based on input size
+        # Real-world data: 2,388 output / 50,992 input = 4.7%
+        # Using 5% as a conservative estimate
+        output_tokens = int(base_input_tokens * 0.05 * self.AGENT_SDK_OUTPUT_MULTIPLIER)
+
+        return input_tokens, output_tokens
+
+    def estimate_chunks(self, chunks: list[Chunk]) -> CostEstimate:
+        """
+        Estimate cost for processing chunks.
+
+        Args:
+            chunks: List of chunks to process
+
+        Returns:
+            CostEstimate with detailed breakdown
+        """
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_files = 0
+        total_size = 0
+
+        for chunk in chunks:
+            input_tokens, output_tokens = self.estimate_chunk(chunk)
+            total_input_tokens += input_tokens
+            total_output_tokens += output_tokens
+            total_files += len(chunk.files)
+            total_size += chunk.total_size_bytes
+
+        # Calculate cost
+        pricing = self.MODEL_PRICING.get(self.model, self.MODEL_PRICING["default"])
+
+        input_cost = (total_input_tokens / 1_000_000) * pricing["input"]
+        output_cost = (total_output_tokens / 1_000_000) * pricing["output"]
+        total_cost = input_cost + output_cost
+
+        # Estimate duration (includes API latency, retries, etc.)
+        # Conservative estimate: add 50% overhead for API latency
+        input_time = (
+            total_input_tokens / self.PROCESSING_SPEED["input_tokens_per_second"]
+        )
+        output_time = (
+            total_output_tokens / self.PROCESSING_SPEED["output_tokens_per_second"]
+        )
+        estimated_duration = (input_time + output_time) * 1.5
+
+        return CostEstimate(
+            total_files=total_files,
+            total_chunks=len(chunks),
+            total_size_bytes=total_size,
+            estimated_input_tokens=total_input_tokens,
+            estimated_output_tokens=total_output_tokens,
+            estimated_cost_usd=total_cost,
+            estimated_duration_seconds=estimated_duration,
+            model=self.model,
+        )
