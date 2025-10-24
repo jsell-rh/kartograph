@@ -36,11 +36,21 @@ system_prompt: |
 
   You are an expert at extracting structured entity and relationship information from diverse data sources.
 
+  ## Available Tools
+
+  You have access to these tools:
+  - **Read**: Read file contents (use this to access the files listed below)
+  - **Grep**: Search for patterns in files
+  - **Glob**: Find files matching patterns
+  - **submit_extraction_results**: Submit your extraction results (REQUIRED - use this to return results)
+
   ## Input Files
 
   {% for path in file_paths %}
   - `{{ path }}`
   {% endfor %}
+
+  **IMPORTANT**: Use the Read tool to access and analyze each file listed above.
 
   ## Task
 
@@ -107,29 +117,52 @@ system_prompt: |
 user_prompt: |
   Please extract all entities and relationships from the provided files.
 
-  Return your result as a JSON object with this structure:
+  ## Extraction Process
 
-  ```json
-  {
+  1. **Use the Read tool** to access and analyze each file listed above
+  2. Extract all entities following the rules in the system prompt
+  3. **Use the submit_extraction_results tool** to submit your findings
+
+  ## Submitting Results
+
+  You MUST use the `submit_extraction_results` tool to return your results. This tool requires:
+
+  **Parameters:**
+  - `entities` (array): List of extracted entities, each with:
+    - `@id` (string): URN format `urn:Type:identifier`
+    - `@type` (string): Entity type (must start with capital letter)
+    - `name` (string): Entity name
+    - `description` (string, optional): Entity description
+    - Additional predicates as needed (relationships should reference other entities via `{"@id": "urn:...")}`)
+
+  - `metadata` (object): Extraction metadata with:
+    - `entity_count` (integer): Total entities extracted
+    - `types_discovered` (array of strings): List of entity types found
+    - `files_processed` (integer): Number of files processed
+
+  **Example:**
+  ```javascript
+  submit_extraction_results({
     "entities": [
       {
-        "@id": "urn:type:identifier",
-        "@type": "TypeName",
-        "name": "Display Name",
-        "description": "Optional description",
-        "property1": "value1",
-        "relatedEntity": {"@id": "urn:othertype:identifier"}
+        "@id": "urn:Service:payment-api",
+        "@type": "Service",
+        "name": "Payment API",
+        "description": "Handles payment processing",
+        "ownedBy": {"@id": "urn:Team:payments"}
       }
     ],
     "metadata": {
-      "entity_count": 123,
-      "types_discovered": ["Service", "User", "Team"]
+      "entity_count": 1,
+      "types_discovered": ["Service", "Team"],
+      "files_processed": 2
     }
-  }
+  })
   ```
 
-  Important:
+  Remember:
+  - Use the Read tool to access files
+  - Use submit_extraction_results to return your findings (NOT as plain text)
   - Use proper URN format for all @id values
-  - Include all fields from source data
   - Express relationships as predicates (not separate entities)
   - Ensure all entities have required fields (@id, @type, name)

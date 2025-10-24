@@ -55,16 +55,28 @@ class AgentClient:
             timeout_seconds: Timeout for agent operations in seconds
             log_prompts: Log full prompts and responses for debugging
         """
+        import sys
+
         self.auth_config = auth_config
         self.model = model
         self.max_retries = max_retries
         self.timeout_seconds = timeout_seconds
         self.log_prompts = log_prompts
 
+        # Configure MCP server for structured result submission
+        # This provides the submit_extraction_results tool
+        mcp_config = {
+            "extraction": {
+                "command": sys.executable,
+                "args": ["-m", "kg_extractor.llm.extraction_mcp_server"],
+            }
+        }
+
         # Configure agent options
         options = ClaudeAgentOptions(
             allowed_tools=allowed_tools or ["Read", "Grep", "Glob"],
             permission_mode="acceptEdits",  # Auto-accept tool use for automation
+            mcp_servers=mcp_config,
         )
 
         # Note: Agent SDK authentication is handled via environment variables
@@ -77,6 +89,7 @@ class AgentClient:
 
         self.client = ClaudeSDKClient(options=options)
         self._connected = False
+        self._mcp_result = None  # Store result from MCP tool
 
     async def _ensure_connected(self) -> None:
         """Ensure client is connected to Claude Agent SDK."""
@@ -132,6 +145,7 @@ class AgentClient:
         error_message = None
         current_tool_name = None  # Track current tool being used
         current_tool_input = ""  # Accumulate tool input from deltas
+        mcp_result = None  # Store MCP submit_extraction_results arguments
         async for message in self.client.receive_response():
             # Track message types for debugging
             messages_received.append(type(message).__name__)
@@ -201,24 +215,46 @@ class AgentClient:
                                 )
 
                     elif event_type == "content_block_stop":
-                        # Tool input is complete - parse and report file if Read tool
-                        if current_tool_name == "Read" and current_tool_input:
+                        # Tool input is complete - parse and handle based on tool type
+                        if current_tool_input:
                             try:
                                 import json
 
                                 tool_input = json.loads(current_tool_input)
-                                if "file_path" in tool_input:
+
+                                # Handle Read tool - report file being read
+                                if (
+                                    current_tool_name == "Read"
+                                    and "file_path" in tool_input
+                                ):
                                     file_path = tool_input["file_path"]
-                                    event_callback(
-                                        f"Reading file: {file_path}",
-                                        activity_type="file",
-                                    )
+                                    if event_callback:
+                                        event_callback(
+                                            f"Reading file: {file_path}",
+                                            activity_type="file",
+                                        )
                                     if self.log_prompts:
                                         logger.debug(f"  File being read: {file_path}")
+
+                                # Handle MCP submit_extraction_results tool - capture result
+                                elif current_tool_name == "submit_extraction_results":
+                                    mcp_result = tool_input
+                                    if self.log_prompts:
+                                        logger.debug(
+                                            f"  MCP result captured: {len(tool_input.get('entities', []))} entities"
+                                        )
+                                    if event_callback:
+                                        entity_count = len(
+                                            tool_input.get("entities", [])
+                                        )
+                                        event_callback(
+                                            f"Submitted {entity_count} entities via MCP tool",
+                                            activity_type="tool",
+                                        )
                             except json.JSONDecodeError:
                                 if self.log_prompts:
                                     logger.debug(
-                                        f"  Failed to parse tool input: {current_tool_input[:100]}"
+                                        f"  Failed to parse tool input for {current_tool_name}: {current_tool_input[:100]}"
                                     )
 
                 except Exception:
@@ -237,6 +273,15 @@ class AgentClient:
                 f"Messages received: {messages_summary}.{error_detail} "
                 f"This may indicate a connection issue, timeout, or agent error."
             )
+
+        # Store MCP result for extraction methods to use
+        if mcp_result:
+            self._mcp_result = mcp_result
+            if self.log_prompts:
+                logger.debug(
+                    f"MCP result stored: {len(mcp_result.get('entities', []))} entities, "
+                    f"{len(mcp_result.get('metadata', {}).get('types_discovered', []))} types"
+                )
 
         # Log response if enabled
         if self.log_prompts:
@@ -305,7 +350,8 @@ class AgentClient:
 
     async def extract_entities(
         self,
-        data_files: list[Path],
+        prompt: str | None = None,
+        data_files: list[Path] | None = None,
         schema_dir: Path | None = None,
         system_instructions: str | None = None,
         event_callback: Any = None,
@@ -317,12 +363,14 @@ class AgentClient:
         1. Read schema files (if provided) using Read tool to understand structure
         2. Read data files using Read tool to extract entities
         3. Use multi-step reasoning to validate and refine extraction
-        4. Return structured results as JSON
+        4. Submit results via submit_extraction_results MCP tool
 
         Args:
-            data_files: List of data file paths to extract from
-            schema_dir: Optional directory containing schema files
-            system_instructions: Optional system-level instructions
+            prompt: Pre-rendered prompt (preferred). If not provided, will build from data_files/schema_dir.
+            data_files: List of data file paths (only used if prompt not provided)
+            schema_dir: Optional directory containing schema files (only used if prompt not provided)
+            system_instructions: Optional system-level instructions (only used if prompt not provided)
+            event_callback: Optional callback for streaming events
 
         Returns:
             Dictionary with structure:
@@ -338,20 +386,33 @@ class AgentClient:
 
         logger = logging.getLogger("kg_extractor.llm")
 
-        # Build extraction prompt
-        prompt = self._build_extraction_prompt(
-            data_files=data_files,
-            schema_dir=schema_dir,
-            instructions=system_instructions,
-        )
+        # Use provided prompt or build one (for backward compatibility)
+        if prompt is None:
+            if data_files is None:
+                raise ValueError("Either 'prompt' or 'data_files' must be provided")
+            prompt = self._build_extraction_prompt(
+                data_files=data_files,
+                schema_dir=schema_dir,
+                instructions=system_instructions,
+            )
 
         # Execute agent workflow with retries
         for attempt in range(self.max_retries):
             try:
+                # Reset MCP result before sending
+                self._mcp_result = None
+
                 # Send extraction request to agent
                 response = await self._send_and_receive(prompt, event_callback)
 
-                # Parse and validate response
+                # Check if agent used MCP tool to submit results
+                if self._mcp_result:
+                    # Use MCP result directly (already structured and validated)
+                    logger.debug("Using MCP tool result (structured submission)")
+                    return self._mcp_result
+
+                # Fall back to JSON parsing if no MCP result
+                logger.debug("MCP tool not used, falling back to JSON parsing")
                 result = self._parse_extraction_result(response)
 
                 return result

@@ -64,7 +64,7 @@ class ExtractionAgent:
         Raises:
             ExtractionError: If extraction fails
         """
-        # Load prompt template
+        # Load and render prompt template
         try:
             template = self.prompt_loader.load(self.prompt_name)
         except Exception as e:
@@ -74,15 +74,25 @@ class ExtractionAgent:
         prompt_vars = {
             "file_paths": files,
             "schema_dir": schema_dir,
-            **kwargs,
         }
 
-        # Call LLM
+        # Render template
+        try:
+            system_prompt, user_prompt = template.render(**prompt_vars)
+        except Exception as e:
+            raise ExtractionError(f"Failed to render prompt template: {e}") from e
+
+        # Combine system and user prompts
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+        # Extract event_callback if provided (for verbose mode)
+        event_callback = kwargs.get("event_callback")
+
+        # Call LLM with rendered prompt
         try:
             response = await self.llm_client.extract_entities(
-                data_files=files,
-                schema_dir=schema_dir,
-                **kwargs,
+                prompt=full_prompt,
+                event_callback=event_callback,
             )
         except Exception as e:
             raise ExtractionError(f"LLM extraction failed: {e}") from e
