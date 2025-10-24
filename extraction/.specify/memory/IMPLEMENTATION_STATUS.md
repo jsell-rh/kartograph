@@ -7,7 +7,7 @@
 
 - **Phase 1 (Skateboard)**: ✅ **100% Complete** - Core functionality working
 - **Phase 2 (Scooter)**: ✅ **100% Complete** - Reliability and observability features done
-- **Phase 3 (Bicycle)**: 🟡 **~30% Complete** - Optimization and polish partially done
+- **Phase 3 (Bicycle)**: 🟡 **~55% Complete** - Optimization and polish partially done
 - **Phase 4 (Car)**: ❌ **0% Complete** - Advanced features not started
 
 ## Fixed Issues (Today)
@@ -84,7 +84,7 @@ All 10 tasks complete:
 
 ### Phase 3: Bicycle (Polish & Optimization) 🟡
 
-**3/11 tasks complete** (~27%):
+**6/11 tasks complete** (~55%):
 
 | Task | Status | Notes |
 |------|--------|-------|
@@ -92,9 +92,9 @@ All 10 tasks complete:
 | TASK-302: Configurable Deduplication | ✅ | URN strategy configurable via config |
 | TASK-303: Prompt Management CLI | ❌ | Not implemented |
 | TASK-304: Prompt Documentation Generation | ❌ | Not implemented |
-| TASK-305: Enhanced Validation | ❌ | No orphan/broken reference detection |
-| TASK-306: Validation Report | ❌ | Not implemented |
-| TASK-307: Metrics Export | ❌ | No JSON/CSV/markdown export |
+| TASK-305: Enhanced Validation | ✅ | Orphan and broken reference detection implemented |
+| TASK-306: Validation Report | ✅ | Multi-format export (JSON/Markdown/Text) |
+| TASK-307: Metrics Export | ✅ | JSON/CSV/Markdown export with CLI integration |
 | TASK-308: Dry-Run Mode | ❌ | Not implemented |
 | TASK-309: Smart Defaults | ✅ | Defaults exist, auto-detect not implemented |
 | TASK-310: Test Suite Completion | 🟡 | Good coverage but not >80% measured |
