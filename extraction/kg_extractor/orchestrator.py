@@ -296,6 +296,7 @@ class ExtractionOrchestrator:
                     all_validation_errors.extend(result.validation_errors)
 
                     # Collect actual usage stats from agent client (if available)
+                    chunk_cost = 0.0
                     if (
                         hasattr(self.extraction_agent, "llm_client")
                         and hasattr(self.extraction_agent.llm_client, "last_usage")
@@ -304,13 +305,15 @@ class ExtractionOrchestrator:
                         usage = self.extraction_agent.llm_client.last_usage
                         total_input_tokens += usage.get("input_tokens", 0)
                         total_output_tokens += usage.get("output_tokens", 0)
-                        total_cost_usd += usage.get("total_cost_usd", 0.0)
+                        chunk_cost = usage.get("total_cost_usd", 0.0)
+                        total_cost_usd += chunk_cost
 
                     # Report stats (for verbose mode progress display)
                     if hasattr(self, "stats_callback") and self.stats_callback:
                         self.stats_callback(
                             entities=result.entities,  # Pass actual entities for relationship counting
                             validation_errors=len(result.validation_errors),
+                            cost_usd=chunk_cost,  # Pass cost for this chunk
                         )
 
                     chunks_processed += 1

@@ -106,6 +106,34 @@ class AgentClient:
             await self.client.connect()
             self._connected = True
 
+    def _build_tool_detail(self, tool_name: str, tool_input: dict) -> str | None:
+        """
+        Build detail string for tool usage display.
+
+        Args:
+            tool_name: Name of the tool
+            tool_input: Tool input parameters
+
+        Returns:
+            Detail string to show in dim/grey, or None
+        """
+        # Read tool - show file path
+        if tool_name == "Read" and "file_path" in tool_input:
+            return f"file: {tool_input['file_path']}"
+
+        # Grep tool - show pattern and path
+        elif tool_name == "Grep" and "pattern" in tool_input:
+            pattern = tool_input["pattern"]
+            path = tool_input.get("path", ".")
+            return f"pattern: {pattern}, path: {path}"
+
+        # Glob tool - show pattern
+        elif tool_name == "Glob" and "pattern" in tool_input:
+            return f"pattern: {tool_input['pattern']}"
+
+        # Default - show nothing
+        return None
+
     async def _send_and_receive(self, prompt: str, event_callback: Any = None) -> str:
         """
         Send prompt and receive response from Agent SDK.
@@ -211,8 +239,12 @@ class AgentClient:
                                     activity_type="tool",
                                 )
                             else:
+                                # Build tool detail string for common tools
+                                detail = self._build_tool_detail(tool_name, tool_input)
                                 event_callback(
-                                    f"Using tool: {tool_name}", activity_type="tool"
+                                    f"Using tool: {tool_name}",
+                                    activity_type="tool",
+                                    detail=detail,
                                 )
 
             # Handle result message
@@ -269,7 +301,7 @@ class AgentClient:
                                     f"  Tool: {tool_name}, awaiting input via deltas"
                                 )
 
-                            # Report tool usage
+                            # Report tool usage (detail will be added when we parse the input)
                             if event_callback:
                                 event_callback(
                                     f"Using tool: {tool_name}", activity_type="tool"
@@ -324,6 +356,35 @@ class AgentClient:
                                         )
                                     if self.log_prompts:
                                         logger.debug(f"  File being read: {file_path}")
+
+                                # Handle Grep tool - report pattern being searched
+                                elif (
+                                    current_tool_name == "Grep"
+                                    and "pattern" in tool_input
+                                ):
+                                    pattern = tool_input["pattern"]
+                                    path = tool_input.get("path", ".")
+                                    detail = f"pattern: {pattern}, path: {path}"
+                                    if event_callback:
+                                        event_callback(
+                                            f"Using tool: {current_tool_name}",
+                                            activity_type="tool",
+                                            detail=detail,
+                                        )
+
+                                # Handle Glob tool - report glob pattern
+                                elif (
+                                    current_tool_name == "Glob"
+                                    and "pattern" in tool_input
+                                ):
+                                    pattern = tool_input["pattern"]
+                                    detail = f"pattern: {pattern}"
+                                    if event_callback:
+                                        event_callback(
+                                            f"Using tool: {current_tool_name}",
+                                            activity_type="tool",
+                                            detail=detail,
+                                        )
 
                                 # Handle MCP submit_extraction_results tool - capture result
                                 # Tool name includes MCP prefix: mcp__extraction__submit_extraction_results

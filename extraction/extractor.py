@@ -423,8 +423,8 @@ async def main(argv: list[str] | None = None) -> int:
         # Set event callback for verbose mode (streaming agent activity)
         if progress_display:
             # Rich terminal display
-            orchestrator.event_callback = lambda activity, activity_type="info": progress_display.log_agent_activity(
-                activity, activity_type
+            orchestrator.event_callback = lambda activity, activity_type="info", detail=None: progress_display.log_agent_activity(
+                activity, activity_type, detail
             )
             # Set chunk callback to update chunk details
             orchestrator.chunk_callback = lambda chunk_num, chunk_id, files, size_mb: progress_display.update_chunk(
@@ -433,11 +433,11 @@ async def main(argv: list[str] | None = None) -> int:
                 files=files,
                 size_mb=size_mb,
             )
-            # Set stats callback to update entity/error counts
-            orchestrator.stats_callback = (
-                lambda entities=0, validation_errors=0: progress_display.update_stats(
-                    entities=entities, validation_errors=validation_errors
-                )
+            # Set stats callback to update entity/error/cost counts
+            orchestrator.stats_callback = lambda entities=0, validation_errors=0, cost_usd=0.0: progress_display.update_stats(
+                entities=entities,
+                validation_errors=validation_errors,
+                cost_usd=cost_usd,
             )
         elif config.logging.verbose:
             # Verbose mode with JSON logging - log to logger instead

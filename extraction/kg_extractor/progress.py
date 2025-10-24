@@ -64,6 +64,7 @@ class ProgressDisplay:
             "validation_errors": 0,
             "average_degree": 0.0,
             "graph_density": 0.0,
+            "running_cost_usd": 0.0,
         }
         self.all_entities: list[Any] = []  # Track all entities for graph metrics
 
@@ -141,13 +142,16 @@ class ProgressDisplay:
         if self.live:
             self.live.update(self._build_display())
 
-    def log_agent_activity(self, activity: str, activity_type: str = "info") -> None:
+    def log_agent_activity(
+        self, activity: str, activity_type: str = "info", detail: str | None = None
+    ) -> None:
         """
         Log agent activity (only shown in verbose mode).
 
         Args:
             activity: Activity description
             activity_type: Type of activity (info, tool, thinking, result, file)
+            detail: Optional detail text to show in dim/grey style (e.g., tool parameters)
         """
         if self.verbose:
             # Handle file activity specially - update current file
@@ -164,13 +168,20 @@ class ProgressDisplay:
 
             # Format based on type
             if activity_type == "tool":
-                formatted = f"🔧 {activity}"
+                icon = "🔧"
             elif activity_type == "thinking":
-                formatted = f"💭 {activity}"
+                icon = "💭"
             elif activity_type == "result":
-                formatted = f"✅ {activity}"
+                icon = "✅"
             else:
-                formatted = f"ℹ️  {activity}"
+                icon = "ℹ️ "
+
+            # Build formatted string with optional detail in grey
+            if detail:
+                # Use Rich markup for styling
+                formatted = f"{icon} {activity} [dim]{detail}[/dim]"
+            else:
+                formatted = f"{icon} {activity}"
 
             self.agent_activity.append(formatted)
 
@@ -181,6 +192,7 @@ class ProgressDisplay:
         self,
         entities: list[Any] | None = None,
         validation_errors: int = 0,
+        cost_usd: float = 0.0,
     ) -> None:
         """
         Update extraction statistics.
@@ -188,6 +200,7 @@ class ProgressDisplay:
         Args:
             entities: List of entities extracted (to count and analyze)
             validation_errors: Number of validation errors (incremental)
+            cost_usd: Cost for this chunk in USD (incremental)
         """
         if entities:
             # Add entities to tracking
@@ -202,6 +215,7 @@ class ProgressDisplay:
             self._update_graph_metrics()
 
         self.stats["validation_errors"] += validation_errors
+        self.stats["running_cost_usd"] += cost_usd
 
         if self.live:
             self.live.update(self._build_display())
@@ -335,6 +349,14 @@ class ProgressDisplay:
             ),
         )
 
+        # Show running cost
+        running_cost = self.stats["running_cost_usd"]
+        if running_cost > 0:
+            stats_table.add_row(
+                "Running Cost:",
+                Text(f"${running_cost:.4f}", style="bold yellow"),
+            )
+
         components.append(stats_table)
 
         # Agent activity (verbose mode only)
@@ -399,6 +421,12 @@ class ProgressDisplay:
                 f"Duration: [cyan]{duration:.2f}s[/cyan]",
             ]
         )
+
+        # Add total cost if available
+        if self.stats["running_cost_usd"] > 0:
+            message_parts.append(
+                f"Total Cost: [yellow]${self.stats['running_cost_usd']:.4f}[/yellow]"
+            )
 
         self.console.print(
             Panel(
