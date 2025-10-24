@@ -188,18 +188,18 @@ class AgentClient:
                             tool_name = content.get("name", "unknown")
                             current_tool_name = tool_name
                             current_tool_input = ""  # Reset for new tool
-                            tool_input = content.get("input", {})
 
-                            # Log what we have
+                            # Log tool start
                             if self.log_prompts:
                                 logger.debug(
-                                    f"  Tool: {tool_name}, Input available: {bool(tool_input)}"
+                                    f"  Tool: {tool_name}, awaiting input via deltas"
                                 )
 
-                            # Report tool usage (file tracking happens in delta/stop events)
-                            event_callback(
-                                f"Using tool: {tool_name}", activity_type="tool"
-                            )
+                            # Report tool usage
+                            if event_callback:
+                                event_callback(
+                                    f"Using tool: {tool_name}", activity_type="tool"
+                                )
 
                     elif event_type == "content_block_delta":
                         delta = event_data.get("delta", {})
@@ -207,11 +207,13 @@ class AgentClient:
                         # Check for input_json_delta (tool input being built)
                         if delta.get("type") == "input_json_delta":
                             # Accumulate the partial JSON
-                            current_tool_input += delta.get("partial_json", "")
+                            partial = delta.get("partial_json", "")
+                            current_tool_input += partial
                             if self.log_prompts:
                                 logger.debug(
-                                    f"  Input JSON delta: {delta.get('partial_json', '')[:100]}"
+                                    f"  Input JSON delta for {current_tool_name}: +{len(partial)} chars, total: {len(current_tool_input)}"
                                 )
+                                logger.debug(f"    Partial: {partial[:100]}")
 
                         elif delta.get("type") == "text_delta":
                             # Agent is thinking/responding
@@ -224,6 +226,11 @@ class AgentClient:
 
                     elif event_type == "content_block_stop":
                         # Tool input is complete - parse and handle based on tool type
+                        if self.log_prompts:
+                            logger.debug(
+                                f"  content_block_stop: tool={current_tool_name}, input_length={len(current_tool_input)}"
+                            )
+
                         if current_tool_input:
                             try:
                                 import json
@@ -245,11 +252,12 @@ class AgentClient:
                                         logger.debug(f"  File being read: {file_path}")
 
                                 # Handle MCP submit_extraction_results tool - capture result
-                                elif current_tool_name == "submit_extraction_results":
+                                # Tool name includes MCP prefix: mcp__extraction__submit_extraction_results
+                                elif "submit_extraction_results" in current_tool_name:
                                     mcp_result = tool_input
                                     if self.log_prompts:
                                         logger.debug(
-                                            f"  MCP result captured: {len(tool_input.get('entities', []))} entities"
+                                            f"  MCP result captured from {current_tool_name}: {len(tool_input.get('entities', []))} entities"
                                         )
                                     if event_callback:
                                         entity_count = len(
