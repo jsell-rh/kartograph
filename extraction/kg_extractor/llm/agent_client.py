@@ -122,9 +122,11 @@ class AgentClient:
         import logging
 
         from claude_agent_sdk.types import (
+            AssistantMessage,
             ControlErrorResponse,
             ResultMessage,
             StreamEvent,
+            ToolUseBlock,
         )
 
         logger = logging.getLogger("kg_extractor.llm")
@@ -168,6 +170,40 @@ class AgentClient:
                 error_message = str(message)
                 logger.error(f"Agent SDK returned error: {error_message}")
                 break
+
+            # Handle AssistantMessage (contains tool use blocks with complete input)
+            if isinstance(message, AssistantMessage):
+                # Check for tool use blocks in content
+                for content_block in message.content:
+                    if isinstance(content_block, ToolUseBlock):
+                        tool_name = content_block.name
+                        tool_input = content_block.input
+
+                        if self.log_prompts:
+                            logger.debug(
+                                f"Tool use block: {tool_name}, input keys: {list(tool_input.keys())}"
+                            )
+
+                        # Capture MCP submit_extraction_results tool
+                        if "submit_extraction_results" in tool_name:
+                            mcp_result = tool_input
+                            if self.log_prompts:
+                                logger.debug(
+                                    f"  MCP result captured from {tool_name}: {len(tool_input.get('entities', []))} entities"
+                                )
+
+                        # Report tool usage if callback provided
+                        if event_callback:
+                            if "submit_extraction_results" in tool_name:
+                                entity_count = len(tool_input.get("entities", []))
+                                event_callback(
+                                    f"Submitted {entity_count} entities via MCP tool",
+                                    activity_type="tool",
+                                )
+                            else:
+                                event_callback(
+                                    f"Using tool: {tool_name}", activity_type="tool"
+                                )
 
             # Handle result message
             if isinstance(message, ResultMessage):
