@@ -186,6 +186,15 @@ class AgentClient:
 
                         # Capture MCP submit_extraction_results tool
                         if "submit_extraction_results" in tool_name:
+                            # Warn if we already captured a result (multiple calls)
+                            if mcp_result is not None:
+                                logger.warning(
+                                    f"Multiple submit_extraction_results calls detected! "
+                                    f"Previous result had {len(mcp_result.get('entities', []))} entities, "
+                                    f"new result has {len(tool_input.get('entities', []))} entities. "
+                                    f"Keeping the last one."
+                                )
+
                             mcp_result = tool_input
                             if self.log_prompts:
                                 logger.debug(
