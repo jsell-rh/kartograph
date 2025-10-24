@@ -170,3 +170,43 @@ If ResultMessage doesn't have cumulative fields, we might need to:
 
 - `3e29ea6`: Added basic debug logging for message.usage
 - `db6a038`: Added comprehensive logging for all ResultMessage attributes
+- `c3f26e0`: Documented investigation findings
+
+## ✅ SOLUTION FOUND
+
+After reading the official Agent SDK cost tracking docs:
+<https://docs.claude.com/en/api/agent-sdk/cost-tracking.md>
+
+**The `usage` dict IS cumulative, but has MULTIPLE input token fields that must be summed:**
+
+```python
+{
+    "input_tokens": 18,                      # Base input tokens (what we were reading)
+    "cache_creation_input_tokens": 45000,   # Tokens to CREATE cache ← WE WERE MISSING THIS!
+    "cache_read_input_tokens": 5000,        # Tokens READ from cache ← AND THIS!
+    "output_tokens": 9638                    # Output tokens
+}
+```
+
+**Root Cause**: We were only reading `usage["input_tokens"]` (18), completely missing the cache-related tokens (50,000+)!
+
+The Agent SDK uses **prompt caching** for efficiency - reusing file contents and prompts across API turns. When caching is active, most input tokens appear in `cache_creation_input_tokens` or `cache_read_input_tokens`, NOT in the base `input_tokens` field.
+
+### Fixed Implementation
+
+```python
+# Correct: Sum ALL input token types for true cumulative count
+total_input_tokens = (
+    message.usage.get("input_tokens", 0) +
+    message.usage.get("cache_creation_input_tokens", 0) +
+    message.usage.get("cache_read_input_tokens", 0)
+)
+
+self.last_usage = {
+    "input_tokens": total_input_tokens,  # Now correct!
+    "output_tokens": message.usage.get("output_tokens", 0),
+    "total_cost_usd": message.total_cost_usd,
+}
+```
+
+This correctly captures the TRUE cumulative input token count across all API turns, including cached tokens.

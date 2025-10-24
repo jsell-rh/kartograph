@@ -285,24 +285,48 @@ class AgentClient:
                 logger.debug(f"ResultMessage.total_cost_usd: {message.total_cost_usd}")
 
                 # Capture usage stats for cost tracking
+                # Per Agent SDK docs: https://docs.claude.com/en/api/agent-sdk/cost-tracking.md
+                # ResultMessage.usage contains CUMULATIVE usage across all turns, with fields:
+                # - input_tokens: Base input tokens
+                # - cache_creation_input_tokens: Tokens used to create cache
+                # - cache_read_input_tokens: Tokens read from cache
+                # - output_tokens: Output tokens
+                if message.usage:
+                    # Sum all input token types (base + cache creation + cache read)
+                    total_input_tokens = (
+                        message.usage.get("input_tokens", 0)
+                        + message.usage.get("cache_creation_input_tokens", 0)
+                        + message.usage.get("cache_read_input_tokens", 0)
+                    )
+                    total_output_tokens = message.usage.get("output_tokens", 0)
+                else:
+                    total_input_tokens = 0
+                    total_output_tokens = 0
+
                 self.last_usage = {
-                    "input_tokens": (
-                        message.usage.get("input_tokens", 0) if message.usage else 0
-                    ),
-                    "output_tokens": (
-                        message.usage.get("output_tokens", 0) if message.usage else 0
-                    ),
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
                     "total_cost_usd": message.total_cost_usd or 0.0,
                     "duration_ms": message.duration_ms,
                     "duration_api_ms": message.duration_api_ms,
+                    # Store breakdown for debugging
+                    "usage_breakdown": message.usage if message.usage else {},
                 }
 
                 if self.log_prompts:
                     logger.debug(
-                        f"Usage: {self.last_usage['input_tokens']} input tokens, "
+                        f"Usage (cumulative): {self.last_usage['input_tokens']} input tokens, "
                         f"{self.last_usage['output_tokens']} output tokens, "
                         f"${self.last_usage['total_cost_usd']:.4f}"
                     )
+                    # Show breakdown if available
+                    if message.usage:
+                        logger.debug(
+                            f"  Input breakdown: "
+                            f"base={message.usage.get('input_tokens', 0)}, "
+                            f"cache_creation={message.usage.get('cache_creation_input_tokens', 0)}, "
+                            f"cache_read={message.usage.get('cache_read_input_tokens', 0)}"
+                        )
 
                 break
 
