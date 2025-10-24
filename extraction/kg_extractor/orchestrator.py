@@ -133,14 +133,6 @@ class OrchestrationResult:
 
         print("=" * 70)
 
-        # Show improvement suggestions
-        if act_input > 0:
-            token_error = abs(est_input - act_input) / act_input * 100
-            if token_error > 20:
-                print(
-                    "\n⚠️  Token estimation was >20% off. Estimates will improve with more runs."
-                )
-
 
 class ExtractionOrchestrator:
     """
@@ -219,6 +211,16 @@ class ExtractionOrchestrator:
 
         # 2. Create chunks
         chunks = self.chunker.create_chunks(files)
+
+        # 3. Generate cost estimate for comparison
+        # This runs automatically at the start of every extraction to provide a baseline
+        logger.info("Generating cost estimate for comparison...")
+        estimator = CostEstimator(self.config.llm)
+        self._dry_run_estimate = estimator.estimate_chunks(chunks)
+        logger.info(
+            f"Estimated cost: ${self._dry_run_estimate.estimated_cost_usd:.4f}, "
+            f"duration: {self._dry_run_estimate.estimated_duration_seconds / 60:.1f} minutes"
+        )
 
         # Initialize tracking
         all_entities: list[Entity] = []
