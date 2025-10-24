@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [],
+  "features": [
+    "KG Extraction CLI (#14)"
+  ],
   "improvements": [],
-  "bugFixes": [
-    "Dynamically query all graph relationships using schema introspection (#12)"
-  ]
+  "bugFixes": []
 };
 
 export default changelog;
