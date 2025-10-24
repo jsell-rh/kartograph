@@ -1,5 +1,6 @@
 """Rich-based progress display for extraction."""
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,12 @@ class ProgressDisplay:
 
         self.chunk_task: TaskID | None = None
         self.current_chunk_info: dict[str, Any] = {}
+
+        # ETA tracking
+        self.chunk_start_times: list[float] = []  # Start time of each chunk
+        self.chunk_durations: list[float] = []  # Duration of completed chunks
+        self.current_chunk_start: float | None = None  # Start time of current chunk
+        self.chunks_completed: int = 0
         self.current_file: str | None = None  # Currently processing file
         self.agent_activity: list[str] = []
         self.stats: dict[str, int | float] = {
@@ -118,6 +125,9 @@ class ProgressDisplay:
         self.current_file = None  # Reset current file for new chunk
         self.agent_activity = []  # Reset activity for new chunk
 
+        # Track chunk start time for ETA calculation
+        self.current_chunk_start = time.time()
+
         if self.live:
             self.live.update(self._build_display())
 
@@ -125,6 +135,13 @@ class ProgressDisplay:
         """Advance to next chunk."""
         if self.chunk_task is not None:
             self.progress.advance(self.chunk_task)
+
+        # Record chunk duration for ETA calculation
+        if self.current_chunk_start is not None:
+            duration = time.time() - self.current_chunk_start
+            self.chunk_durations.append(duration)
+            self.chunks_completed += 1
+            self.current_chunk_start = None  # Reset for next chunk
 
         if self.live:
             self.live.update(self._build_display())
@@ -232,6 +249,35 @@ class ProgressDisplay:
         if self.live:
             self.live.update(self._build_display())
 
+    def _calculate_eta(self) -> str | None:
+        """
+        Calculate estimated time remaining based on completed chunks.
+
+        Returns:
+            Formatted ETA string (e.g., "~2.5 min remaining") or None if not enough data
+        """
+        if not self.chunk_durations or self.chunks_completed == 0:
+            return None
+
+        # Calculate average chunk duration
+        avg_duration = sum(self.chunk_durations) / len(self.chunk_durations)
+
+        # Calculate remaining chunks
+        remaining_chunks = self.total_chunks - self.chunks_completed
+
+        if remaining_chunks <= 0:
+            return None
+
+        # Estimate remaining time
+        estimated_seconds = avg_duration * remaining_chunks
+
+        # Format nicely
+        if estimated_seconds < 60:
+            return f"~{estimated_seconds:.0f}s remaining"
+        else:
+            minutes = estimated_seconds / 60
+            return f"~{minutes:.1f}min remaining"
+
     def _count_relationships(self, entities: list[Any]) -> int:
         """
         Count relationships (edges) in entities.
@@ -309,6 +355,11 @@ class ProgressDisplay:
             chunk_table.add_row(
                 "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
             )
+
+            # Show ETA if we have enough data
+            eta = self._calculate_eta()
+            if eta:
+                chunk_table.add_row("ETA:", Text(eta, style="bold yellow"))
 
             # Show current file being processed (verbose mode)
             if self.verbose and self.current_file:
