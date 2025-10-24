@@ -251,6 +251,20 @@ class AgentClient:
             if isinstance(message, ResultMessage):
                 result_text = message.result
 
+                # DEBUG: Log ALL ResultMessage attributes to find cumulative usage
+                logger.debug("=" * 80)
+                logger.debug("ResultMessage attributes:")
+                for attr in dir(message):
+                    if not attr.startswith("_"):
+                        try:
+                            value = getattr(message, attr)
+                            # Skip methods
+                            if not callable(value):
+                                logger.debug(f"  {attr}: {value}")
+                        except Exception as e:
+                            logger.debug(f"  {attr}: <error accessing: {e}>")
+                logger.debug("=" * 80)
+
                 # DEBUG: Log the raw usage structure
                 if message.usage:
                     logger.debug(f"ResultMessage.usage type: {type(message.usage)}")
