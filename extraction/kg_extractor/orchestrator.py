@@ -235,8 +235,10 @@ class ExtractionOrchestrator:
         estimator = CostEstimator(self.config.llm)
         self._dry_run_estimate = estimator.estimate_chunks(chunks)
         logger.info(
-            f"Estimated cost: ${self._dry_run_estimate.estimated_cost_usd:.4f}, "
-            f"duration: {self._dry_run_estimate.estimated_duration_seconds / 60:.1f} minutes"
+            f"Estimated: {self._dry_run_estimate.estimated_input_tokens:,} input tokens, "
+            f"{self._dry_run_estimate.estimated_output_tokens:,} output tokens, "
+            f"${self._dry_run_estimate.estimated_cost_usd:.4f}, "
+            f"{self._dry_run_estimate.estimated_duration_seconds / 60:.1f} minutes"
         )
 
         # Initialize tracking
