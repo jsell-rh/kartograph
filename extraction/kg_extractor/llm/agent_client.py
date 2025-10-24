@@ -98,6 +98,7 @@ class AgentClient:
         self.client = ClaudeSDKClient(options=options)
         self._connected = False
         self._mcp_result = None  # Store result from MCP tool
+        self.last_usage = None  # Store usage stats from last API call
 
     async def _ensure_connected(self) -> None:
         """Ensure client is connected to Claude Agent SDK."""
@@ -217,6 +218,27 @@ class AgentClient:
             # Handle result message
             if isinstance(message, ResultMessage):
                 result_text = message.result
+
+                # Capture usage stats for cost tracking
+                self.last_usage = {
+                    "input_tokens": (
+                        message.usage.get("input_tokens", 0) if message.usage else 0
+                    ),
+                    "output_tokens": (
+                        message.usage.get("output_tokens", 0) if message.usage else 0
+                    ),
+                    "total_cost_usd": message.total_cost_usd or 0.0,
+                    "duration_ms": message.duration_ms,
+                    "duration_api_ms": message.duration_api_ms,
+                }
+
+                if self.log_prompts:
+                    logger.debug(
+                        f"Usage: {self.last_usage['input_tokens']} input tokens, "
+                        f"{self.last_usage['output_tokens']} output tokens, "
+                        f"${self.last_usage['total_cost_usd']:.4f}"
+                    )
+
                 break
 
             # Handle streaming events (tool usage, etc.)
