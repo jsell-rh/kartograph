@@ -33,8 +33,9 @@ class ETAColumn(ProgressColumn):
         """Render the ETA."""
         eta = self.progress_display._calculate_eta()
         if eta:
-            return Text(f"• {eta}", style="bold yellow")
-        return Text("")
+            return Text(f"• {eta} remaining", style="bold yellow")
+        else:
+            return Text("• calculating ETA...", style="dim")
 
 
 class ProgressDisplay:
@@ -293,7 +294,7 @@ class ProgressDisplay:
         Calculate estimated time remaining based on completed chunks.
 
         Returns:
-            Formatted ETA string (e.g., "~2.5 min remaining") or None if not enough data
+            Formatted ETA string (e.g., "~0:02:30") or None if not enough data
         """
         if not self.chunk_durations or self.chunks_completed == 0:
             return None
@@ -310,12 +311,15 @@ class ProgressDisplay:
         # Estimate remaining time
         estimated_seconds = avg_duration * remaining_chunks
 
-        # Format nicely
-        if estimated_seconds < 60:
-            return f"~{estimated_seconds:.0f}s remaining"
+        # Format as HH:MM:SS
+        hours = int(estimated_seconds // 3600)
+        minutes = int((estimated_seconds % 3600) // 60)
+        seconds = int(estimated_seconds % 60)
+
+        if hours > 0:
+            return f"~{hours}:{minutes:02d}:{seconds:02d}"
         else:
-            minutes = estimated_seconds / 60
-            return f"~{minutes:.1f}min remaining"
+            return f"~{minutes}:{seconds:02d}"
 
     def _count_relationships(self, entities: list[Any]) -> int:
         """
