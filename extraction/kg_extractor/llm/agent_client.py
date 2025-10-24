@@ -100,7 +100,11 @@ class AgentClient:
         """
         import logging
 
-        from claude_agent_sdk.types import ResultMessage, StreamEvent
+        from claude_agent_sdk.types import (
+            ControlErrorResponse,
+            ResultMessage,
+            StreamEvent,
+        )
 
         logger = logging.getLogger("kg_extractor.llm")
 
@@ -124,7 +128,18 @@ class AgentClient:
 
         # Receive response stream
         result_text = None
+        messages_received = []
+        error_message = None
         async for message in self.client.receive_response():
+            # Track message types for debugging
+            messages_received.append(type(message).__name__)
+
+            # Handle error response (ControlErrorResponse is a TypedDict, can't use isinstance)
+            if isinstance(message, dict) and message.get("subtype") == "error":
+                error_message = str(message)
+                logger.error(f"Agent SDK returned error: {error_message}")
+                break
+
             # Handle result message
             if isinstance(message, ResultMessage):
                 result_text = message.result
@@ -160,8 +175,18 @@ class AgentClient:
                     # Silently ignore parsing errors for events
                     pass
 
+        # Check if we received a response
         if result_text is None:
-            raise RuntimeError("No response received from agent")
+            messages_summary = (
+                ", ".join(messages_received) if messages_received else "none"
+            )
+            error_detail = f" Error: {error_message}" if error_message else ""
+            raise RuntimeError(
+                f"No response received from Agent SDK. "
+                f"The agent stream ended without returning a ResultMessage. "
+                f"Messages received: {messages_summary}.{error_detail} "
+                f"This may indicate a connection issue, timeout, or agent error."
+            )
 
         # Log response if enabled
         if self.log_prompts:
@@ -259,6 +284,10 @@ class AgentClient:
         Raises:
             Exception: On agent errors or invalid response format
         """
+        import logging
+
+        logger = logging.getLogger("kg_extractor.llm")
+
         # Build extraction prompt
         prompt = self._build_extraction_prompt(
             data_files=data_files,
@@ -276,6 +305,46 @@ class AgentClient:
                 result = self._parse_extraction_result(response)
 
                 return result
+
+            except ValueError as e:
+                # JSON parsing failed - send corrective prompt
+                if attempt < self.max_retries - 1:
+                    logger.warning(
+                        f"Failed to parse JSON (attempt {attempt + 1}/{self.max_retries}): {e}"
+                    )
+
+                    # Send corrective prompt asking for JSON only
+                    corrective_prompt = """
+I need the extraction results in valid JSON format only. No explanatory text, no markdown formatting.
+
+Please respond with ONLY a JSON object in this exact format:
+
+```json
+{
+  "entities": [
+    {
+      "@id": "urn:Type:identifier",
+      "@type": "Type",
+      "name": "Entity Name",
+      "description": "Optional description",
+      ...other predicates...
+    }
+  ],
+  "metadata": {
+    "entity_count": 0,
+    "types_discovered": [],
+    "files_processed": 0
+  }
+}
+```
+
+Do not include any text before or after the JSON. Just the JSON object.
+"""
+                    prompt = corrective_prompt
+                    await asyncio.sleep(2**attempt)
+                    continue
+                else:
+                    raise
 
             except Exception as e:
                 if attempt < self.max_retries - 1:
@@ -362,7 +431,9 @@ No schema provided. You should discover entity types through pattern analysis.
 - All types must be valid identifiers (alphanumeric, start with capital letter)
 - Relationships should use predicates, NOT separate Relationship entities
 
-**Step 5**: Return results as JSON with this exact structure:
+**Step 5**: Return results as JSON **ONLY** - no explanations, summaries, or other text.
+
+Your FINAL response must be ONLY valid JSON in this exact format:
 
 ```json
 {
@@ -391,9 +462,11 @@ No schema provided. You should discover entity types through pattern analysis.
 3. **Valid URNs**: All @id must be `urn:type:identifier` format
 4. **Valid Types**: All @type must be alphanumeric, start with capital letter
 5. **Complete Extraction**: Extract ALL entities, don't truncate or skip
-6. **JSON Output**: Final response must be valid JSON
+6. **JSON-ONLY OUTPUT**: Your final response MUST be ONLY the JSON object (in a ```json code block or raw).
+   DO NOT include explanatory text like "I've extracted..." or "Complete!".
+   ONLY the JSON structure above.
 
-Begin the extraction now by reading the files.
+Begin the extraction now by reading the files. When complete, respond with ONLY the JSON output.
 """
         )
 
@@ -426,34 +499,61 @@ Begin the extraction now by reading the files.
                 chunk_size=None,  # Will be filled in by orchestrator
             )
 
-        # Agent may return JSON in markdown code block or raw JSON
+        # Agent may return JSON in markdown code block, raw JSON, or with surrounding text
         json_text = response.strip()
 
-        # Try to extract from markdown code block
+        # Strategy 1: Try to extract from markdown code block
         if "```json" in json_text:
             json_start = json_text.find("```json") + 7
             json_end = json_text.find("```", json_start)
-            json_text = json_text[json_start:json_end].strip()
+            if json_end > json_start:
+                json_text = json_text[json_start:json_end].strip()
         elif "```" in json_text:
             # Generic code block
             json_start = json_text.find("```") + 3
             json_end = json_text.find("```", json_start)
-            json_text = json_text[json_start:json_end].strip()
+            if json_end > json_start:
+                json_text = json_text[json_start:json_end].strip()
+
+        # Strategy 2: Try to find JSON object boundaries
+        # Look for the first { and last } to extract JSON from surrounding text
+        first_brace = json_text.find("{")
+        last_brace = json_text.rfind("}")
+
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            potential_json = json_text[first_brace : last_brace + 1]
+
+            # Try parsing this potential JSON
+            try:
+                result = json.loads(potential_json)
+
+                # Validate it has the expected structure before accepting
+                if "entities" in result:
+                    json_text = potential_json
+            except json.JSONDecodeError:
+                # If it doesn't parse, we'll try the original text
+                pass
 
         # Parse JSON
         try:
             result = json.loads(json_text)
         except json.JSONDecodeError as e:
+            # More detailed error message
+            lines = response.split("\n")
+            first_lines = "\n".join(lines[:10])  # Show first 10 lines
             raise ValueError(
-                f"Could not parse agent response as JSON. Error: {e}\n"
-                f"Response preview: {response[:500]}..."
+                f"Could not parse agent response as JSON.\n"
+                f"JSON Error: {e}\n"
+                f"Response start:\n{first_lines}\n"
+                f"...\n"
+                f"Expected response to be valid JSON with 'entities' and 'metadata' fields."
             ) from e
 
         # Validate structure
         if "entities" not in result:
             raise ValueError(
                 "Agent response missing 'entities' field. "
-                f"Response: {response[:500]}..."
+                f"Response structure: {list(result.keys())}"
             )
 
         return result
