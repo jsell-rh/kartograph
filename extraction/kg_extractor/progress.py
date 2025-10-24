@@ -31,17 +31,21 @@ class ProgressDisplay:
     - Validation errors
     """
 
-    def __init__(self, total_chunks: int, verbose: bool = False):
+    def __init__(
+        self, total_chunks: int, verbose: bool = False, data_dir: Path | None = None
+    ):
         """
         Initialize progress display.
 
         Args:
             total_chunks: Total number of chunks to process
             verbose: Show verbose agent activity
+            data_dir: Optional data directory being processed (for display)
         """
         self.console = Console()
         self.verbose = verbose
         self.total_chunks = total_chunks
+        self.data_dir = data_dir
 
         # Create progress bars
         self.progress = Progress(
@@ -399,9 +403,27 @@ class ProgressDisplay:
         for component in components:
             layout.add_row(component)
 
+        # Build subtitle with data directory if available
+        subtitle = None
+        if self.data_dir:
+            # Show relative path if possible, otherwise just the name
+            try:
+                from pathlib import Path
+
+                cwd = Path.cwd()
+                try:
+                    rel_path = self.data_dir.relative_to(cwd)
+                    subtitle = f"[dim]{rel_path}[/dim]"
+                except ValueError:
+                    # Not relative to cwd, show name
+                    subtitle = f"[dim]{self.data_dir.name}[/dim]"
+            except Exception:
+                subtitle = f"[dim]{self.data_dir}[/dim]"
+
         return Panel(
             layout,
             title="[bold blue]Knowledge Graph Extraction[/bold blue]",
+            subtitle=subtitle,
             border_style="blue",
         )
 

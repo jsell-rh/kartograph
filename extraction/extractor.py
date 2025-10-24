@@ -396,7 +396,9 @@ async def main(argv: list[str] | None = None) -> int:
             total_chunks = len(chunks)
 
             progress_display = ProgressDisplay(
-                total_chunks=total_chunks, verbose=config.logging.verbose
+                total_chunks=total_chunks,
+                verbose=config.logging.verbose,
+                data_dir=config.data_dir,
             )
 
         # Create progress callback
