@@ -16,6 +16,7 @@ from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.exceptions import PromptTooLongError
 from kg_extractor.loaders.file_system import DiskFileSystem
 from kg_extractor.models import Entity, ExtractionMetrics, ValidationError
+from kg_extractor.output.metrics import MetricsExporter
 from kg_extractor.validation.entity_validator import EntityValidator
 from kg_extractor.validation.report import ValidationReport
 
@@ -51,6 +52,15 @@ class OrchestrationResult:
             ValidationReport instance
         """
         return ValidationReport(self.validation_errors)
+
+    def get_metrics_exporter(self) -> MetricsExporter:
+        """
+        Get metrics exporter for extraction metrics.
+
+        Returns:
+            MetricsExporter instance
+        """
+        return MetricsExporter(self.metrics, self.entities)
 
 
 class ExtractionOrchestrator:

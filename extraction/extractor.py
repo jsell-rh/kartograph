@@ -63,6 +63,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Resume from latest checkpoint",
     )
+    parser.add_argument(
+        "--metrics-output",
+        type=Path,
+        help="Export metrics to file (JSON/CSV/Markdown based on extension)",
+    )
+    parser.add_argument(
+        "--validation-report",
+        type=Path,
+        help="Export validation report (JSON/Markdown based on extension)",
+    )
 
     # Authentication
     auth_group = parser.add_argument_group("authentication")
@@ -462,6 +472,36 @@ async def main(argv: list[str] | None = None) -> int:
 
             # Write output
             write_jsonld(result.entities, config.output_file)
+
+            # Export metrics if requested
+            if args.metrics_output:
+                # Determine format from extension
+                suffix = args.metrics_output.suffix.lower()
+                if suffix == ".json":
+                    format = "json"
+                elif suffix == ".csv":
+                    format = "csv"
+                elif suffix in [".md", ".markdown"]:
+                    format = "markdown"
+                else:
+                    format = "json"  # Default
+
+                metrics_exporter = result.get_metrics_exporter()
+                metrics_exporter.save(args.metrics_output, format=format)
+                logger.info(f"Metrics exported to {args.metrics_output}")
+
+            # Export validation report if requested
+            if args.validation_report:
+                # Determine format from extension
+                suffix = args.validation_report.suffix.lower()
+                if suffix in [".md", ".markdown"]:
+                    format = "markdown"
+                else:
+                    format = "json"  # Default
+
+                validation_report = result.get_validation_report()
+                validation_report.save(args.validation_report, format=format)
+                logger.info(f"Validation report exported to {args.validation_report}")
 
             if not progress_display:
                 logger.info("Extraction pipeline complete!")
