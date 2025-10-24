@@ -95,3 +95,12 @@ repos:
         exclude: '^app/(\.nuxt|\.output|node_modules|dist)/.*'
         pass_filenames: false
         stages: [pre-push]
+
+      - id: pytest
+        name: Python tests
+        entry: bash -c 'cd extraction && uv run pytest'
+        language: system
+        files: '^extraction/.*\.py$'
+        exclude: '^extraction/(\.venv|\.pytest_cache)/.*'
+        pass_filenames: false
+        stages: [pre-push]
