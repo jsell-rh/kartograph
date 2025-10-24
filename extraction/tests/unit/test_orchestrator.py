@@ -126,6 +126,9 @@ async def test_orchestrator_multiple_chunks():
     with tempfile.TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir) / "data"
         data_dir.mkdir()
+        # Create test files
+        (data_dir / "file1.yaml").write_text("test: data1")
+        (data_dir / "file2.yaml").write_text("test: data2")
 
         # Create mock components
         mock_file_system = MagicMock()
@@ -220,6 +223,8 @@ async def test_orchestrator_deduplication():
     with tempfile.TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir) / "data"
         data_dir.mkdir()
+        # Create test file
+        (data_dir / "test.yaml").write_text("test: data")
 
         mock_file_system = MagicMock()
         mock_file_system.list_files.return_value = [data_dir / "test.yaml"]
@@ -341,6 +346,8 @@ async def test_orchestrator_tracks_validation_errors():
     with tempfile.TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir) / "data"
         data_dir.mkdir()
+        # Create test file
+        (data_dir / "test.yaml").write_text("test: data")
 
         mock_file_system = MagicMock()
         mock_file_system.list_files.return_value = [data_dir / "test.yaml"]
@@ -418,6 +425,9 @@ async def test_orchestrator_progress_callback():
     with tempfile.TemporaryDirectory() as tmpdir:
         data_dir = Path(tmpdir) / "data"
         data_dir.mkdir()
+        # Create test files
+        (data_dir / "file1.yaml").write_text("test: data1")
+        (data_dir / "file2.yaml").write_text("test: data2")
 
         mock_file_system = MagicMock()
         mock_file_system.list_files.return_value = [

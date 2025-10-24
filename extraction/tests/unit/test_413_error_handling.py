@@ -116,7 +116,14 @@ async def test_orchestrator_splits_chunk_on_413():
             files.append(file_path)
 
         # Create config
-        config = ExtractionConfig(data_dir=data_dir)
+        from kg_extractor.config import AuthConfig
+
+        config = ExtractionConfig(
+            data_dir=data_dir,
+            auth=AuthConfig(
+                auth_method="api_key", api_key="test-key"  # pragma: allowlist secret
+            ),
+        )
 
         # Create mock agent that raises PromptTooLongError on first call, then succeeds
         mock_agent = AsyncMock(spec=ExtractionAgent)
@@ -212,7 +219,14 @@ async def test_orchestrator_skips_unsplittable_chunk():
         files = [file_path]
 
         # Create config
-        config = ExtractionConfig(data_dir=data_dir)
+        from kg_extractor.config import AuthConfig
+
+        config = ExtractionConfig(
+            data_dir=data_dir,
+            auth=AuthConfig(
+                auth_method="api_key", api_key="test-key"  # pragma: allowlist secret
+            ),
+        )
 
         # Create mock agent that always raises PromptTooLongError
         mock_agent = AsyncMock(spec=ExtractionAgent)

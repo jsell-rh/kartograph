@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_agent_sdk.types import ResultMessage
 
 
 @pytest.mark.asyncio
@@ -18,7 +19,7 @@ async def test_agent_client_initialization():
     )
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         MockClient.return_value = mock_client
 
         client = AgentClient(
@@ -46,7 +47,7 @@ async def test_agent_client_generate_basic():
     )
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="Test response from agent")
         MockClient.return_value = mock_client
 
@@ -75,7 +76,7 @@ async def test_agent_client_generate_with_system():
     )
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="Response")
         MockClient.return_value = mock_client
 
@@ -104,7 +105,7 @@ async def test_agent_client_generate_retry_on_failure():
     )
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
 
         # Fail twice, then succeed
         mock_client.send_message = AsyncMock(
@@ -157,7 +158,7 @@ async def test_agent_client_extract_entities_basic():
 """
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=agent_response)
         MockClient.return_value = mock_client
 
@@ -194,7 +195,7 @@ async def test_agent_client_extract_entities_with_schema():
 """
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=agent_response)
         MockClient.return_value = mock_client
 
@@ -228,7 +229,7 @@ async def test_agent_client_extract_entities_parse_raw_json():
     agent_response = '{"entities": [], "metadata": {}}'
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=agent_response)
         MockClient.return_value = mock_client
 
@@ -255,7 +256,7 @@ async def test_agent_client_extract_entities_invalid_json():
     agent_response = "This is not JSON at all!"
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=agent_response)
         MockClient.return_value = mock_client
 
@@ -280,7 +281,7 @@ async def test_agent_client_extract_entities_missing_entities_field():
     agent_response = '{"metadata": {}}'
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=agent_response)
         MockClient.return_value = mock_client
 
@@ -304,7 +305,7 @@ async def test_agent_client_extract_entities_retry():
     success_response = '{"entities": [], "metadata": {}}'
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
 
         # Fail once, then succeed
         mock_client.send_message = AsyncMock(
@@ -395,7 +396,7 @@ async def test_agent_client_retry_with_corrective_prompt():
     queries = []
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
 
         async def mock_query(prompt):
@@ -408,9 +409,25 @@ async def test_agent_client_retry_with_corrective_prompt():
             nonlocal call_count
             if call_count == 0:
                 call_count += 1
-                yield ResultMessage(result=invalid_response)
+                yield ResultMessage(
+                    subtype="result",
+                    duration_ms=100,
+                    duration_api_ms=50,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="test-session",
+                    result=invalid_response,
+                )
             else:
-                yield ResultMessage(result=valid_response)
+                yield ResultMessage(
+                    subtype="result",
+                    duration_ms=100,
+                    duration_api_ms=50,
+                    is_error=False,
+                    num_turns=1,
+                    session_id="test-session",
+                    result=valid_response,
+                )
 
         mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
@@ -465,12 +482,20 @@ async def test_agent_client_parse_json_in_generic_code_block():
 """
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
-            yield ResultMessage(result=agent_response)
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
 
         mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
@@ -505,12 +530,20 @@ Processing files...
 Extraction complete!"""
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
-            yield ResultMessage(result=agent_response)
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=agent_response,
+            )
 
         mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client
@@ -541,7 +574,7 @@ async def test_agent_client_max_retries_exhausted():
     queries = []
 
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = MagicMock()
+        mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
 
         async def mock_query(prompt):
@@ -550,7 +583,15 @@ async def test_agent_client_max_retries_exhausted():
         mock_client.query = AsyncMock(side_effect=mock_query)
 
         async def mock_receive_response():
-            yield ResultMessage(result=invalid_response)
+            yield ResultMessage(
+                subtype="result",
+                duration_ms=100,
+                duration_api_ms=50,
+                is_error=False,
+                num_turns=1,
+                session_id="test-session",
+                result=invalid_response,
+            )
 
         mock_client.receive_response = mock_receive_response
         MockClient.return_value = mock_client

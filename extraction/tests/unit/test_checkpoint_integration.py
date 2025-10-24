@@ -117,7 +117,7 @@ async def test_checkpoint_saves_and_restores_entities(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_saves_checkpoint_per_chunk():
+async def test_orchestrator_saves_checkpoint_per_chunk(tmp_path):
     """Test orchestrator saves checkpoint after each chunk when strategy is per_chunk."""
     from kg_extractor.checkpoint.disk_store import DiskCheckpointStore
     from kg_extractor.checkpoint.models import Checkpoint
@@ -130,13 +130,19 @@ async def test_orchestrator_saves_checkpoint_per_chunk():
     )
     from kg_extractor.orchestrator import ExtractionOrchestrator
 
+    # Create temporary directories
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+
     # Create config with checkpoint enabled
     config = ExtractionConfig(
-        data_dir=Path("/test/data"),
+        data_dir=data_dir,
         checkpoint=CheckpointConfig(
             enabled=True,
             strategy="per_chunk",
-            checkpoint_dir=Path("/test/checkpoints"),
+            checkpoint_dir=checkpoint_dir,
         ),
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="count", max_files_per_chunk=2),
@@ -200,7 +206,7 @@ async def test_orchestrator_saves_checkpoint_per_chunk():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_saves_checkpoint_every_n():
+async def test_orchestrator_saves_checkpoint_every_n(tmp_path):
     """Test orchestrator saves checkpoint every N chunks."""
     from kg_extractor.checkpoint.disk_store import DiskCheckpointStore
     from kg_extractor.chunking.models import Chunk
@@ -213,13 +219,18 @@ async def test_orchestrator_saves_checkpoint_every_n():
     )
     from kg_extractor.orchestrator import ExtractionOrchestrator
 
+    # Create temporary directories
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "checkpoints").mkdir(exist_ok=True)
+    (tmp_path / "test").mkdir(exist_ok=True)
+
     config = ExtractionConfig(
-        data_dir=Path("/test/data"),
+        data_dir=tmp_path / "data",
         checkpoint=CheckpointConfig(
             enabled=True,
             strategy="every_n",
             every_n_chunks=2,  # Save every 2 chunks
-            checkpoint_dir=Path("/test/checkpoints"),
+            checkpoint_dir=tmp_path / "checkpoints",
         ),
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="count"),
@@ -264,7 +275,7 @@ async def test_orchestrator_saves_checkpoint_every_n():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_resumes_from_checkpoint():
+async def test_orchestrator_resumes_from_checkpoint(tmp_path):
     """Test orchestrator resumes extraction from checkpoint."""
     from kg_extractor.checkpoint.disk_store import DiskCheckpointStore
     from kg_extractor.checkpoint.models import Checkpoint
@@ -278,15 +289,20 @@ async def test_orchestrator_resumes_from_checkpoint():
     )
     from kg_extractor.orchestrator import ExtractionOrchestrator
 
+    # Create temporary directories
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "checkpoints").mkdir(exist_ok=True)
+    (tmp_path / "test").mkdir(exist_ok=True)
+
     config_hash = "test_hash_12345"
 
     config = ExtractionConfig(
-        data_dir=Path("/test/data"),
+        data_dir=tmp_path / "data",
         resume=True,  # Request resume
         checkpoint=CheckpointConfig(
             enabled=True,
             strategy="per_chunk",
-            checkpoint_dir=Path("/test/checkpoints"),
+            checkpoint_dir=tmp_path / "checkpoints",
         ),
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="count"),
@@ -345,7 +361,7 @@ async def test_orchestrator_resumes_from_checkpoint():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_ignores_checkpoint_with_mismatched_config():
+async def test_orchestrator_ignores_checkpoint_with_mismatched_config(tmp_path):
     """Test orchestrator ignores checkpoint when config hash doesn't match."""
     from kg_extractor.checkpoint.disk_store import DiskCheckpointStore
     from kg_extractor.checkpoint.models import Checkpoint
@@ -359,13 +375,18 @@ async def test_orchestrator_ignores_checkpoint_with_mismatched_config():
     )
     from kg_extractor.orchestrator import ExtractionOrchestrator
 
+    # Create temporary directories
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "checkpoints").mkdir(exist_ok=True)
+    (tmp_path / "test").mkdir(exist_ok=True)
+
     config = ExtractionConfig(
-        data_dir=Path("/test/data"),
+        data_dir=tmp_path / "data",
         resume=True,
         checkpoint=CheckpointConfig(
             enabled=True,
             strategy="per_chunk",
-            checkpoint_dir=Path("/test/checkpoints"),
+            checkpoint_dir=tmp_path / "checkpoints",
         ),
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="count"),
@@ -420,7 +441,7 @@ async def test_orchestrator_ignores_checkpoint_with_mismatched_config():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_checkpoint_disabled():
+async def test_orchestrator_checkpoint_disabled(tmp_path):
     """Test orchestrator doesn't save checkpoints when disabled."""
     from kg_extractor.chunking.models import Chunk
     from kg_extractor.config import (
@@ -432,12 +453,17 @@ async def test_orchestrator_checkpoint_disabled():
     )
     from kg_extractor.orchestrator import ExtractionOrchestrator
 
+    # Create temporary directories
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "checkpoints").mkdir(exist_ok=True)
+    (tmp_path / "test").mkdir(exist_ok=True)
+
     config = ExtractionConfig(
-        data_dir=Path("/test/data"),
+        data_dir=tmp_path / "data",
         checkpoint=CheckpointConfig(
             enabled=False,  # Disabled
             strategy="per_chunk",
-            checkpoint_dir=Path("/test/checkpoints"),
+            checkpoint_dir=tmp_path / "checkpoints",
         ),
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="count"),
@@ -472,7 +498,7 @@ async def test_orchestrator_checkpoint_disabled():
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_checkpoint_validates_config_hash():
+async def test_orchestrator_checkpoint_validates_config_hash(tmp_path):
     """Test orchestrator validates config hash on checkpoint load."""
     from kg_extractor.checkpoint.disk_store import DiskCheckpointStore
     from kg_extractor.checkpoint.models import Checkpoint
@@ -484,16 +510,21 @@ async def test_orchestrator_checkpoint_validates_config_hash():
     )
     from kg_extractor.orchestrator import ExtractionOrchestrator
 
+    # Create temporary directories
+    (tmp_path / "data").mkdir(exist_ok=True)
+    (tmp_path / "checkpoints").mkdir(exist_ok=True)
+    (tmp_path / "test").mkdir(exist_ok=True)
+
     # Test config hash computation
     config1 = ExtractionConfig(
-        data_dir=Path("/test"),
+        data_dir=tmp_path / "test",
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="hybrid", target_size_mb=10),
         checkpoint=CheckpointConfig(enabled=True),
     )
 
     config2 = ExtractionConfig(
-        data_dir=Path("/test"),
+        data_dir=tmp_path / "test",
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="hybrid", target_size_mb=20),  # Different!
         checkpoint=CheckpointConfig(enabled=True),
@@ -507,7 +538,7 @@ async def test_orchestrator_checkpoint_validates_config_hash():
 
     # Same config should produce same hash
     config1_copy = ExtractionConfig(
-        data_dir=Path("/test"),
+        data_dir=tmp_path / "test",
         auth=AuthConfig(auth_method="api_key", api_key="test"),
         chunking=ChunkingConfig(strategy="hybrid", target_size_mb=10),
         checkpoint=CheckpointConfig(enabled=True),

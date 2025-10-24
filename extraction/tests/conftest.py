@@ -26,3 +26,13 @@ dependencies:
 """
     )
     return yaml_file
+
+
+@pytest.fixture
+def test_auth_config():
+    """Create a test AuthConfig with api_key method."""
+    from kg_extractor.config import AuthConfig
+
+    return AuthConfig(
+        auth_method="api_key", api_key="test-key"  # pragma: allowlist secret
+    )

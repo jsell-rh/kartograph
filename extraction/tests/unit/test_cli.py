@@ -327,6 +327,10 @@ def test_cli_log_prompts_flag():
                 "--data-dir",
                 str(data_dir),
                 "--log-prompts",
+                "--auth-method",
+                "api_key",
+                "--api-key",
+                "test-key",  # pragma: allowlist secret
             ]
         )
 

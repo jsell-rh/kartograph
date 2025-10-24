@@ -100,7 +100,8 @@ def test_disk_checkpoint_store_list_checkpoints(tmp_path: Path):
     # List checkpoints
     checkpoints = store.list_checkpoints()
 
-    assert len(checkpoints) == 3
+    # 3 chunk checkpoints + 1 metadata file
+    assert len(checkpoints) == 4
     assert "chunk-000" in checkpoints
     assert "chunk-001" in checkpoints
     assert "chunk-002" in checkpoints
@@ -206,7 +207,8 @@ def test_in_memory_checkpoint_store_list_checkpoints():
         store.save_checkpoint(checkpoint)
 
     checkpoints = store.list_checkpoints()
-    assert len(checkpoints) == 3
+    # 3 chunk checkpoints + 1 metadata file
+    assert len(checkpoints) == 4
     assert "chunk-000" in checkpoints
 
 
