@@ -156,7 +156,12 @@ class AgentClient:
         mcp_result = None  # Store MCP submit_extraction_results arguments
         async for message in self.client.receive_response():
             # Track message types for debugging
-            messages_received.append(type(message).__name__)
+            message_type = type(message).__name__
+            messages_received.append(message_type)
+
+            # Debug: Log ALL message types when log_prompts enabled
+            if self.log_prompts:
+                logger.debug(f"Received message type: {message_type}")
 
             # Handle error response (ControlErrorResponse is a TypedDict, can't use isinstance)
             if isinstance(message, dict) and message.get("subtype") == "error":
@@ -169,8 +174,10 @@ class AgentClient:
                 result_text = message.result
                 break
 
-            # Handle streaming events (tool usage, etc.) in verbose mode
-            if isinstance(message, StreamEvent) and event_callback:
+            # Handle streaming events (tool usage, etc.)
+            # IMPORTANT: Process ALL StreamEvents, not just when event_callback exists
+            # We need to capture MCP tool results from the event stream
+            if isinstance(message, StreamEvent):
                 try:
                     event_data = message.event
                     event_type = event_data.get("type", "unknown")
