@@ -297,11 +297,13 @@ def setup_logging(config: LoggingConfig) -> None:
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
 
-    # Add console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(level)
-    console_handler.setFormatter(formatter)
-    root_logger.addHandler(console_handler)
+    # Add console handler ONLY if not using progress display
+    # (progress display uses Rich Live which conflicts with stdout logging)
+    if not config.verbose or config.json_logging:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(level)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
 
     # Add file handler if configured
     if config.log_file:
@@ -309,6 +311,10 @@ def setup_logging(config: LoggingConfig) -> None:
         file_handler.setLevel(level)
         file_handler.setFormatter(formatter)
         root_logger.addHandler(file_handler)
+    elif config.verbose and not config.json_logging:
+        # If using progress display without a log file, we need SOME handler
+        # Add a null handler to prevent "no handler" warnings
+        root_logger.addHandler(logging.NullHandler())
 
     # Set kg_extractor logger level
     kg_logger = logging.getLogger("kg_extractor")

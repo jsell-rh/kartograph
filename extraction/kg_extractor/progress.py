@@ -108,8 +108,13 @@ class ProgressDisplay:
         )
 
         # Start live display
+        # Use high refresh rate (20 Hz) to prevent visual artifacts during rapid updates
+        # When chunks complete, multiple updates happen in quick succession which can
+        # cause terminal display corruption with lower refresh rates
         self.live = Live(
-            self._build_display(), console=self.console, refresh_per_second=4
+            self._build_display(),
+            console=self.console,
+            refresh_per_second=20,
         )
         self.live.start()
 
@@ -360,11 +365,12 @@ class ProgressDisplay:
         components = [self.progress]
 
         # Current chunk info
-        if self.current_chunk_info:
-            chunk_table = Table.grid(padding=(0, 2))
-            chunk_table.add_column(style="bold cyan")
-            chunk_table.add_column()
+        # Always show chunk table to maintain consistent panel height (prevents visual glitches)
+        chunk_table = Table.grid(padding=(0, 2))
+        chunk_table.add_column(style="bold cyan")
+        chunk_table.add_column()
 
+        if self.current_chunk_info:
             files = self.current_chunk_info.get("files", [])
             file_count = len(files)
 
@@ -374,25 +380,40 @@ class ProgressDisplay:
                 "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
             )
 
-            # Show current file being processed (verbose mode)
-            if self.verbose and self.current_file:
-                chunk_table.add_row(
-                    "Current File:", Text(self.current_file, style="bold yellow")
+            # In verbose mode, always reserve space for optional rows (consistent height)
+            if self.verbose:
+                # Current file row (always present in verbose, may be empty)
+                current_file_display = (
+                    Text(self.current_file, style="bold yellow")
+                    if self.current_file
+                    else ""
                 )
+                chunk_table.add_row("Current File:", current_file_display)
 
-            # Show filenames (just names, not full paths)
-            if files and self.verbose:
-                filenames = [f.name for f in files]
-                # Show first 5 filenames, then "... and N more" if needed
-                if len(filenames) <= 5:
-                    files_display = ", ".join(filenames)
+                # Files list row (always present in verbose, may be empty)
+                if files:
+                    filenames = [f.name for f in files]
+                    # Show first 5 filenames, then "... and N more" if needed
+                    if len(filenames) <= 5:
+                        files_display = ", ".join(filenames)
+                    else:
+                        files_display = (
+                            ", ".join(filenames[:5])
+                            + f" ... and {len(filenames) - 5} more"
+                        )
+                    chunk_table.add_row("Files:", Text(files_display, style="dim"))
                 else:
-                    files_display = (
-                        ", ".join(filenames[:5]) + f" ... and {len(filenames) - 5} more"
-                    )
-                chunk_table.add_row("Files:", Text(files_display, style="dim"))
+                    chunk_table.add_row("Files:", "")
+        else:
+            # Placeholder rows to maintain height even when no chunk info
+            chunk_table.add_row("Chunk:", "")
+            chunk_table.add_row("Files/Chunk:", "")
+            chunk_table.add_row("Size:", "")
+            if self.verbose:
+                chunk_table.add_row("Current File:", "")
+                chunk_table.add_row("Files:", "")
 
-            components.append(chunk_table)
+        components.append(chunk_table)
 
         # Statistics - Two column layout
         # Left column: Entity/Graph stats
@@ -451,8 +472,13 @@ class ProgressDisplay:
         components.append(stats_container)
 
         # Agent activity (verbose mode only)
-        if self.verbose and self.agent_activity:
-            activity_text = "\n".join(self.agent_activity[-5:])  # Last 5 activities
+        # Always show in verbose mode to maintain consistent panel height
+        if self.verbose:
+            if self.agent_activity:
+                activity_text = "\n".join(self.agent_activity[-5:])  # Last 5 activities
+            else:
+                # Show placeholder to maintain consistent height
+                activity_text = "[dim]Waiting for agent activity...[/dim]"
             components.append(
                 Panel(
                     activity_text,
