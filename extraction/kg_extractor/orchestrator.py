@@ -582,21 +582,41 @@ class ExtractionOrchestrator:
                         # Worker is now available for next chunk
                         available_workers.add(worker_id)
 
-                    # Save checkpoint periodically (every 10 chunks)
-                    if (
-                        chunks_processed % 10 == 0
-                        and self.checkpoint_store
-                        and self.config.checkpoint.enabled
-                    ):
-                        self._save_checkpoint_if_needed(
-                            chunk_index=chunk_index,
-                            total_chunks=total_chunks,
-                            chunks_processed=chunks_processed,
-                            all_entities=all_entities,
-                        )
+                # Save checkpoint periodically (every 10 chunks) when all workers idle
+                # IMPORTANT: Only checkpoint when no pending tasks to ensure sequential completion
+                # With parallel workers, chunks complete out of order. If we checkpoint mid-stream,
+                # we might save chunks_processed=10 but chunks 11-15 could already be completed.
+                # On resume, we'd start from chunk 10 and skip those already-done chunks!
+                if (
+                    chunks_processed % 10 == 0
+                    and len(pending) == 0  # All workers idle
+                    and self.checkpoint_store
+                    and self.config.checkpoint.enabled
+                ):
+                    self._save_checkpoint_if_needed(
+                        chunk_index=chunk_index,
+                        total_chunks=total_chunks,
+                        chunks_processed=chunks_processed,
+                        all_entities=all_entities,
+                    )
+                    logger.debug(
+                        f"Checkpoint saved at {chunks_processed} chunks (all workers idle)"
+                    )
 
             # Clear worker states after all chunks complete
             self._worker_states.clear()
+
+            # Save final checkpoint after all chunks complete
+            if self.checkpoint_store and self.config.checkpoint.enabled:
+                self._save_checkpoint_if_needed(
+                    chunk_index=chunk_index,
+                    total_chunks=total_chunks,
+                    chunks_processed=chunks_processed,
+                    all_entities=all_entities,
+                )
+                logger.info(
+                    f"Final checkpoint saved: {chunks_processed}/{total_chunks} chunks complete"
+                )
 
         else:
             # No extraction agent - just skip all chunks
