@@ -210,8 +210,9 @@ class ExtractionOrchestrator:
         self._entities_lock = asyncio.Lock()
 
         # Worker state tracking for multi-worker progress display
+        # Note: dict operations (assignment, clear) are atomic in CPython
+        # so no lock needed for simple reads/writes
         self._worker_states: dict[int, dict[str, Any]] = {}
-        self._worker_state_lock = asyncio.Lock()
 
     def get_worker_states(self) -> dict[int, dict[str, Any]]:
         """
@@ -437,20 +438,18 @@ class ExtractionOrchestrator:
 
                     # Create worker-specific callback using closure
                     def make_worker_callback(wid, c):
-                        async def worker_callback(
-                            message, activity_type=None, detail=None
-                        ):
-                            # Update worker state (thread-safe)
-                            async with self._worker_state_lock:
-                                self._worker_states[wid] = {
-                                    "status": "active",
-                                    "chunk_id": c.chunk_id,
-                                    "activity": message,
-                                    "activity_type": activity_type,
-                                    "detail": detail,
-                                    "files_count": len(c.files),
-                                    "size_mb": c.total_size_bytes / (1024 * 1024),
-                                }
+                        def worker_callback(message, activity_type=None, detail=None):
+                            # Update worker state (synchronous - no lock needed for dict assignment)
+                            # Note: dict assignment is atomic in CPython, but we'll use a non-blocking approach
+                            self._worker_states[wid] = {
+                                "status": "active",
+                                "chunk_id": c.chunk_id,
+                                "activity": message,
+                                "activity_type": activity_type,
+                                "detail": detail,
+                                "files_count": len(c.files),
+                                "size_mb": c.total_size_bytes / (1024 * 1024),
+                            }
 
                             # Also call global event callback for overall stats
                             if hasattr(self, "event_callback") and self.event_callback:
@@ -545,8 +544,7 @@ class ExtractionOrchestrator:
                             )
 
                 # Clear worker states for this batch (batch complete)
-                async with self._worker_state_lock:
-                    self._worker_states.clear()
+                self._worker_states.clear()
 
                 # Move to next batch
                 chunk_index = batch_end
@@ -566,8 +564,7 @@ class ExtractionOrchestrator:
                 chunk_index = batch_end
 
                 # Clear worker states
-                async with self._worker_state_lock:
-                    self._worker_states.clear()
+                self._worker_states.clear()
 
         # 4. Deduplicate entities
         if all_entities:
