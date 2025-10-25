@@ -205,6 +205,92 @@ class ExtractionOrchestrator:
         # Store dry-run estimate for cost comparison (set by dry_run() method)
         self._dry_run_estimate: CostEstimate | None = None
 
+        # Thread-safe entity collection for parallel execution
+        self._entities_lock = asyncio.Lock()
+
+    async def _process_chunk(
+        self,
+        chunk: Chunk,
+        chunk_index: int,
+        schema_dir: Path | None,
+    ) -> dict[str, Any]:
+        """
+        Process a single chunk (for parallel execution).
+
+        Args:
+            chunk: Chunk to process
+            chunk_index: Index of the chunk in the list
+            schema_dir: Optional schema directory
+
+        Returns:
+            Dictionary with extraction results:
+            {
+                "entities": [...],
+                "validation_errors": [...],
+                "chunk_cost": float,
+                "chunk_input_tokens": int,
+                "chunk_output_tokens": int,
+            }
+
+        Raises:
+            PromptTooLongError: If chunk is too large (needs splitting)
+            Exception: On other errors
+        """
+        # Report chunk update (for progress display)
+        if hasattr(self, "chunk_callback") and self.chunk_callback:
+            self.chunk_callback(
+                chunk_num=chunk_index + 1,
+                chunk_id=chunk.chunk_id,
+                files=chunk.files,
+                size_mb=chunk.total_size_bytes / (1024 * 1024),
+            )
+
+        # Prepare extraction kwargs
+        extract_kwargs = {
+            "files": chunk.files,
+            "chunk_id": chunk.chunk_id,
+            "schema_dir": schema_dir,
+        }
+
+        # Add event_callback if configured (for verbose mode)
+        if hasattr(self, "event_callback") and self.event_callback:
+            extract_kwargs["event_callback"] = self.event_callback
+
+        # Extract entities from chunk (may raise PromptTooLongError)
+        result = await self.extraction_agent.extract(**extract_kwargs)
+
+        # Collect usage stats
+        chunk_cost = 0.0
+        chunk_input_tokens = 0
+        chunk_output_tokens = 0
+        if (
+            hasattr(self.extraction_agent, "llm_client")
+            and hasattr(self.extraction_agent.llm_client, "last_usage")
+            and self.extraction_agent.llm_client.last_usage
+        ):
+            usage = self.extraction_agent.llm_client.last_usage
+            chunk_input_tokens = usage.get("input_tokens", 0)
+            chunk_output_tokens = usage.get("output_tokens", 0)
+            chunk_cost = usage.get("total_cost_usd", 0.0)
+
+        # Report stats (for verbose mode progress display)
+        if hasattr(self, "stats_callback") and self.stats_callback:
+            self.stats_callback(
+                entities=result.entities,
+                validation_errors=len(result.validation_errors),
+                cost_usd=chunk_cost,
+                input_tokens=chunk_input_tokens,
+                output_tokens=chunk_output_tokens,
+            )
+
+        return {
+            "entities": result.entities,
+            "validation_errors": result.validation_errors,
+            "chunk_cost": chunk_cost,
+            "chunk_input_tokens": chunk_input_tokens,
+            "chunk_output_tokens": chunk_output_tokens,
+        }
+
     async def extract(self) -> OrchestrationResult:
         """
         Execute the full extraction workflow.
@@ -303,75 +389,109 @@ class ExtractionOrchestrator:
         chunks_to_process = list(chunks)
         total_chunks = len(chunks_to_process)
 
-        # 3. Process each chunk (with retry on prompt-too-long errors)
+        # 3. Process chunks in parallel batches
+        # Use schema dir for all chunks
+        schema_dir = self.config.context_dirs[0] if self.config.context_dirs else None
+
+        # Process chunks in batches for parallel execution
+        batch_size = self.config.workers
         while chunk_index < len(chunks_to_process):
-            chunk = chunks_to_process[chunk_index]
+            # Get batch of chunks to process in parallel
+            batch_end = min(chunk_index + batch_size, len(chunks_to_process))
+            batch = chunks_to_process[chunk_index:batch_end]
 
-            # Report chunk update (for progress display)
-            if hasattr(self, "chunk_callback") and self.chunk_callback:
-                self.chunk_callback(
-                    chunk_num=chunk_index + 1,
-                    chunk_id=chunk.chunk_id,
-                    files=chunk.files,
-                    size_mb=chunk.total_size_bytes / (1024 * 1024),
-                )
+            logger.debug(
+                f"Processing batch of {len(batch)} chunks in parallel "
+                f"(chunks {chunk_index + 1}-{batch_end} of {len(chunks_to_process)})"
+            )
 
-            # Extract entities from chunk
+            # Process batch in parallel with asyncio.gather
             if self.extraction_agent:
-                # Use first context dir as schema dir if available
-                schema_dir = (
-                    self.config.context_dirs[0] if self.config.context_dirs else None
-                )
+                tasks = [
+                    self._process_chunk(chunk, chunk_index + i, schema_dir)
+                    for i, chunk in enumerate(batch)
+                ]
 
-                # Prepare extraction kwargs (may include event_callback for verbose mode)
-                extract_kwargs = {
-                    "files": chunk.files,
-                    "chunk_id": chunk.chunk_id,
-                    "schema_dir": schema_dir,
-                }
+                # Gather results (with exception handling per chunk)
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                # Add event_callback if configured (for verbose mode)
-                if hasattr(self, "event_callback") and self.event_callback:
-                    extract_kwargs["event_callback"] = self.event_callback
+                # Process results from batch
+                for i, result_or_exception in enumerate(results):
+                    chunk = batch[i]
+                    current_chunk_index = chunk_index + i
 
-                try:
-                    result = await self.extraction_agent.extract(**extract_kwargs)
-
-                    # Collect entities and errors
-                    all_entities.extend(result.entities)
-                    all_validation_errors.extend(result.validation_errors)
-
-                    # Collect actual usage stats from agent client (if available)
-                    chunk_cost = 0.0
-                    chunk_input_tokens = 0
-                    chunk_output_tokens = 0
-                    if (
-                        hasattr(self.extraction_agent, "llm_client")
-                        and hasattr(self.extraction_agent.llm_client, "last_usage")
-                        and self.extraction_agent.llm_client.last_usage
-                    ):
-                        usage = self.extraction_agent.llm_client.last_usage
-                        chunk_input_tokens = usage.get("input_tokens", 0)
-                        chunk_output_tokens = usage.get("output_tokens", 0)
-                        total_input_tokens += chunk_input_tokens
-                        total_output_tokens += chunk_output_tokens
-                        chunk_cost = usage.get("total_cost_usd", 0.0)
-                        total_cost_usd += chunk_cost
-
-                    # Report stats (for verbose mode progress display)
-                    if hasattr(self, "stats_callback") and self.stats_callback:
-                        self.stats_callback(
-                            entities=result.entities,  # Pass actual entities for relationship counting
-                            validation_errors=len(result.validation_errors),
-                            cost_usd=chunk_cost,  # Pass cost for this chunk
-                            input_tokens=chunk_input_tokens,  # Pass input tokens for this chunk
-                            output_tokens=chunk_output_tokens,  # Pass output tokens for this chunk
+                    if isinstance(result_or_exception, PromptTooLongError):
+                        # Chunk is too large - split it sequentially and retry
+                        logger.warning(
+                            f"Chunk {chunk.chunk_id} exceeded prompt length limit "
+                            f"({len(chunk.files)} files, {chunk.total_size_bytes / 1024 / 1024:.2f} MB). "
+                            f"Splitting into smaller chunks..."
                         )
 
-                    chunks_processed += 1
-                    chunk_index += 1
+                        try:
+                            # Split the chunk
+                            first_half, second_half = chunk.split()
 
-                    # Save checkpoint if enabled and strategy allows
+                            # Replace current chunk with the two halves
+                            chunks_to_process[current_chunk_index] = first_half
+                            chunks_to_process.insert(
+                                current_chunk_index + 1, second_half
+                            )
+
+                            logger.info(
+                                f"Split {chunk.chunk_id} into {first_half.chunk_id} "
+                                f"({len(first_half.files)} files) and {second_half.chunk_id} "
+                                f"({len(second_half.files)} files)"
+                            )
+
+                            # Don't increment chunk_index - will retry with split chunks in next batch
+                            continue
+
+                        except ValueError as split_error:
+                            # Can't split further (single file too large)
+                            logger.error(
+                                f"Cannot split chunk {chunk.chunk_id} further: {split_error}. "
+                                f"Skipping this chunk."
+                            )
+                            chunks_processed += 1
+
+                    elif isinstance(result_or_exception, Exception):
+                        # Other error - log and skip
+                        logger.error(
+                            f"Error processing chunk {chunk.chunk_id}: {result_or_exception}"
+                        )
+                        chunks_processed += 1
+
+                    else:
+                        # Success - collect results with thread-safe lock
+                        async with self._entities_lock:
+                            all_entities.extend(result_or_exception["entities"])
+                            all_validation_errors.extend(
+                                result_or_exception["validation_errors"]
+                            )
+                            total_input_tokens += result_or_exception[
+                                "chunk_input_tokens"
+                            ]
+                            total_output_tokens += result_or_exception[
+                                "chunk_output_tokens"
+                            ]
+                            total_cost_usd += result_or_exception["chunk_cost"]
+
+                        chunks_processed += 1
+
+                        # Report progress
+                        if self.progress_callback:
+                            self.progress_callback(
+                                chunks_processed,
+                                len(chunks),
+                                f"Processed chunk {chunk.chunk_id}",
+                            )
+
+                # Move to next batch
+                chunk_index = batch_end
+
+                # Save checkpoint after each batch
+                if self.checkpoint_store and self.config.checkpoint.enabled:
                     self._save_checkpoint_if_needed(
                         chunk_index=chunk_index,
                         total_chunks=total_chunks,
@@ -379,52 +499,10 @@ class ExtractionOrchestrator:
                         all_entities=all_entities,
                     )
 
-                except PromptTooLongError as e:
-                    # Chunk is too large - split it and retry
-                    logger.warning(
-                        f"Chunk {chunk.chunk_id} exceeded prompt length limit "
-                        f"({len(chunk.files)} files, {chunk.total_size_bytes / 1024 / 1024:.2f} MB). "
-                        f"Splitting into smaller chunks..."
-                    )
-
-                    try:
-                        # Split the chunk
-                        first_half, second_half = chunk.split()
-
-                        # Replace current chunk with the two halves
-                        chunks_to_process[chunk_index] = first_half
-                        chunks_to_process.insert(chunk_index + 1, second_half)
-
-                        logger.info(
-                            f"Split {chunk.chunk_id} into {first_half.chunk_id} "
-                            f"({len(first_half.files)} files) and {second_half.chunk_id} "
-                            f"({len(second_half.files)} files)"
-                        )
-
-                        # Don't increment chunk_index - retry with the first half
-                        continue
-
-                    except ValueError as split_error:
-                        # Can't split further (single file too large)
-                        logger.error(
-                            f"Cannot split chunk {chunk.chunk_id} further: {split_error}. "
-                            f"Skipping this chunk."
-                        )
-                        chunk_index += 1
-                        continue
-
             else:
-                # No extraction agent - just skip
-                chunks_processed += 1
-                chunk_index += 1
-
-            # Report progress
-            if self.progress_callback and chunks_processed > 0:
-                self.progress_callback(
-                    chunks_processed,
-                    len(chunks),
-                    f"Processed chunk {chunk.chunk_id}",
-                )
+                # No extraction agent - just skip batch
+                chunks_processed += len(batch)
+                chunk_index = batch_end
 
         # 4. Deduplicate entities
         if all_entities:

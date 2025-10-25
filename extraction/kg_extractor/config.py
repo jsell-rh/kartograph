@@ -283,6 +283,14 @@ class ExtractionConfig(BaseSettings):
         description="Resume from latest checkpoint",
     )
 
+    # Parallel execution
+    workers: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Number of concurrent workers for parallel chunk processing",
+    )
+
     # Pydantic settings config
     model_config = SettingsConfigDict(
         env_prefix="EXTRACTOR_",

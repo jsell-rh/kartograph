@@ -78,6 +78,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Estimate cost and preview extraction without calling LLM",
     )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=3,
+        help="Number of concurrent workers for parallel chunk processing (default: 3, max: 20)",
+    )
 
     # Authentication
     auth_group = parser.add_argument_group("authentication")
@@ -260,6 +266,8 @@ def build_config_from_args(
         config_dict["output_file"] = args.output_file
     if args.resume:
         config_dict["resume"] = args.resume
+    if args.workers != 3:  # Only override if not default
+        config_dict["workers"] = args.workers
 
     # Create config - pydantic-settings will load from .env (in current dir) and env vars, then override with our dict
     config = ExtractionConfig(**config_dict)
@@ -368,6 +376,7 @@ async def main(argv: list[str] | None = None) -> int:
             auth_config=config.auth,
             model=config.llm.model,
             log_prompts=config.logging.log_llm_prompts,
+            max_concurrent=config.workers,
         )
 
         # Create prompt loader
