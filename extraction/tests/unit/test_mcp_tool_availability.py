@@ -10,10 +10,10 @@ def test_mcp_tool_in_default_tools():
     auth_config = AuthConfig(auth_method="api_key", api_key="test-key")
     client = AgentClient(auth_config=auth_config)
 
-    # Check that MCP tool is in the allowed tools
-    # The agent client should have configured the MCP server tool
-    # We can't directly inspect the client options, but we can verify it's configured
-    assert client.client is not None
+    # Check that client is initialized with default tools
+    # Client uses lazy pool initialization, so we verify the config
+    assert client.allowed_tools is None  # None means use defaults
+    assert hasattr(client, "_mcp_result")
 
 
 def test_mcp_tool_with_custom_allowed_tools():
@@ -28,7 +28,9 @@ def test_mcp_tool_with_custom_allowed_tools():
         allowed_tools=custom_tools,
     )
 
-    assert client.client is not None
+    # Verify custom tools are stored
+    assert client.allowed_tools == custom_tools
+    assert hasattr(client, "_mcp_result")
 
 
 def test_default_tools_list():
@@ -37,7 +39,9 @@ def test_default_tools_list():
     client = AgentClient(auth_config=auth_config)
 
     # The client should be initialized successfully with all required tools
-    assert client.client is not None
+    # Client uses lazy pool initialization
+    assert client.auth_config == auth_config
+    assert client.max_concurrent == 3  # default
 
     # Verify the client has access to the MCP configuration
     # (internal detail, but important for debugging)
