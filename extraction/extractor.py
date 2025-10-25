@@ -410,6 +410,7 @@ async def main(argv: list[str] | None = None) -> int:
                 total_chunks=total_chunks,
                 verbose=config.logging.verbose,
                 data_dir=config.data_dir,
+                num_workers=config.workers,
             )
 
         # Create progress callback

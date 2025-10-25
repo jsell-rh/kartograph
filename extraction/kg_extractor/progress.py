@@ -56,6 +56,7 @@ class ProgressDisplay:
         verbose: bool = False,
         data_dir: Path | None = None,
         orchestrator: Any = None,
+        num_workers: int = 1,
     ):
         """
         Initialize progress display.
@@ -65,12 +66,14 @@ class ProgressDisplay:
             verbose: Show verbose agent activity
             data_dir: Optional data directory being processed (for display)
             orchestrator: Optional orchestrator reference for worker state tracking
+            num_workers: Number of parallel workers (for accurate ETA calculation)
         """
         self.console = Console()
         self.verbose = verbose
         self.total_chunks = total_chunks
         self.data_dir = data_dir
         self.orchestrator = orchestrator
+        self.num_workers = num_workers
 
         # Create progress bars
         self.progress = Progress(
@@ -317,6 +320,8 @@ class ProgressDisplay:
         """
         Calculate estimated time remaining based on completed chunks.
 
+        Accounts for parallel execution by dividing remaining work by number of workers.
+
         Returns:
             Formatted ETA string (e.g., "~0:02:30") or None if not enough data
         """
@@ -332,8 +337,12 @@ class ProgressDisplay:
         if remaining_chunks <= 0:
             return None
 
-        # Estimate remaining time
-        estimated_seconds = avg_duration * remaining_chunks
+        # Estimate remaining time accounting for parallel workers
+        # Calculate number of batches remaining (ceil division)
+        import math
+
+        remaining_batches = math.ceil(remaining_chunks / self.num_workers)
+        estimated_seconds = avg_duration * remaining_batches
 
         # Format as HH:MM:SS
         hours = int(estimated_seconds // 3600)
