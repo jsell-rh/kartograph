@@ -413,71 +413,83 @@ class ExtractionOrchestrator:
         chunks_to_process = list(chunks)
         total_chunks = len(chunks_to_process)
 
-        # 3. Process chunks in parallel batches
+        # 3. Process chunks with streaming worker pool (no idle workers!)
         # Use schema dir for all chunks
         schema_dir = self.config.context_dirs[0] if self.config.context_dirs else None
 
-        # Process chunks in batches for parallel execution
-        batch_size = self.config.workers
-        while chunk_index < len(chunks_to_process):
-            # Get batch of chunks to process in parallel
-            batch_end = min(chunk_index + batch_size, len(chunks_to_process))
-            batch = chunks_to_process[chunk_index:batch_end]
+        # Helper function to create worker callback (needs to be outside loop)
+        def make_worker_callback(wid, c):
+            def worker_callback(message, activity_type=None, detail=None):
+                # Update worker state (dict assignment is atomic in CPython)
+                self._worker_states[wid] = {
+                    "status": "active",
+                    "chunk_id": c.chunk_id,
+                    "activity": message,
+                    "activity_type": activity_type,
+                    "detail": detail,
+                    "files_count": len(c.files),
+                    "size_mb": c.total_size_bytes / (1024 * 1024),
+                }
+
+                # Also call global event callback for overall stats
+                if hasattr(self, "event_callback") and self.event_callback:
+                    self.event_callback(message, activity_type, detail)
+
+            return worker_callback
+
+        # Streaming worker pool: Keep N workers busy at all times
+        if self.extraction_agent:
+            # Track pending tasks and their metadata
+            pending = {}  # task -> (chunk_index_in_list, chunk, worker_id)
+            available_workers = set(range(self.config.workers))
 
             logger.debug(
-                f"Processing batch of {len(batch)} chunks in parallel "
-                f"(chunks {chunk_index + 1}-{batch_end} of {len(chunks_to_process)})"
+                f"Starting streaming worker pool with {self.config.workers} workers "
+                f"for {len(chunks_to_process)} chunks"
             )
 
-            # Process batch in parallel with asyncio.gather
-            if self.extraction_agent:
-                # Create per-worker callbacks for progress tracking
-                tasks = []
-                for i, chunk in enumerate(batch):
-                    worker_id = i
+            # Main processing loop: keep workers busy until all chunks done
+            while chunk_index < len(chunks_to_process) or pending:
+                # Start new tasks for available workers
+                while available_workers and chunk_index < len(chunks_to_process):
+                    worker_id = available_workers.pop()
+                    chunk = chunks_to_process[chunk_index]
+                    current_chunk_index = chunk_index
 
-                    # Create worker-specific callback using closure
-                    def make_worker_callback(wid, c):
-                        def worker_callback(message, activity_type=None, detail=None):
-                            # Update worker state (synchronous - no lock needed for dict assignment)
-                            # Note: dict assignment is atomic in CPython, but we'll use a non-blocking approach
-                            self._worker_states[wid] = {
-                                "status": "active",
-                                "chunk_id": c.chunk_id,
-                                "activity": message,
-                                "activity_type": activity_type,
-                                "detail": detail,
-                                "files_count": len(c.files),
-                                "size_mb": c.total_size_bytes / (1024 * 1024),
-                            }
-
-                            # Also call global event callback for overall stats
-                            if hasattr(self, "event_callback") and self.event_callback:
-                                self.event_callback(message, activity_type, detail)
-
-                        return worker_callback
-
-                    # Create task with worker-specific callback
-                    tasks.append(
+                    # Create and start task
+                    task = asyncio.create_task(
                         self._process_chunk(
                             chunk,
-                            chunk_index + i,
+                            current_chunk_index,
                             schema_dir,
                             worker_id=worker_id,
                             event_callback=make_worker_callback(worker_id, chunk),
                         )
                     )
+                    pending[task] = (current_chunk_index, chunk, worker_id)
+                    chunk_index += 1
 
-                # Gather results (with exception handling per chunk)
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                    logger.debug(
+                        f"Worker {worker_id} started chunk {current_chunk_index + 1}/{len(chunks_to_process)} "
+                        f"({chunk.chunk_id})"
+                    )
 
-                # Process results from batch
-                for i, result_or_exception in enumerate(results):
-                    chunk = batch[i]
-                    current_chunk_index = chunk_index + i
+                if not pending:
+                    # No more work to do
+                    break
+
+                # Wait for at least one task to complete
+                done, still_pending = await asyncio.wait(
+                    pending.keys(), return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Process completed tasks
+                for task in done:
+                    current_chunk_index, chunk, worker_id = pending.pop(task)
+                    result_or_exception = task.result()
 
                     if isinstance(result_or_exception, PromptTooLongError):
-                        # Chunk is too large - split it sequentially and retry
+                        # Chunk is too large - split it and add back to queue
                         logger.warning(
                             f"Chunk {chunk.chunk_id} exceeded prompt length limit "
                             f"({len(chunk.files)} files, {chunk.total_size_bytes / 1024 / 1024:.2f} MB). "
@@ -500,8 +512,9 @@ class ExtractionOrchestrator:
                                 f"({len(second_half.files)} files)"
                             )
 
-                            # Don't increment chunk_index - will retry with split chunks in next batch
-                            continue
+                            # Rewind chunk_index to retry split chunks
+                            # The worker will pick up the first_half next
+                            chunk_index = current_chunk_index
 
                         except ValueError as split_error:
                             # Can't split further (single file too large)
@@ -511,12 +524,18 @@ class ExtractionOrchestrator:
                             )
                             chunks_processed += 1
 
+                        # Worker is now available
+                        available_workers.add(worker_id)
+
                     elif isinstance(result_or_exception, Exception):
                         # Other error - log and skip
                         logger.error(
                             f"Error processing chunk {chunk.chunk_id}: {result_or_exception}"
                         )
                         chunks_processed += 1
+
+                        # Worker is now available
+                        available_workers.add(worker_id)
 
                     else:
                         # Success - collect results with thread-safe lock
@@ -536,7 +555,6 @@ class ExtractionOrchestrator:
                         chunks_processed += 1
 
                         # Mark worker as completed in worker states
-                        worker_id = i
                         if worker_id in self._worker_states:
                             self._worker_states[worker_id]["status"] = "completed"
 
@@ -548,28 +566,28 @@ class ExtractionOrchestrator:
                                 f"Processed chunk {chunk.chunk_id}",
                             )
 
-                # Clear worker states for this batch (batch complete)
-                self._worker_states.clear()
+                        # Worker is now available for next chunk
+                        available_workers.add(worker_id)
 
-                # Move to next batch
-                chunk_index = batch_end
+                    # Save checkpoint periodically (every 10 chunks)
+                    if (
+                        chunks_processed % 10 == 0
+                        and self.checkpoint_store
+                        and self.config.checkpoint.enabled
+                    ):
+                        self._save_checkpoint_if_needed(
+                            chunk_index=chunk_index,
+                            total_chunks=total_chunks,
+                            chunks_processed=chunks_processed,
+                            all_entities=all_entities,
+                        )
 
-                # Save checkpoint after each batch
-                if self.checkpoint_store and self.config.checkpoint.enabled:
-                    self._save_checkpoint_if_needed(
-                        chunk_index=chunk_index,
-                        total_chunks=total_chunks,
-                        chunks_processed=chunks_processed,
-                        all_entities=all_entities,
-                    )
+            # Clear worker states after all chunks complete
+            self._worker_states.clear()
 
-            else:
-                # No extraction agent - just skip batch
-                chunks_processed += len(batch)
-                chunk_index = batch_end
-
-                # Clear worker states
-                self._worker_states.clear()
+        else:
+            # No extraction agent - just skip all chunks
+            chunks_processed = len(chunks_to_process)
 
         # 4. Deduplicate entities
         if all_entities:
