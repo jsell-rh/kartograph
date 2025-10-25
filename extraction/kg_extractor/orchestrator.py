@@ -379,10 +379,15 @@ class ExtractionOrchestrator:
                     logger.info(
                         f"Resuming from checkpoint: {checkpoint.chunks_processed}/{len(chunks)} chunks processed"
                     )
+                    logger.info(
+                        f"  Checkpoint contained {checkpoint.entities_extracted} entities"
+                    )
                     chunks_processed = checkpoint.chunks_processed
                     chunk_index = checkpoint.chunks_processed
                     all_entities = self._entities_from_checkpoint_data(checkpoint)
-                    logger.info(f"Loaded {len(all_entities)} entities from checkpoint")
+                    logger.info(
+                        f"  Restored {len(all_entities)} entities from checkpoint (will continue from chunk {chunk_index + 1})"
+                    )
 
                     # Update progress display with checkpoint state
                     # This ensures stats (entities, relationships) reflect work already done
@@ -554,15 +559,23 @@ class ExtractionOrchestrator:
 
                         chunks_processed += 1
 
+                        logger.debug(
+                            f"Worker {worker_id} completed chunk {chunk.chunk_id} "
+                            f"({chunks_processed}/{total_chunks} total, "
+                            f"{len(result_or_exception['entities'])} entities extracted)"
+                        )
+
                         # Mark worker as completed in worker states
                         if worker_id in self._worker_states:
                             self._worker_states[worker_id]["status"] = "completed"
 
                         # Report progress
                         if self.progress_callback:
+                            # Use total_chunks which accounts for initial count
+                            # Note: This may be less than len(chunks_to_process) if chunks were split
                             self.progress_callback(
                                 chunks_processed,
-                                len(chunks),
+                                total_chunks,
                                 f"Processed chunk {chunk.chunk_id}",
                             )
 
