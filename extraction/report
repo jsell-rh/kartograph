@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "total_issues": 1,
+    "errors": 0,
+    "warnings": 1,
+    "entities_affected": 1
+  },
+  "by_severity": {
+    "warning": [
+      {
+        "entity_id": "urn:DataSource:contacts-stub",
+        "field": "relationships",
+        "message": "Entity has no relationships to other entities (orphaned)"
+      }
+    ]
+  },
+  "by_field": {
+    "relationships": 1
+  }
+}

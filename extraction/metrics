@@ -1,0 +1,30 @@
+{
+  "extraction": {
+    "total_chunks": 3,
+    "chunks_processed": 3,
+    "entities_extracted": 152,
+    "validation_errors": 1,
+    "duration_seconds": 90.30957388877869
+  },
+  "performance": {
+    "chunks_per_second": 0.03321906937236432,
+    "entities_per_second": 1.6830995148664585
+  },
+  "quality": {
+    "validation_pass_rate": 0.993421052631579,
+    "relationships_per_entity": 1.9276315789473684
+  },
+  "entities_by_type": {
+    "DataSource": 3,
+    "ProxyConfiguration": 1,
+    "CalendarDataSource": 1,
+    "LocalizedName": 80,
+    "CalendarBackend": 1,
+    "ColorScheme": 1,
+    "OfflineConfiguration": 2,
+    "RefreshConfiguration": 2,
+    "LocalizationSet": 1,
+    "Translation": 59,
+    "CalendarConfiguration": 1
+  }
+}

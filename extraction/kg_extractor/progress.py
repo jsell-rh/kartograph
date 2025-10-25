@@ -457,27 +457,55 @@ class ProgressDisplay:
 
         else:
             # Show normal worker activity
-            active_count = len(worker_states)
-            panel_content = f"Workers: [bold cyan]{active_count} active[/bold cyan]\n"
+            # Count active vs completed workers
+            active_count = sum(
+                1
+                for state in worker_states.values()
+                if state.get("status", "active") == "active"
+            )
+            completed_count = sum(
+                1
+                for state in worker_states.values()
+                if state.get("status", "active") == "completed"
+            )
+
+            # Build header
+            if completed_count > 0:
+                panel_content = (
+                    f"Workers: [bold cyan]{active_count} active[/bold cyan], "
+                    f"[bold green]{completed_count} completed[/bold green]\n"
+                )
+            else:
+                panel_content = (
+                    f"Workers: [bold cyan]{active_count} active[/bold cyan]\n"
+                )
 
             for wid in sorted(worker_states.keys()):
                 state = worker_states.get(wid, {})
+                status = state.get("status", "active")
                 chunk_id = state.get("chunk_id", "?")
                 files_count = state.get("files_count", 0)
                 size_mb = state.get("size_mb", 0)
                 activity = state.get("activity", "Processing...")
                 detail = state.get("detail", "")
 
-                # Build worker line
-                line = f"  [bold green]●[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
-                line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
+                # Build worker line with status indicator
+                if status == "completed":
+                    # Completed worker - show checkmark
+                    line = f"  [bold green]✓[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
+                    line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
+                    line += " → [green]Completed[/green]"
+                else:
+                    # Active worker - show green dot
+                    line = f"  [bold green]●[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
+                    line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
 
-                # Add activity
-                if activity:
-                    # Truncate long activities
-                    if len(activity) > 50:
-                        activity = activity[:47] + "..."
-                    line += f" → {activity}"
+                    # Add activity
+                    if activity:
+                        # Truncate long activities
+                        if len(activity) > 50:
+                            activity = activity[:47] + "..."
+                        line += f" → {activity}"
 
                 panel_content += line + "\n"
 

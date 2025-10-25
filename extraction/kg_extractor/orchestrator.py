@@ -535,6 +535,11 @@ class ExtractionOrchestrator:
 
                         chunks_processed += 1
 
+                        # Mark worker as completed in worker states
+                        worker_id = i
+                        if worker_id in self._worker_states:
+                            self._worker_states[worker_id]["status"] = "completed"
+
                         # Report progress
                         if self.progress_callback:
                             self.progress_callback(
