@@ -600,15 +600,24 @@ class ExtractionOrchestrator:
                         # Worker is now available for next chunk
                         available_workers.add(worker_id)
 
-                # Save checkpoint periodically (every 10 chunks) - can checkpoint anytime!
+                # Save checkpoint based on configured strategy - can checkpoint anytime!
                 # We now track completed_chunk_ids, so we can skip already-done chunks on resume
                 # No need to wait for workers to be idle!
-                if (
-                    chunks_processed % 10 == 0
-                    and chunks_processed > 0
-                    and self.checkpoint_store
-                    and self.config.checkpoint.enabled
-                ):
+                should_checkpoint = False
+                if self.checkpoint_store and self.config.checkpoint.enabled:
+                    strategy = self.config.checkpoint.strategy
+                    if strategy == "per_chunk":
+                        should_checkpoint = True
+                    elif strategy == "every_n":
+                        if (
+                            chunks_processed % self.config.checkpoint.every_n_chunks
+                            == 0
+                            and chunks_processed > 0
+                        ):
+                            should_checkpoint = True
+                    # time_based would need additional tracking
+
+                if should_checkpoint:
                     self._save_checkpoint_with_completed_ids(
                         chunk_index=chunk_index,
                         total_chunks=total_chunks,
