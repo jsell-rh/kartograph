@@ -51,7 +51,11 @@ class ProgressDisplay:
     """
 
     def __init__(
-        self, total_chunks: int, verbose: bool = False, data_dir: Path | None = None
+        self,
+        total_chunks: int,
+        verbose: bool = False,
+        data_dir: Path | None = None,
+        orchestrator: Any = None,
     ):
         """
         Initialize progress display.
@@ -60,11 +64,13 @@ class ProgressDisplay:
             total_chunks: Total number of chunks to process
             verbose: Show verbose agent activity
             data_dir: Optional data directory being processed (for display)
+            orchestrator: Optional orchestrator reference for worker state tracking
         """
         self.console = Console()
         self.verbose = verbose
         self.total_chunks = total_chunks
         self.data_dir = data_dir
+        self.orchestrator = orchestrator
 
         # Create progress bars
         self.progress = Progress(
@@ -397,6 +403,90 @@ class ProgressDisplay:
         else:
             self.stats["graph_density"] = 0.0
 
+    def _check_rate_limit_status(self) -> dict[str, Any]:
+        """
+        Check if globally rate limited.
+
+        Returns:
+            Dictionary with {"limited": bool, "remaining": float}
+        """
+        try:
+            from kg_extractor.llm.agent_client import AgentClient
+
+            if AgentClient._rate_limited_until:
+                remaining = AgentClient._rate_limited_until - time.time()
+                if remaining > 0:
+                    return {"limited": True, "remaining": remaining}
+        except Exception:
+            pass
+
+        return {"limited": False, "remaining": 0}
+
+    def _build_worker_panel(self) -> Panel | None:
+        """
+        Build worker panel showing current worker activity.
+
+        Returns:
+            Rich Panel with worker status, or None if no orchestrator
+        """
+        if not self.orchestrator:
+            return None
+
+        # Get rate limit status
+        rate_limit_status = self._check_rate_limit_status()
+
+        # Get worker states from orchestrator
+        worker_states = self.orchestrator.get_worker_states()
+
+        if not worker_states and not rate_limit_status["limited"]:
+            # No workers active and not rate limited
+            return None
+
+        # Build panel content
+        if rate_limit_status["limited"]:
+            # Show rate limit warning
+            remaining = rate_limit_status["remaining"]
+            panel_content = (
+                f"[bold yellow]⚠ RATE LIMITED[/bold yellow] - "
+                f"All workers paused (resuming in [bold]{remaining:.1f}s[/bold])\n"
+            )
+
+            # Show waiting workers
+            for wid in sorted(worker_states.keys()):
+                panel_content += f"  [dim]⊗ Worker {wid+1}[/dim]: Waiting for rate limit clearance...\n"
+
+        else:
+            # Show normal worker activity
+            active_count = len(worker_states)
+            panel_content = f"Workers: [bold cyan]{active_count} active[/bold cyan]\n"
+
+            for wid in sorted(worker_states.keys()):
+                state = worker_states.get(wid, {})
+                chunk_id = state.get("chunk_id", "?")
+                files_count = state.get("files_count", 0)
+                size_mb = state.get("size_mb", 0)
+                activity = state.get("activity", "Processing...")
+                detail = state.get("detail", "")
+
+                # Build worker line
+                line = f"  [bold green]●[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
+                line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
+
+                # Add activity
+                if activity:
+                    # Truncate long activities
+                    if len(activity) > 50:
+                        activity = activity[:47] + "..."
+                    line += f" → {activity}"
+
+                panel_content += line + "\n"
+
+        return Panel(
+            panel_content.rstrip(),
+            title="[bold magenta]Parallel Execution[/bold magenta]",
+            border_style="magenta",
+        )
+
     def _build_display(self) -> Panel:
         """Build the complete display panel."""
         # Main progress bar
@@ -508,6 +598,11 @@ class ProgressDisplay:
         stats_container.add_row(left_stats, right_stats)
 
         components.append(stats_container)
+
+        # Worker panel (multi-worker mode)
+        worker_panel = self._build_worker_panel()
+        if worker_panel:
+            components.append(worker_panel)
 
         # Agent activity (verbose mode only)
         # Always show in verbose mode to maintain consistent panel height

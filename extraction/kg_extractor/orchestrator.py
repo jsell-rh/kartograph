@@ -209,11 +209,26 @@ class ExtractionOrchestrator:
         # Thread-safe entity collection for parallel execution
         self._entities_lock = asyncio.Lock()
 
+        # Worker state tracking for multi-worker progress display
+        self._worker_states: dict[int, dict[str, Any]] = {}
+        self._worker_state_lock = asyncio.Lock()
+
+    def get_worker_states(self) -> dict[int, dict[str, Any]]:
+        """
+        Get current worker states for progress display.
+
+        Returns:
+            Dictionary mapping worker_id to worker state
+        """
+        return self._worker_states.copy()
+
     async def _process_chunk(
         self,
         chunk: Chunk,
         chunk_index: int,
         schema_dir: Path | None,
+        worker_id: int | None = None,
+        event_callback: Any = None,
     ) -> dict[str, Any]:
         """
         Process a single chunk (for parallel execution).
@@ -222,6 +237,8 @@ class ExtractionOrchestrator:
             chunk: Chunk to process
             chunk_index: Index of the chunk in the list
             schema_dir: Optional schema directory
+            worker_id: Optional worker ID for tracking (used in multi-worker mode)
+            event_callback: Optional per-worker event callback (overrides global callback)
 
         Returns:
             Dictionary with extraction results:
@@ -253,9 +270,14 @@ class ExtractionOrchestrator:
             "schema_dir": schema_dir,
         }
 
-        # Add event_callback if configured (for verbose mode)
-        if hasattr(self, "event_callback") and self.event_callback:
-            extract_kwargs["event_callback"] = self.event_callback
+        # Use provided event_callback (per-worker), or fall back to global callback
+        callback_to_use = (
+            event_callback
+            if event_callback
+            else (self.event_callback if hasattr(self, "event_callback") else None)
+        )
+        if callback_to_use:
+            extract_kwargs["event_callback"] = callback_to_use
 
         # Extract entities from chunk (may raise PromptTooLongError)
         result = await self.extraction_agent.extract(**extract_kwargs)
@@ -408,10 +430,44 @@ class ExtractionOrchestrator:
 
             # Process batch in parallel with asyncio.gather
             if self.extraction_agent:
-                tasks = [
-                    self._process_chunk(chunk, chunk_index + i, schema_dir)
-                    for i, chunk in enumerate(batch)
-                ]
+                # Create per-worker callbacks for progress tracking
+                tasks = []
+                for i, chunk in enumerate(batch):
+                    worker_id = i
+
+                    # Create worker-specific callback using closure
+                    def make_worker_callback(wid, c):
+                        async def worker_callback(
+                            message, activity_type=None, detail=None
+                        ):
+                            # Update worker state (thread-safe)
+                            async with self._worker_state_lock:
+                                self._worker_states[wid] = {
+                                    "status": "active",
+                                    "chunk_id": c.chunk_id,
+                                    "activity": message,
+                                    "activity_type": activity_type,
+                                    "detail": detail,
+                                    "files_count": len(c.files),
+                                    "size_mb": c.total_size_bytes / (1024 * 1024),
+                                }
+
+                            # Also call global event callback for overall stats
+                            if hasattr(self, "event_callback") and self.event_callback:
+                                self.event_callback(message, activity_type, detail)
+
+                        return worker_callback
+
+                    # Create task with worker-specific callback
+                    tasks.append(
+                        self._process_chunk(
+                            chunk,
+                            chunk_index + i,
+                            schema_dir,
+                            worker_id=worker_id,
+                            event_callback=make_worker_callback(worker_id, chunk),
+                        )
+                    )
 
                 # Gather results (with exception handling per chunk)
                 results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -488,6 +544,10 @@ class ExtractionOrchestrator:
                                 f"Processed chunk {chunk.chunk_id}",
                             )
 
+                # Clear worker states for this batch (batch complete)
+                async with self._worker_state_lock:
+                    self._worker_states.clear()
+
                 # Move to next batch
                 chunk_index = batch_end
 
@@ -504,6 +564,10 @@ class ExtractionOrchestrator:
                 # No extraction agent - just skip batch
                 chunks_processed += len(batch)
                 chunk_index = batch_end
+
+                # Clear worker states
+                async with self._worker_state_lock:
+                    self._worker_states.clear()
 
         # 4. Deduplicate entities
         if all_entities:

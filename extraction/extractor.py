@@ -433,6 +433,10 @@ async def main(argv: list[str] | None = None) -> int:
             progress_callback=progress_callback,
         )
 
+        # Set orchestrator reference for multi-worker display
+        if progress_display:
+            progress_display.orchestrator = orchestrator
+
         # Set event callback for verbose mode (streaming agent activity)
         if progress_display:
             # Rich terminal display
