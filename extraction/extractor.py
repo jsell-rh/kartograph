@@ -58,10 +58,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("knowledge_graph.jsonld"),
         help="Output JSON-LD file path",
     )
-    parser.add_argument(
+    # Checkpointing
+    checkpoint_group = parser.add_argument_group("checkpointing")
+    checkpoint_group.add_argument(
         "--resume",
         action="store_true",
         help="Resume from latest checkpoint",
+    )
+    checkpoint_group.add_argument(
+        "--no-checkpoint",
+        action="store_true",
+        help="Disable checkpointing (not recommended for long extractions)",
+    )
+    checkpoint_group.add_argument(
+        "--checkpoint-strategy",
+        choices=["per_chunk", "every_n"],
+        help="Checkpoint strategy: per_chunk (after each chunk) or every_n (every N chunks)",
+    )
+    checkpoint_group.add_argument(
+        "--checkpoint-every-n",
+        type=int,
+        help="Checkpoint every N chunks (only used with --checkpoint-strategy every_n)",
     )
     parser.add_argument(
         "--metrics-output",
@@ -258,6 +275,18 @@ def build_config_from_args(
 
     if logging_dict:
         config_dict["logging"] = logging_dict
+
+    # Checkpoint overrides
+    checkpoint_dict = {}
+    if args.no_checkpoint:
+        checkpoint_dict["enabled"] = False
+    if args.checkpoint_strategy:
+        checkpoint_dict["strategy"] = args.checkpoint_strategy
+    if args.checkpoint_every_n:
+        checkpoint_dict["every_n_chunks"] = args.checkpoint_every_n
+
+    if checkpoint_dict:
+        config_dict["checkpoint"] = checkpoint_dict
 
     # Top-level overrides
     if args.output_file != Path(
