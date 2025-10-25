@@ -506,9 +506,11 @@ class ExtractionOrchestrator:
                 # Process completed tasks
                 for task in done:
                     current_chunk_index, chunk, worker_id = pending.pop(task)
-                    result_or_exception = task.result()
 
-                    if isinstance(result_or_exception, PromptTooLongError):
+                    # Get result or exception from task
+                    try:
+                        result = task.result()
+                    except PromptTooLongError as e:
                         # Chunk is too large - split it and add back to queue
                         logger.warning(
                             f"Chunk {chunk.chunk_id} exceeded prompt length limit "
@@ -546,59 +548,52 @@ class ExtractionOrchestrator:
 
                         # Worker is now available
                         available_workers.add(worker_id)
+                        continue
 
-                    elif isinstance(result_or_exception, Exception):
+                    except Exception as e:
                         # Other error - log and skip
-                        logger.error(
-                            f"Error processing chunk {chunk.chunk_id}: {result_or_exception}"
-                        )
+                        logger.error(f"Error processing chunk {chunk.chunk_id}: {e}")
                         chunks_processed += 1
 
                         # Worker is now available
                         available_workers.add(worker_id)
+                        continue
 
-                    else:
-                        # Success - collect results with thread-safe lock
-                        async with self._entities_lock:
-                            all_entities.extend(result_or_exception["entities"])
-                            all_validation_errors.extend(
-                                result_or_exception["validation_errors"]
-                            )
-                            total_input_tokens += result_or_exception[
-                                "chunk_input_tokens"
-                            ]
-                            total_output_tokens += result_or_exception[
-                                "chunk_output_tokens"
-                            ]
-                            total_cost_usd += result_or_exception["chunk_cost"]
+                    # Success - collect results with thread-safe lock
+                    async with self._entities_lock:
+                        all_entities.extend(result["entities"])
+                        all_validation_errors.extend(result["validation_errors"])
+                        total_input_tokens += result["chunk_input_tokens"]
+                        total_output_tokens += result["chunk_output_tokens"]
+                        total_cost_usd += result["chunk_cost"]
 
-                        chunks_processed += 1
-                        completed_chunk_ids.add(
-                            chunk.chunk_id
-                        )  # Track completion for checkpoint
+                    chunks_processed += 1
+                    completed_chunk_ids.add(
+                        chunk.chunk_id
+                    )  # Track completion for checkpoint
 
-                        logger.debug(
-                            f"Worker {worker_id} completed chunk {chunk.chunk_id} "
-                            f"({chunks_processed}/{total_chunks} total, "
-                            f"{len(result_or_exception['entities'])} entities extracted)"
+                    logger.debug(
+                        f"Worker {worker_id} completed chunk {chunk.chunk_id} "
+                        f"({chunks_processed}/{total_chunks} total, "
+                        f"{len(result['entities'])} entities extracted)"
+                    )
+
+                    # Mark worker as completed in worker states
+                    if worker_id in self._worker_states:
+                        self._worker_states[worker_id]["status"] = "completed"
+
+                    # Report progress
+                    if self.progress_callback:
+                        # Use total_chunks which accounts for initial count
+                        # Note: This may be less than len(chunks_to_process) if chunks were split
+                        self.progress_callback(
+                            chunks_processed,
+                            total_chunks,
+                            f"Processed chunk {chunk.chunk_id}",
                         )
 
-                        # Mark worker as completed in worker states
-                        if worker_id in self._worker_states:
-                            self._worker_states[worker_id]["status"] = "completed"
-
-                        # Report progress
-                        if self.progress_callback:
-                            # Use total_chunks which accounts for initial count
-                            # Note: This may be less than len(chunks_to_process) if chunks were split
-                            self.progress_callback(
-                                chunks_processed,
-                                total_chunks,
-                                f"Processed chunk {chunk.chunk_id}",
-                            )
-
-                        # Worker is now available for next chunk
-                        available_workers.add(worker_id)
+                    # Worker is now available for next chunk
+                    available_workers.add(worker_id)
 
                 # Save checkpoint based on configured strategy - can checkpoint anytime!
                 # We now track completed_chunk_ids, so we can skip already-done chunks on resume
