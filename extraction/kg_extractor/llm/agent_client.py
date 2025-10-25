@@ -2,12 +2,18 @@
 
 Uses Claude Agent SDK with built-in tools for file access and multi-step reasoning.
 This is the recommended client for knowledge graph extraction.
+
+Features rate limiting transparency:
+- Semaphore-based concurrency control (limits parallel API calls)
+- Global backoff on 429 errors (coordinates all instances)
+- Automatic retry with exponential backoff (rate-aware)
 """
 
 import asyncio
 import json
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
@@ -33,7 +39,20 @@ class AgentClient:
         - Multi-step reasoning and validation
         - Session-based context preservation
         - Incremental processing without loading all files into prompts
+
+    Rate Limiting (Transparent to Callers):
+        - Semaphore limits concurrent API calls across ALL instances
+        - Global backoff on 429 errors (one instance rate limited = all wait)
+        - Automatic retry with rate-aware exponential backoff
     """
+
+    # Class-level shared state for global rate limit coordination
+    # These are shared across ALL AgentClient instances
+    _rate_limit_semaphore: ClassVar[asyncio.Semaphore | None] = None
+    _rate_limited_until: ClassVar[float | None] = (
+        None  # Timestamp when rate limit expires
+    )
+    _semaphore_lock: ClassVar[asyncio.Lock | None] = None  # For lazy initialization
 
     def __init__(
         self,
@@ -43,6 +62,7 @@ class AgentClient:
         max_retries: int = 3,
         timeout_seconds: int = 300,
         log_prompts: bool = False,
+        max_concurrent: int = 3,
     ):
         """
         Initialize Agent SDK client.
@@ -54,6 +74,7 @@ class AgentClient:
             max_retries: Maximum retry attempts on failures
             timeout_seconds: Timeout for agent operations in seconds
             log_prompts: Log full prompts and responses for debugging
+            max_concurrent: Maximum concurrent API calls (default: 3, shared across all instances)
         """
         import sys
 
@@ -62,6 +83,11 @@ class AgentClient:
         self.max_retries = max_retries
         self.timeout_seconds = timeout_seconds
         self.log_prompts = log_prompts
+        self.max_concurrent = max_concurrent
+
+        # Initialize class-level lock if needed (for semaphore initialization)
+        if AgentClient._semaphore_lock is None:
+            AgentClient._semaphore_lock = asyncio.Lock()
 
         # Configure MCP server for structured result submission
         # This provides the submit_extraction_results tool
@@ -134,9 +160,121 @@ class AgentClient:
         # Default - show nothing
         return None
 
+    async def _get_semaphore(self) -> asyncio.Semaphore:
+        """
+        Get or create the shared semaphore for rate limiting.
+
+        Uses lazy initialization with a lock to ensure only one semaphore is created
+        across all AgentClient instances.
+
+        Returns:
+            Shared semaphore instance
+        """
+        # Fast path: semaphore already exists
+        if AgentClient._rate_limit_semaphore is not None:
+            return AgentClient._rate_limit_semaphore
+
+        # Slow path: need to create semaphore (with lock)
+        async with AgentClient._semaphore_lock:
+            # Double-check (another instance may have created it while we waited for lock)
+            if AgentClient._rate_limit_semaphore is None:
+                AgentClient._rate_limit_semaphore = asyncio.Semaphore(
+                    self.max_concurrent
+                )
+
+            return AgentClient._rate_limit_semaphore
+
+    async def _wait_for_rate_limit_clearance(self) -> None:
+        """
+        Wait if a global rate limit backoff is in effect.
+
+        Checks the class-level _rate_limited_until timestamp. If set and not expired,
+        waits until the backoff period completes.
+
+        This ensures that when ANY instance hits a 429 error, ALL instances pause.
+        """
+        if AgentClient._rate_limited_until is not None:
+            wait_time = AgentClient._rate_limited_until - time.time()
+            if wait_time > 0:
+                import logging
+
+                logger = logging.getLogger("kg_extractor.llm")
+                logger.warning(
+                    f"Rate limit backoff in effect. Waiting {wait_time:.1f} seconds..."
+                )
+                await asyncio.sleep(wait_time)
+
+    def _detect_rate_limit_error(self, error: Exception) -> bool:
+        """
+        Detect if an error is a rate limit (429) error.
+
+        Checks exception message and type for common rate limit indicators.
+
+        Args:
+            error: Exception to check
+
+        Returns:
+            True if error appears to be a rate limit error
+        """
+        error_str = str(error).lower()
+        patterns = [
+            "429",
+            "rate limit",
+            "rate_limit",
+            "ratelimit",
+            "quota exceeded",
+            "too many requests",
+            "throttle",
+            "throttling",
+        ]
+        return any(pattern in error_str for pattern in patterns)
+
+    def _calculate_backoff(self, attempt: int, is_rate_limit: bool) -> float:
+        """
+        Calculate backoff duration based on attempt number and error type.
+
+        Args:
+            attempt: Retry attempt number (0-indexed)
+            is_rate_limit: True if this is a rate limit error (429)
+
+        Returns:
+            Backoff duration in seconds
+        """
+        if is_rate_limit:
+            # Aggressive backoff for rate limits: 5s → 10s → 20s → 40s
+            return 5 * (2**attempt)
+        else:
+            # Standard backoff for other errors: 2s → 4s → 8s
+            return 2 * (2**attempt)
+
+    def _set_global_backoff(self, backoff_seconds: float) -> None:
+        """
+        Set global rate limit backoff timestamp.
+
+        When ANY instance hits a rate limit, this sets a class-level timestamp
+        that ALL instances will respect before making new API calls.
+
+        Args:
+            backoff_seconds: How long to wait before allowing new API calls
+        """
+        AgentClient._rate_limited_until = time.time() + backoff_seconds
+
+        import logging
+
+        logger = logging.getLogger("kg_extractor.llm")
+        logger.warning(
+            f"Global rate limit backoff set for {backoff_seconds:.1f} seconds. "
+            f"All AgentClient instances will pause until {time.strftime('%H:%M:%S', time.localtime(AgentClient._rate_limited_until))}"
+        )
+
     async def _send_and_receive(self, prompt: str, event_callback: Any = None) -> str:
         """
         Send prompt and receive response from Agent SDK.
+
+        Implements rate limiting transparency:
+        - Waits if global rate limit backoff is in effect
+        - Acquires semaphore to limit concurrent API calls
+        - Transparent to callers - they don't need to know about rate limiting
 
         Args:
             prompt: Prompt to send
@@ -147,6 +285,7 @@ class AgentClient:
 
         Raises:
             RuntimeError: If no response received
+            Exception: Any API errors (will be caught by retry logic in calling methods)
         """
         import logging
 
@@ -160,318 +299,333 @@ class AgentClient:
 
         logger = logging.getLogger("kg_extractor.llm")
 
-        await self._ensure_connected()
+        # 1. Wait if globally rate limited (transparent coordination)
+        await self._wait_for_rate_limit_clearance()
 
-        # Log prompt if enabled
-        if self.log_prompts:
-            logger.debug(
-                "=" * 80
-                + "\n"
-                + "PROMPT TO AGENT SDK:\n"
-                + "=" * 80
-                + "\n"
-                + prompt
-                + "\n"
-                + "=" * 80
-            )
+        # 2. Acquire semaphore to limit concurrent API calls (transparent throttling)
+        semaphore = await self._get_semaphore()
+        async with semaphore:
+            await self._ensure_connected()
 
-        # Send query
-        await self.client.query(prompt)
-
-        # Receive response stream
-        result_text = None
-        messages_received = []
-        error_message = None
-        current_tool_name = None  # Track current tool being used
-        current_tool_input = ""  # Accumulate tool input from deltas
-        mcp_result = None  # Store MCP submit_extraction_results arguments
-        async for message in self.client.receive_response():
-            # Track message types for debugging
-            message_type = type(message).__name__
-            messages_received.append(message_type)
-
-            # Debug: Log ALL message types when log_prompts enabled
-            if self.log_prompts:
-                logger.debug(f"Received message type: {message_type}")
-
-            # Handle error response (ControlErrorResponse is a TypedDict, can't use isinstance)
-            if isinstance(message, dict) and message.get("subtype") == "error":
-                error_message = str(message)
-                logger.error(f"Agent SDK returned error: {error_message}")
-                break
-
-            # Handle AssistantMessage (contains tool use blocks with complete input)
-            if isinstance(message, AssistantMessage):
-                # Check for tool use blocks in content
-                for content_block in message.content:
-                    if isinstance(content_block, ToolUseBlock):
-                        tool_name = content_block.name
-                        tool_input = content_block.input
-
-                        if self.log_prompts:
-                            logger.debug(
-                                f"Tool use block: {tool_name}, input keys: {list(tool_input.keys())}"
-                            )
-
-                        # Capture MCP submit_extraction_results tool
-                        if "submit_extraction_results" in tool_name:
-                            # Warn if we already captured a result (multiple calls)
-                            if mcp_result is not None:
-                                logger.warning(
-                                    f"Multiple submit_extraction_results calls detected! "
-                                    f"Previous result had {len(mcp_result.get('entities', []))} entities, "
-                                    f"new result has {len(tool_input.get('entities', []))} entities. "
-                                    f"Keeping the last one."
-                                )
-
-                            mcp_result = tool_input
-                            if self.log_prompts:
-                                logger.debug(
-                                    f"  MCP result captured from {tool_name}: {len(tool_input.get('entities', []))} entities"
-                                )
-
-                        # Report tool usage if callback provided
-                        if event_callback:
-                            if "submit_extraction_results" in tool_name:
-                                entity_count = len(tool_input.get("entities", []))
-                                event_callback(
-                                    f"Submitted {entity_count} entities via MCP tool",
-                                    activity_type="tool",
-                                )
-                            else:
-                                # Build tool detail string for common tools
-                                detail = self._build_tool_detail(tool_name, tool_input)
-                                event_callback(
-                                    f"Using tool: {tool_name}",
-                                    activity_type="tool",
-                                    detail=detail,
-                                )
-
-            # Handle result message
-            if isinstance(message, ResultMessage):
-                result_text = message.result
-
-                # Capture usage stats for cost tracking
-                # Per Agent SDK docs: https://docs.claude.com/en/api/agent-sdk/cost-tracking.md
-                # ResultMessage.usage contains CUMULATIVE usage across all turns, with fields:
-                # - input_tokens: Base input tokens
-                # - cache_creation_input_tokens: Tokens used to create cache
-                # - cache_read_input_tokens: Tokens read from cache
-                # - output_tokens: Output tokens
-                if message.usage:
-                    # Sum all input token types (base + cache creation + cache read)
-                    total_input_tokens = (
-                        message.usage.get("input_tokens", 0)
-                        + message.usage.get("cache_creation_input_tokens", 0)
-                        + message.usage.get("cache_read_input_tokens", 0)
-                    )
-                    total_output_tokens = message.usage.get("output_tokens", 0)
-                else:
-                    total_input_tokens = 0
-                    total_output_tokens = 0
-
-                self.last_usage = {
-                    "input_tokens": total_input_tokens,
-                    "output_tokens": total_output_tokens,
-                    "total_cost_usd": message.total_cost_usd or 0.0,
-                    "duration_ms": message.duration_ms,
-                    "duration_api_ms": message.duration_api_ms,
-                    # Store breakdown for debugging
-                    "usage_breakdown": message.usage if message.usage else {},
-                }
-
-                if self.log_prompts:
-                    logger.debug(
-                        f"Usage (cumulative): {self.last_usage['input_tokens']} input tokens, "
-                        f"{self.last_usage['output_tokens']} output tokens, "
-                        f"${self.last_usage['total_cost_usd']:.4f}"
-                    )
-                    # Show breakdown if available
-                    if message.usage:
-                        logger.debug(
-                            f"  Input breakdown: "
-                            f"base={message.usage.get('input_tokens', 0)}, "
-                            f"cache_creation={message.usage.get('cache_creation_input_tokens', 0)}, "
-                            f"cache_read={message.usage.get('cache_read_input_tokens', 0)}"
-                        )
-
-                break
-
-            # Handle streaming events (tool usage, etc.)
-            # IMPORTANT: Process ALL StreamEvents, not just when event_callback exists
-            # We need to capture MCP tool results from the event stream
-            if isinstance(message, StreamEvent):
-                try:
-                    event_data = message.event
-                    event_type = event_data.get("type", "unknown")
-
-                    # Log event for debugging (only if log_prompts enabled)
-                    if self.log_prompts:
-                        logger.debug(f"Agent SDK Event: {event_type}")
-                        if event_type in ["content_block_start", "content_block_delta"]:
-                            logger.debug(f"  Event data: {event_data}")
-
-                    # Extract useful information based on event type
-                    if event_type == "content_block_start":
-                        content = event_data.get("content_block", {})
-                        if content.get("type") == "tool_use":
-                            tool_name = content.get("name", "unknown")
-                            current_tool_name = tool_name
-                            current_tool_input = ""  # Reset for new tool
-
-                            # Log tool start
-                            if self.log_prompts:
-                                logger.debug(
-                                    f"  Tool: {tool_name}, awaiting input via deltas"
-                                )
-
-                            # Report tool usage (detail will be added when we parse the input)
-                            if event_callback:
-                                event_callback(
-                                    f"Using tool: {tool_name}", activity_type="tool"
-                                )
-
-                    elif event_type == "content_block_delta":
-                        delta = event_data.get("delta", {})
-
-                        # Check for input_json_delta (tool input being built)
-                        if delta.get("type") == "input_json_delta":
-                            # Accumulate the partial JSON
-                            partial = delta.get("partial_json", "")
-                            current_tool_input += partial
-                            if self.log_prompts:
-                                logger.debug(
-                                    f"  Input JSON delta for {current_tool_name}: +{len(partial)} chars, total: {len(current_tool_input)}"
-                                )
-                                logger.debug(f"    Partial: {partial[:100]}")
-
-                        elif delta.get("type") == "text_delta":
-                            # Agent is thinking/responding
-                            text = delta.get("text", "")
-                            if text.strip():
-                                event_callback(
-                                    f"Thinking: {text[:50]}...",
-                                    activity_type="thinking",
-                                )
-
-                    elif event_type == "content_block_stop":
-                        # Tool input is complete - parse and handle based on tool type
-                        if self.log_prompts:
-                            logger.debug(
-                                f"  content_block_stop: tool={current_tool_name}, input_length={len(current_tool_input)}"
-                            )
-
-                        if current_tool_input:
-                            try:
-                                import json
-
-                                tool_input = json.loads(current_tool_input)
-
-                                # Handle Read tool - report file being read
-                                if (
-                                    current_tool_name == "Read"
-                                    and "file_path" in tool_input
-                                ):
-                                    file_path = tool_input["file_path"]
-                                    if event_callback:
-                                        event_callback(
-                                            f"Reading file: {file_path}",
-                                            activity_type="file",
-                                        )
-                                    if self.log_prompts:
-                                        logger.debug(f"  File being read: {file_path}")
-
-                                # Handle Grep tool - report pattern being searched
-                                elif (
-                                    current_tool_name == "Grep"
-                                    and "pattern" in tool_input
-                                ):
-                                    pattern = tool_input["pattern"]
-                                    path = tool_input.get("path", ".")
-                                    detail = f"pattern: {pattern}, path: {path}"
-                                    if event_callback:
-                                        event_callback(
-                                            f"Using tool: {current_tool_name}",
-                                            activity_type="tool",
-                                            detail=detail,
-                                        )
-
-                                # Handle Glob tool - report glob pattern
-                                elif (
-                                    current_tool_name == "Glob"
-                                    and "pattern" in tool_input
-                                ):
-                                    pattern = tool_input["pattern"]
-                                    detail = f"pattern: {pattern}"
-                                    if event_callback:
-                                        event_callback(
-                                            f"Using tool: {current_tool_name}",
-                                            activity_type="tool",
-                                            detail=detail,
-                                        )
-
-                                # Handle MCP submit_extraction_results tool - capture result
-                                # Tool name includes MCP prefix: mcp__extraction__submit_extraction_results
-                                elif "submit_extraction_results" in current_tool_name:
-                                    mcp_result = tool_input
-                                    if self.log_prompts:
-                                        logger.debug(
-                                            f"  MCP result captured from {current_tool_name}: {len(tool_input.get('entities', []))} entities"
-                                        )
-                                    if event_callback:
-                                        entity_count = len(
-                                            tool_input.get("entities", [])
-                                        )
-                                        event_callback(
-                                            f"Submitted {entity_count} entities via MCP tool",
-                                            activity_type="tool",
-                                        )
-                            except json.JSONDecodeError:
-                                if self.log_prompts:
-                                    logger.debug(
-                                        f"  Failed to parse tool input for {current_tool_name}: {current_tool_input[:100]}"
-                                    )
-
-                except Exception:
-                    # Silently ignore parsing errors for events
-                    pass
-
-        # Check if we received a response
-        if result_text is None:
-            messages_summary = (
-                ", ".join(messages_received) if messages_received else "none"
-            )
-            error_detail = f" Error: {error_message}" if error_message else ""
-            raise RuntimeError(
-                f"No response received from Agent SDK. "
-                f"The agent stream ended without returning a ResultMessage. "
-                f"Messages received: {messages_summary}.{error_detail} "
-                f"This may indicate a connection issue, timeout, or agent error."
-            )
-
-        # Store MCP result for extraction methods to use
-        if mcp_result:
-            self._mcp_result = mcp_result
+            # Log prompt if enabled
             if self.log_prompts:
                 logger.debug(
-                    f"MCP result stored: {len(mcp_result.get('entities', []))} entities, "
-                    f"{len(mcp_result.get('metadata', {}).get('types_discovered', []))} types"
+                    "=" * 80
+                    + "\n"
+                    + "PROMPT TO AGENT SDK:\n"
+                    + "=" * 80
+                    + "\n"
+                    + prompt
+                    + "\n"
+                    + "=" * 80
                 )
 
-        # Log response if enabled
-        if self.log_prompts:
-            logger.debug(
-                "=" * 80
-                + "\n"
-                + "RESPONSE FROM AGENT SDK:\n"
-                + "=" * 80
-                + "\n"
-                + result_text
-                + "\n"
-                + "=" * 80
-            )
+            # Send query
+            await self.client.query(prompt)
 
-        return result_text
+            # Receive response stream (inside semaphore to hold slot until complete)
+            result_text = None
+            messages_received = []
+            error_message = None
+            current_tool_name = None  # Track current tool being used
+            current_tool_input = ""  # Accumulate tool input from deltas
+            mcp_result = None  # Store MCP submit_extraction_results arguments
+            async for message in self.client.receive_response():
+                # Track message types for debugging
+                message_type = type(message).__name__
+                messages_received.append(message_type)
+
+                # Debug: Log ALL message types when log_prompts enabled
+                if self.log_prompts:
+                    logger.debug(f"Received message type: {message_type}")
+
+                # Handle error response (ControlErrorResponse is a TypedDict, can't use isinstance)
+                if isinstance(message, dict) and message.get("subtype") == "error":
+                    error_message = str(message)
+                    logger.error(f"Agent SDK returned error: {error_message}")
+                    break
+
+                # Handle AssistantMessage (contains tool use blocks with complete input)
+                if isinstance(message, AssistantMessage):
+                    # Check for tool use blocks in content
+                    for content_block in message.content:
+                        if isinstance(content_block, ToolUseBlock):
+                            tool_name = content_block.name
+                            tool_input = content_block.input
+
+                            if self.log_prompts:
+                                logger.debug(
+                                    f"Tool use block: {tool_name}, input keys: {list(tool_input.keys())}"
+                                )
+
+                            # Capture MCP submit_extraction_results tool
+                            if "submit_extraction_results" in tool_name:
+                                # Warn if we already captured a result (multiple calls)
+                                if mcp_result is not None:
+                                    logger.warning(
+                                        f"Multiple submit_extraction_results calls detected! "
+                                        f"Previous result had {len(mcp_result.get('entities', []))} entities, "
+                                        f"new result has {len(tool_input.get('entities', []))} entities. "
+                                        f"Keeping the last one."
+                                    )
+
+                                mcp_result = tool_input
+                                if self.log_prompts:
+                                    logger.debug(
+                                        f"  MCP result captured from {tool_name}: {len(tool_input.get('entities', []))} entities"
+                                    )
+
+                            # Report tool usage if callback provided
+                            if event_callback:
+                                if "submit_extraction_results" in tool_name:
+                                    entity_count = len(tool_input.get("entities", []))
+                                    event_callback(
+                                        f"Submitted {entity_count} entities via MCP tool",
+                                        activity_type="tool",
+                                    )
+                                else:
+                                    # Build tool detail string for common tools
+                                    detail = self._build_tool_detail(
+                                        tool_name, tool_input
+                                    )
+                                    event_callback(
+                                        f"Using tool: {tool_name}",
+                                        activity_type="tool",
+                                        detail=detail,
+                                    )
+
+                # Handle result message
+                if isinstance(message, ResultMessage):
+                    result_text = message.result
+
+                    # Capture usage stats for cost tracking
+                    # Per Agent SDK docs: https://docs.claude.com/en/api/agent-sdk/cost-tracking.md
+                    # ResultMessage.usage contains CUMULATIVE usage across all turns, with fields:
+                    # - input_tokens: Base input tokens
+                    # - cache_creation_input_tokens: Tokens used to create cache
+                    # - cache_read_input_tokens: Tokens read from cache
+                    # - output_tokens: Output tokens
+                    if message.usage:
+                        # Sum all input token types (base + cache creation + cache read)
+                        total_input_tokens = (
+                            message.usage.get("input_tokens", 0)
+                            + message.usage.get("cache_creation_input_tokens", 0)
+                            + message.usage.get("cache_read_input_tokens", 0)
+                        )
+                        total_output_tokens = message.usage.get("output_tokens", 0)
+                    else:
+                        total_input_tokens = 0
+                        total_output_tokens = 0
+
+                    self.last_usage = {
+                        "input_tokens": total_input_tokens,
+                        "output_tokens": total_output_tokens,
+                        "total_cost_usd": message.total_cost_usd or 0.0,
+                        "duration_ms": message.duration_ms,
+                        "duration_api_ms": message.duration_api_ms,
+                        # Store breakdown for debugging
+                        "usage_breakdown": message.usage if message.usage else {},
+                    }
+
+                    if self.log_prompts:
+                        logger.debug(
+                            f"Usage (cumulative): {self.last_usage['input_tokens']} input tokens, "
+                            f"{self.last_usage['output_tokens']} output tokens, "
+                            f"${self.last_usage['total_cost_usd']:.4f}"
+                        )
+                        # Show breakdown if available
+                        if message.usage:
+                            logger.debug(
+                                f"  Input breakdown: "
+                                f"base={message.usage.get('input_tokens', 0)}, "
+                                f"cache_creation={message.usage.get('cache_creation_input_tokens', 0)}, "
+                                f"cache_read={message.usage.get('cache_read_input_tokens', 0)}"
+                            )
+
+                    break
+
+                # Handle streaming events (tool usage, etc.)
+                # IMPORTANT: Process ALL StreamEvents, not just when event_callback exists
+                # We need to capture MCP tool results from the event stream
+                if isinstance(message, StreamEvent):
+                    try:
+                        event_data = message.event
+                        event_type = event_data.get("type", "unknown")
+
+                        # Log event for debugging (only if log_prompts enabled)
+                        if self.log_prompts:
+                            logger.debug(f"Agent SDK Event: {event_type}")
+                            if event_type in [
+                                "content_block_start",
+                                "content_block_delta",
+                            ]:
+                                logger.debug(f"  Event data: {event_data}")
+
+                        # Extract useful information based on event type
+                        if event_type == "content_block_start":
+                            content = event_data.get("content_block", {})
+                            if content.get("type") == "tool_use":
+                                tool_name = content.get("name", "unknown")
+                                current_tool_name = tool_name
+                                current_tool_input = ""  # Reset for new tool
+
+                                # Log tool start
+                                if self.log_prompts:
+                                    logger.debug(
+                                        f"  Tool: {tool_name}, awaiting input via deltas"
+                                    )
+
+                                # Report tool usage (detail will be added when we parse the input)
+                                if event_callback:
+                                    event_callback(
+                                        f"Using tool: {tool_name}", activity_type="tool"
+                                    )
+
+                        elif event_type == "content_block_delta":
+                            delta = event_data.get("delta", {})
+
+                            # Check for input_json_delta (tool input being built)
+                            if delta.get("type") == "input_json_delta":
+                                # Accumulate the partial JSON
+                                partial = delta.get("partial_json", "")
+                                current_tool_input += partial
+                                if self.log_prompts:
+                                    logger.debug(
+                                        f"  Input JSON delta for {current_tool_name}: +{len(partial)} chars, total: {len(current_tool_input)}"
+                                    )
+                                    logger.debug(f"    Partial: {partial[:100]}")
+
+                            elif delta.get("type") == "text_delta":
+                                # Agent is thinking/responding
+                                text = delta.get("text", "")
+                                if text.strip():
+                                    event_callback(
+                                        f"Thinking: {text[:50]}...",
+                                        activity_type="thinking",
+                                    )
+
+                        elif event_type == "content_block_stop":
+                            # Tool input is complete - parse and handle based on tool type
+                            if self.log_prompts:
+                                logger.debug(
+                                    f"  content_block_stop: tool={current_tool_name}, input_length={len(current_tool_input)}"
+                                )
+
+                            if current_tool_input:
+                                try:
+                                    import json
+
+                                    tool_input = json.loads(current_tool_input)
+
+                                    # Handle Read tool - report file being read
+                                    if (
+                                        current_tool_name == "Read"
+                                        and "file_path" in tool_input
+                                    ):
+                                        file_path = tool_input["file_path"]
+                                        if event_callback:
+                                            event_callback(
+                                                f"Reading file: {file_path}",
+                                                activity_type="file",
+                                            )
+                                        if self.log_prompts:
+                                            logger.debug(
+                                                f"  File being read: {file_path}"
+                                            )
+
+                                    # Handle Grep tool - report pattern being searched
+                                    elif (
+                                        current_tool_name == "Grep"
+                                        and "pattern" in tool_input
+                                    ):
+                                        pattern = tool_input["pattern"]
+                                        path = tool_input.get("path", ".")
+                                        detail = f"pattern: {pattern}, path: {path}"
+                                        if event_callback:
+                                            event_callback(
+                                                f"Using tool: {current_tool_name}",
+                                                activity_type="tool",
+                                                detail=detail,
+                                            )
+
+                                    # Handle Glob tool - report glob pattern
+                                    elif (
+                                        current_tool_name == "Glob"
+                                        and "pattern" in tool_input
+                                    ):
+                                        pattern = tool_input["pattern"]
+                                        detail = f"pattern: {pattern}"
+                                        if event_callback:
+                                            event_callback(
+                                                f"Using tool: {current_tool_name}",
+                                                activity_type="tool",
+                                                detail=detail,
+                                            )
+
+                                    # Handle MCP submit_extraction_results tool - capture result
+                                    # Tool name includes MCP prefix: mcp__extraction__submit_extraction_results
+                                    elif (
+                                        "submit_extraction_results" in current_tool_name
+                                    ):
+                                        mcp_result = tool_input
+                                        if self.log_prompts:
+                                            logger.debug(
+                                                f"  MCP result captured from {current_tool_name}: {len(tool_input.get('entities', []))} entities"
+                                            )
+                                        if event_callback:
+                                            entity_count = len(
+                                                tool_input.get("entities", [])
+                                            )
+                                            event_callback(
+                                                f"Submitted {entity_count} entities via MCP tool",
+                                                activity_type="tool",
+                                            )
+                                except json.JSONDecodeError:
+                                    if self.log_prompts:
+                                        logger.debug(
+                                            f"  Failed to parse tool input for {current_tool_name}: {current_tool_input[:100]}"
+                                        )
+
+                    except Exception:
+                        # Silently ignore parsing errors for events
+                        pass
+
+            # Check if we received a response
+            if result_text is None:
+                messages_summary = (
+                    ", ".join(messages_received) if messages_received else "none"
+                )
+                error_detail = f" Error: {error_message}" if error_message else ""
+                raise RuntimeError(
+                    f"No response received from Agent SDK. "
+                    f"The agent stream ended without returning a ResultMessage. "
+                    f"Messages received: {messages_summary}.{error_detail} "
+                    f"This may indicate a connection issue, timeout, or agent error."
+                )
+
+            # Store MCP result for extraction methods to use
+            if mcp_result:
+                self._mcp_result = mcp_result
+                if self.log_prompts:
+                    logger.debug(
+                        f"MCP result stored: {len(mcp_result.get('entities', []))} entities, "
+                        f"{len(mcp_result.get('metadata', {}).get('types_discovered', []))} types"
+                    )
+
+            # Log response if enabled
+            if self.log_prompts:
+                logger.debug(
+                    "=" * 80
+                    + "\n"
+                    + "RESPONSE FROM AGENT SDK:\n"
+                    + "=" * 80
+                    + "\n"
+                    + result_text
+                    + "\n"
+                    + "=" * 80
+                )
+
+            return result_text
 
     async def generate(
         self,
@@ -501,7 +655,7 @@ class AgentClient:
         if system:
             full_prompt = f"{system}\n\n{prompt}"
 
-        # Execute with retries
+        # Execute with retries (rate-aware backoff)
         last_exception = None
         for attempt in range(self.max_retries):
             try:
@@ -512,8 +666,25 @@ class AgentClient:
             except Exception as e:
                 last_exception = e
                 if attempt < self.max_retries - 1:
-                    # Exponential backoff
-                    await asyncio.sleep(2**attempt)
+                    # Detect if this is a rate limit error
+                    is_rate_limit = self._detect_rate_limit_error(e)
+
+                    # Calculate backoff (aggressive for rate limits)
+                    backoff = self._calculate_backoff(attempt, is_rate_limit)
+
+                    # If rate limited, set global backoff so ALL instances wait
+                    if is_rate_limit:
+                        self._set_global_backoff(backoff)
+
+                    import logging
+
+                    logger = logging.getLogger("kg_extractor.llm")
+                    logger.warning(
+                        f"{'Rate limit' if is_rate_limit else 'Error'} on attempt {attempt + 1}/{self.max_retries}: {e}. "
+                        f"Retrying in {backoff:.1f}s..."
+                    )
+
+                    await asyncio.sleep(backoff)
                     continue
                 else:
                     raise
@@ -627,14 +798,32 @@ Please respond with ONLY a JSON object in this exact format:
 Do not include any text before or after the JSON. Just the JSON object.
 """
                     prompt = corrective_prompt
-                    await asyncio.sleep(2**attempt)
+                    # JSON parsing errors are not rate limits - use standard backoff
+                    backoff = self._calculate_backoff(attempt, is_rate_limit=False)
+                    await asyncio.sleep(backoff)
                     continue
                 else:
                     raise
 
             except Exception as e:
+                # General errors (including rate limits)
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(2**attempt)
+                    # Detect if this is a rate limit error
+                    is_rate_limit = self._detect_rate_limit_error(e)
+
+                    # Calculate backoff (aggressive for rate limits)
+                    backoff = self._calculate_backoff(attempt, is_rate_limit)
+
+                    # If rate limited, set global backoff so ALL instances wait
+                    if is_rate_limit:
+                        self._set_global_backoff(backoff)
+
+                    logger.warning(
+                        f"{'Rate limit' if is_rate_limit else 'Error'} on attempt {attempt + 1}/{self.max_retries}: {e}. "
+                        f"Retrying in {backoff:.1f}s..."
+                    )
+
+                    await asyncio.sleep(backoff)
                     continue
                 else:
                     raise
