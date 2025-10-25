@@ -356,6 +356,9 @@ class ExtractionOrchestrator:
         all_validation_errors: list[ValidationError] = []
         chunks_processed = 0
         chunk_index = 0
+        completed_chunk_ids: set[str] = (
+            set()
+        )  # Track which chunks are done (for parallel resume)
 
         # Track actual usage across all chunks for cost comparison
         total_input_tokens = 0
@@ -383,10 +386,13 @@ class ExtractionOrchestrator:
                         f"  Checkpoint contained {checkpoint.entities_extracted} entities"
                     )
                     chunks_processed = checkpoint.chunks_processed
-                    chunk_index = checkpoint.chunks_processed
+                    completed_chunk_ids = checkpoint.completed_chunk_ids.copy()
                     all_entities = self._entities_from_checkpoint_data(checkpoint)
                     logger.info(
-                        f"  Restored {len(all_entities)} entities from checkpoint (will continue from chunk {chunk_index + 1})"
+                        f"  Restored {len(all_entities)} entities from checkpoint"
+                    )
+                    logger.info(
+                        f"  Completed chunks: {len(completed_chunk_ids)} ({', '.join(sorted(list(completed_chunk_ids))[:5])}{'...' if len(completed_chunk_ids) > 5 else ''})"
                     )
 
                     # Update progress display with checkpoint state
@@ -457,8 +463,17 @@ class ExtractionOrchestrator:
             while chunk_index < len(chunks_to_process) or pending:
                 # Start new tasks for available workers
                 while available_workers and chunk_index < len(chunks_to_process):
-                    worker_id = available_workers.pop()
                     chunk = chunks_to_process[chunk_index]
+
+                    # Skip chunks that are already completed (from checkpoint)
+                    if chunk.chunk_id in completed_chunk_ids:
+                        logger.info(
+                            f"Skipping chunk {chunk.chunk_id} (already completed in checkpoint)"
+                        )
+                        chunk_index += 1
+                        continue
+
+                    worker_id = available_workers.pop()
                     current_chunk_index = chunk_index
 
                     # Create and start task
@@ -558,6 +573,9 @@ class ExtractionOrchestrator:
                             total_cost_usd += result_or_exception["chunk_cost"]
 
                         chunks_processed += 1
+                        completed_chunk_ids.add(
+                            chunk.chunk_id
+                        )  # Track completion for checkpoint
 
                         logger.debug(
                             f"Worker {worker_id} completed chunk {chunk.chunk_id} "
@@ -582,25 +600,24 @@ class ExtractionOrchestrator:
                         # Worker is now available for next chunk
                         available_workers.add(worker_id)
 
-                # Save checkpoint periodically (every 10 chunks) when all workers idle
-                # IMPORTANT: Only checkpoint when no pending tasks to ensure sequential completion
-                # With parallel workers, chunks complete out of order. If we checkpoint mid-stream,
-                # we might save chunks_processed=10 but chunks 11-15 could already be completed.
-                # On resume, we'd start from chunk 10 and skip those already-done chunks!
+                # Save checkpoint periodically (every 10 chunks) - can checkpoint anytime!
+                # We now track completed_chunk_ids, so we can skip already-done chunks on resume
+                # No need to wait for workers to be idle!
                 if (
                     chunks_processed % 10 == 0
-                    and len(pending) == 0  # All workers idle
+                    and chunks_processed > 0
                     and self.checkpoint_store
                     and self.config.checkpoint.enabled
                 ):
-                    self._save_checkpoint_if_needed(
+                    self._save_checkpoint_with_completed_ids(
                         chunk_index=chunk_index,
                         total_chunks=total_chunks,
                         chunks_processed=chunks_processed,
                         all_entities=all_entities,
+                        completed_chunk_ids=completed_chunk_ids,
                     )
-                    logger.debug(
-                        f"Checkpoint saved at {chunks_processed} chunks (all workers idle)"
+                    logger.info(
+                        f"Checkpoint saved: {chunks_processed} chunks, {len(completed_chunk_ids)} chunk IDs tracked"
                     )
 
             # Clear worker states after all chunks complete
@@ -608,14 +625,16 @@ class ExtractionOrchestrator:
 
             # Save final checkpoint after all chunks complete
             if self.checkpoint_store and self.config.checkpoint.enabled:
-                self._save_checkpoint_if_needed(
+                self._save_checkpoint_with_completed_ids(
                     chunk_index=chunk_index,
                     total_chunks=total_chunks,
                     chunks_processed=chunks_processed,
                     all_entities=all_entities,
+                    completed_chunk_ids=completed_chunk_ids,
                 )
                 logger.info(
-                    f"Final checkpoint saved: {chunks_processed}/{total_chunks} chunks complete"
+                    f"Final checkpoint saved: {chunks_processed}/{total_chunks} chunks complete, "
+                    f"{len(completed_chunk_ids)} chunk IDs tracked"
                 )
 
         else:
@@ -742,6 +761,53 @@ class ExtractionOrchestrator:
                 )
             except Exception as e:
                 logger.warning(f"Failed to save checkpoint: {e}")
+
+    def _save_checkpoint_with_completed_ids(
+        self,
+        chunk_index: int,
+        total_chunks: int,
+        chunks_processed: int,
+        all_entities: list[Entity],
+        completed_chunk_ids: set[str],
+    ) -> None:
+        """
+        Save checkpoint with completed chunk IDs (for parallel-safe resume).
+
+        Args:
+            chunk_index: Current chunk index
+            total_chunks: Total number of chunks
+            chunks_processed: Number of chunks processed so far
+            all_entities: All entities extracted so far
+            completed_chunk_ids: Set of chunk IDs that have been completed
+        """
+        if not self.checkpoint_store or not self.config.checkpoint.enabled:
+            return
+
+        # Serialize entities to JSON-LD format
+        serialized_entities = [entity.to_jsonld() for entity in all_entities]
+
+        checkpoint = Checkpoint(
+            checkpoint_id="latest",
+            config_hash=self.config.compute_hash(),
+            chunks_processed=chunks_processed,
+            completed_chunk_ids=completed_chunk_ids,  # Track completed chunks
+            entities_extracted=len(all_entities),
+            entities=serialized_entities,
+            timestamp=datetime.now(),
+            metadata={
+                "total_chunks": total_chunks,
+                "chunk_index": chunk_index,
+            },
+        )
+
+        try:
+            self.checkpoint_store.save_checkpoint(checkpoint)
+            logger.debug(
+                f"Saved checkpoint: {chunks_processed}/{total_chunks} chunks, "
+                f"{len(all_entities)} entities, {len(completed_chunk_ids)} chunk IDs"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to save checkpoint: {e}")
 
     def _entities_from_checkpoint_data(self, checkpoint: Checkpoint) -> list[Entity]:
         """
