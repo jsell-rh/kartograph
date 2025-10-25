@@ -53,6 +53,9 @@ class AgentClient:
         None  # Timestamp when rate limit expires
     )
     _semaphore_lock: ClassVar[asyncio.Lock | None] = None  # For lazy initialization
+    _client_pool: ClassVar[asyncio.Queue | None] = (
+        None  # Pool of ClaudeSDKClient instances
+    )
 
     def __init__(
         self,
@@ -89,8 +92,16 @@ class AgentClient:
         if AgentClient._semaphore_lock is None:
             AgentClient._semaphore_lock = asyncio.Lock()
 
-        # Configure MCP server for structured result submission
-        # This provides the submit_extraction_results tool
+        # Store config for creating client instances in the pool
+        self.allowed_tools = allowed_tools
+        self._mcp_result = None  # Store result from MCP tool
+        self.last_usage = None  # Store usage stats from last API call
+
+    def _create_client_instance(self) -> ClaudeSDKClient:
+        """Create a new ClaudeSDKClient instance for the pool."""
+        import sys
+
+        # Configure MCP server
         mcp_config = {
             "extraction": {
                 "command": sys.executable,
@@ -99,38 +110,26 @@ class AgentClient:
         }
 
         # Configure agent options
-        # Default tools include file access tools + MCP submission tool
         default_tools = [
             "Read",
             "Grep",
             "Glob",
-            "mcp__extraction__submit_extraction_results",  # MCP tool for structured submission
+            "mcp__extraction__submit_extraction_results",
         ]
 
         options = ClaudeAgentOptions(
-            allowed_tools=allowed_tools or default_tools,
-            permission_mode="acceptEdits",  # Auto-accept tool use for automation
+            allowed_tools=self.allowed_tools or default_tools,
+            permission_mode="acceptEdits",
             mcp_servers=mcp_config,
         )
 
-        # Note: Agent SDK authentication is handled via environment variables
-        # ANTHROPIC_API_KEY for API key auth
-        # For Vertex AI, we'd need to check Agent SDK documentation
-        if auth_config.auth_method == "api_key" and auth_config.api_key:
+        # Set API key if using API key auth
+        if self.auth_config.auth_method == "api_key" and self.auth_config.api_key:
             import os
 
-            os.environ["ANTHROPIC_API_KEY"] = auth_config.api_key
+            os.environ["ANTHROPIC_API_KEY"] = self.auth_config.api_key
 
-        self.client = ClaudeSDKClient(options=options)
-        self._connected = False
-        self._mcp_result = None  # Store result from MCP tool
-        self.last_usage = None  # Store usage stats from last API call
-
-    async def _ensure_connected(self) -> None:
-        """Ensure client is connected to Claude Agent SDK."""
-        if not self._connected:
-            await self.client.connect()
-            self._connected = True
+        return ClaudeSDKClient(options=options)
 
     def _build_tool_detail(self, tool_name: str, tool_input: dict) -> str | None:
         """
@@ -160,21 +159,24 @@ class AgentClient:
         # Default - show nothing
         return None
 
-    async def _get_semaphore(self) -> asyncio.Semaphore:
+    async def _get_semaphore_and_pool(self) -> tuple[asyncio.Semaphore, asyncio.Queue]:
         """
-        Get or create the shared semaphore for rate limiting.
+        Get or create the shared semaphore and client pool for rate limiting.
 
-        Uses lazy initialization with a lock to ensure only one semaphore is created
+        Uses lazy initialization with a lock to ensure only one semaphore/pool is created
         across all AgentClient instances.
 
         Returns:
-            Shared semaphore instance
+            Tuple of (semaphore, client_pool)
         """
-        # Fast path: semaphore already exists
-        if AgentClient._rate_limit_semaphore is not None:
-            return AgentClient._rate_limit_semaphore
+        # Fast path: semaphore and pool already exist
+        if (
+            AgentClient._rate_limit_semaphore is not None
+            and AgentClient._client_pool is not None
+        ):
+            return AgentClient._rate_limit_semaphore, AgentClient._client_pool
 
-        # Slow path: need to create semaphore (with lock)
+        # Slow path: need to create semaphore and pool (with lock)
         async with AgentClient._semaphore_lock:
             # Double-check (another instance may have created it while we waited for lock)
             if AgentClient._rate_limit_semaphore is None:
@@ -182,7 +184,14 @@ class AgentClient:
                     self.max_concurrent
                 )
 
-            return AgentClient._rate_limit_semaphore
+            if AgentClient._client_pool is None:
+                # Create pool with N client instances
+                AgentClient._client_pool = asyncio.Queue(maxsize=self.max_concurrent)
+                for _ in range(self.max_concurrent):
+                    client = self._create_client_instance()
+                    await AgentClient._client_pool.put(client)
+
+            return AgentClient._rate_limit_semaphore, AgentClient._client_pool
 
     async def _wait_for_rate_limit_clearance(self) -> None:
         """
@@ -302,35 +311,45 @@ class AgentClient:
         # 1. Wait if globally rate limited (transparent coordination)
         await self._wait_for_rate_limit_clearance()
 
-        # 2. Acquire semaphore to limit concurrent API calls (transparent throttling)
-        semaphore = await self._get_semaphore()
-        async with semaphore:
-            await self._ensure_connected()
+        # 2. Get semaphore and client pool
+        semaphore, client_pool = await self._get_semaphore_and_pool()
 
-            # Log prompt if enabled
-            if self.log_prompts:
-                logger.debug(
-                    "=" * 80
-                    + "\n"
-                    + "PROMPT TO AGENT SDK:\n"
-                    + "=" * 80
-                    + "\n"
-                    + prompt
-                    + "\n"
-                    + "=" * 80
-                )
+        # 3. Acquire a client from the pool (blocks if pool is empty)
+        client = await client_pool.get()
 
-            # Send query
-            await self.client.query(prompt)
+        try:
+            # 4. Acquire semaphore to enforce rate limit
+            async with semaphore:
+                # Ensure client is connected
+                try:
+                    await client.connect()
+                except:
+                    pass  # Might already be connected
 
-            # Receive response stream (inside semaphore to hold slot until complete)
+                # Log prompt if enabled
+                if self.log_prompts:
+                    logger.debug(
+                        "=" * 80
+                        + "\n"
+                        + "PROMPT TO AGENT SDK:\n"
+                        + "=" * 80
+                        + "\n"
+                        + prompt
+                        + "\n"
+                        + "=" * 80
+                    )
+
+                # Send query
+                await client.query(prompt)
+
+            # Receive response stream (outside semaphore, but holding pool slot)
             result_text = None
             messages_received = []
             error_message = None
             current_tool_name = None  # Track current tool being used
             current_tool_input = ""  # Accumulate tool input from deltas
             mcp_result = None  # Store MCP submit_extraction_results arguments
-            async for message in self.client.receive_response():
+            async for message in client.receive_response():
                 # Track message types for debugging
                 message_type = type(message).__name__
                 messages_received.append(message_type)
@@ -626,6 +645,10 @@ class AgentClient:
                 )
 
             return result_text
+
+        finally:
+            # Return client to pool for reuse by other workers
+            await client_pool.put(client)
 
     async def generate(
         self,
