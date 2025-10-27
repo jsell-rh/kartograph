@@ -470,7 +470,7 @@ class ExtractionOrchestrator:
 
         # Convert to list for dynamic modification (chunk splitting on 413 errors)
         chunks_to_process = list(chunks)
-        total_chunks = len(chunks_to_process)
+        original_chunk_count = len(chunks)  # Track original count (before splits)
 
         # 3. Process chunks with streaming worker pool (no idle workers!)
         # Use schema dir for all chunks
@@ -604,7 +604,7 @@ class ExtractionOrchestrator:
                             if self.progress_callback:
                                 self.progress_callback(
                                     chunks_processed,
-                                    total_chunks,
+                                    len(chunks_to_process),
                                     f"Skipped unsplittable chunk {chunk.chunk_id}",
                                 )
 
@@ -662,7 +662,7 @@ class ExtractionOrchestrator:
                         if self.progress_callback:
                             self.progress_callback(
                                 chunks_processed,
-                                total_chunks,
+                                len(chunks_to_process),
                                 f"Chunk {chunk.chunk_id} failed (continuing)",
                             )
 
@@ -688,7 +688,7 @@ class ExtractionOrchestrator:
 
                     logger.debug(
                         f"Worker {worker_id} completed chunk {chunk.chunk_id} "
-                        f"({chunks_successful}/{total_chunks} successful, "
+                        f"({chunks_successful}/{len(chunks_to_process)} successful, "
                         f"{chunks_failed} failed, {chunks_skipped} skipped, "
                         f"{len(result['entities'])} entities extracted)"
                     )
@@ -713,7 +713,7 @@ class ExtractionOrchestrator:
                         # Use total chunks done (successful + skipped from checkpoint)
                         self.progress_callback(
                             chunks_successful + chunks_skipped,
-                            total_chunks,
+                            len(chunks_to_process),
                             f"Processed chunk {chunk.chunk_id}",
                         )
 
@@ -763,7 +763,7 @@ class ExtractionOrchestrator:
                 if should_checkpoint:
                     self._save_checkpoint_with_completed_ids(
                         chunk_index=chunk_index,
-                        total_chunks=total_chunks,
+                        total_chunks=len(chunks_to_process),
                         chunks_processed=chunks_processed,
                         all_entities=all_entities,
                         completed_chunk_ids=completed_chunk_ids,
@@ -801,13 +801,13 @@ class ExtractionOrchestrator:
             if self.checkpoint_store and self.config.checkpoint.enabled:
                 self._save_checkpoint_with_completed_ids(
                     chunk_index=chunk_index,
-                    total_chunks=total_chunks,
+                    total_chunks=len(chunks_to_process),
                     chunks_processed=chunks_processed,
                     all_entities=all_entities,
                     completed_chunk_ids=completed_chunk_ids,
                 )
                 logger.info(
-                    f"Final checkpoint saved: {chunks_processed}/{total_chunks} chunks complete, "
+                    f"Final checkpoint saved: {chunks_processed}/{len(chunks_to_process)} chunks complete, "
                     f"{len(completed_chunk_ids)} chunk IDs tracked"
                 )
 
@@ -818,13 +818,15 @@ class ExtractionOrchestrator:
         # Final processing summary
         total_attempted = chunks_successful + chunks_failed
         effective_total = (
-            total_chunks - chunks_skipped
+            len(chunks_to_process) - chunks_skipped
         )  # What we actually needed to process
 
         logger.info("=" * 70)
         logger.info("EXTRACTION PROCESSING SUMMARY")
         logger.info("=" * 70)
-        logger.info(f"  Total chunks:        {total_chunks}")
+        logger.info(
+            f"  Total chunks:        {len(chunks_to_process)} (original: {original_chunk_count})"
+        )
         logger.info(f"  Skipped (resumed):   {chunks_skipped}")
         logger.info(f"  Attempted:           {total_attempted}")
         logger.info(f"  Successful:          {chunks_successful}")
