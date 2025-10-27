@@ -18,21 +18,18 @@ async def test_agent_client_initialization():
         api_key="sk-ant-test-key",  # pragma: allowlist secret
     )
 
-    with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
-        mock_client = AsyncMock()
-        MockClient.return_value = mock_client
+    client = AgentClient(
+        auth_config=auth,
+        model="claude-sonnet-4-5@20250929",
+        allowed_tools=["Read", "Grep"],
+        max_retries=3,
+    )
 
-        client = AgentClient(
-            auth_config=auth,
-            model="claude-sonnet-4-5@20250929",
-            allowed_tools=["Read", "Grep"],
-            max_retries=3,
-        )
-
-        # Should create ClaudeSDKClient
-        MockClient.assert_called_once()
-        assert client.model == "claude-sonnet-4-5@20250929"
-        assert client.max_retries == 3
+    # Client pool is lazy-initialized, so ClaudeSDKClient not created yet
+    # Just verify configuration is stored correctly
+    assert client.model == "claude-sonnet-4-5@20250929"
+    assert client.max_retries == 3
+    assert client.allowed_tools == ["Read", "Grep"]
 
 
 @pytest.mark.asyncio
@@ -49,6 +46,7 @@ async def test_agent_client_generate_basic():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -73,8 +71,10 @@ async def test_agent_client_generate_basic():
             temperature=0.0,
         )
 
-        # Should call query with prompt
+        # Should call query with prompt and disconnect/connect for cleanup
         mock_client.query.assert_called_once_with("Test prompt")
+        mock_client.disconnect.assert_called()
+        mock_client.connect.assert_called()
         assert response == "Test response from agent"
 
 
@@ -92,6 +92,7 @@ async def test_agent_client_generate_with_system():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -137,6 +138,7 @@ async def test_agent_client_generate_retry_on_failure():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
 
         # Fail twice, then succeed on third try
         async def mock_query(prompt):
@@ -203,6 +205,7 @@ async def test_agent_client_extract_entities_basic():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -254,6 +257,7 @@ async def test_agent_client_extract_entities_with_schema():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -302,6 +306,7 @@ async def test_agent_client_extract_entities_parse_raw_json():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -343,6 +348,7 @@ async def test_agent_client_extract_entities_invalid_json():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -382,6 +388,7 @@ async def test_agent_client_extract_entities_missing_entities_field():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -421,6 +428,7 @@ async def test_agent_client_extract_entities_retry():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
 
         # Fail once, then succeed on second try
         async def mock_query(prompt):
@@ -529,6 +537,7 @@ async def test_agent_client_retry_with_corrective_prompt():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
 
         async def mock_query(prompt):
             queries.append(prompt)
@@ -615,6 +624,7 @@ async def test_agent_client_parse_json_in_generic_code_block():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -663,6 +673,7 @@ Extraction complete!"""
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
         mock_client.query = AsyncMock()
 
         async def mock_receive_response():
@@ -707,6 +718,7 @@ async def test_agent_client_max_retries_exhausted():
     with patch("kg_extractor.llm.agent_client.ClaudeSDKClient") as MockClient:
         mock_client = AsyncMock()
         mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
 
         async def mock_query(prompt):
             queries.append(prompt)
