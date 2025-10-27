@@ -504,6 +504,12 @@ class ProgressDisplay:
                     line = f"  [bold green]✓[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
                     line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
                     line += " → [green]Completed[/green]"
+
+                    # Show entity and relationship counts if available
+                    entity_count = state.get("entity_count", 0)
+                    relationship_count = state.get("relationship_count", 0)
+                    if entity_count > 0 or relationship_count > 0:
+                        line += f" [dim]({entity_count} entities, {relationship_count} relationships)[/dim]"
                 else:
                     # Active worker - show green dot
                     line = f"  [bold green]●[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "

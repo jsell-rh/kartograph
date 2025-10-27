@@ -223,6 +223,43 @@ class ExtractionOrchestrator:
         """
         return self._worker_states.copy()
 
+    def _count_relationships(self, entities: list[Entity]) -> int:
+        """
+        Count relationships (edges) in entities.
+
+        A relationship is a property whose value is:
+        - A dict with "@id" key (entity reference)
+        - A list of such dicts (multiple references)
+
+        Args:
+            entities: List of Entity objects
+
+        Returns:
+            Number of relationships found
+        """
+        total_relationships = 0
+
+        for entity in entities:
+            # Get properties dict
+            properties = entity.properties
+
+            for key, value in properties.items():
+                # Skip reserved keys
+                if key.startswith("@"):
+                    continue
+
+                # Check if value is an entity reference
+                if isinstance(value, dict) and "@id" in value:
+                    total_relationships += 1
+
+                # Check if value is a list of entity references
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, dict) and "@id" in item:
+                            total_relationships += 1
+
+        return total_relationships
+
     async def _process_chunk(
         self,
         chunk: Chunk,
@@ -656,9 +693,20 @@ class ExtractionOrchestrator:
                         f"{len(result['entities'])} entities extracted)"
                     )
 
-                    # Mark worker as completed in worker states
+                    # Mark worker as completed in worker states with entity/relationship counts
                     if worker_id in self._worker_states:
+                        # Count relationships in extracted entities
+                        relationship_count = self._count_relationships(
+                            result["entities"]
+                        )
+
                         self._worker_states[worker_id]["status"] = "completed"
+                        self._worker_states[worker_id]["entity_count"] = len(
+                            result["entities"]
+                        )
+                        self._worker_states[worker_id][
+                            "relationship_count"
+                        ] = relationship_count
 
                     # Report progress with detailed status
                     if self.progress_callback:
