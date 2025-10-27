@@ -663,32 +663,19 @@ class AgentClient:
             return result_text
 
         finally:
-            # CRITICAL: Return client to pool to prevent leaks
-            # Even if session cleanup fails, we MUST return it - better a dirty client than a leaked one
+            # CRITICAL: Always return client to pool
+            # Session state persistence is OK - each chunk gets a fresh complete prompt
+            # Attempting disconnect/reconnect causes asyncio cancel scope errors and provides no benefit
             try:
-                # Try to disconnect/reconnect to clear session (best effort)
-                try:
-                    await client.disconnect()
-                    await client.connect()
-                    logger.debug("Client session cleared successfully")
-                except Exception as e:
-                    # Session cleanup failed - log but still return client to pool
-                    # The client may have stale session state, but it's still usable
-                    logger.warning(
-                        f"Client session cleanup failed (will return to pool anyway): {e}"
-                    )
-
-                # ALWAYS return the client to the pool
-                # This prevents pool depletion even when cleanup fails
                 await client_pool.put(client)
-
+                logger.debug("Client returned to pool")
             except Exception as e:
-                # Even returning to pool failed - this is catastrophic
-                # Try one last desperate attempt to clean up
+                # Failed to return client - this is catastrophic
                 logger.error(
                     f"CRITICAL: Failed to return client to pool: {e}. "
                     f"Client will leak. Pool may be depleted."
                 )
+                # Try to at least disconnect to free resources
                 try:
                     await client.disconnect()
                 except Exception:
@@ -830,11 +817,12 @@ class AgentClient:
                         f"Failed to parse JSON (attempt {attempt + 1}/{self.max_retries}): {e}"
                     )
 
-                    # Send corrective prompt asking for JSON only
+                    # Send corrective prompt but KEEP original context
+                    # The agent may remember what it was extracting from session history
                     corrective_prompt = """
-I need the extraction results in valid JSON format only. No explanatory text, no markdown formatting.
+Your previous response included extra text around the JSON. I need ONLY the JSON object, nothing else.
 
-Please respond with ONLY a JSON object in this exact format:
+Please provide the extraction results again as ONLY valid JSON in this exact format:
 
 ```json
 {
@@ -855,8 +843,11 @@ Please respond with ONLY a JSON object in this exact format:
 }
 ```
 
-Do not include any text before or after the JSON. Just the JSON object.
+No explanatory text, no markdown formatting - just the JSON object you extracted before.
 """
+                    # Keep original prompt in session by NOT replacing it
+                    # Agent SDK maintains conversation history, so agent remembers context
+                    # Just send the corrective instruction as a follow-up
                     prompt = corrective_prompt
                     # JSON parsing errors are not rate limits - use standard backoff
                     backoff = self._calculate_backoff(attempt, is_rate_limit=False)
