@@ -71,10 +71,8 @@ async def test_agent_client_generate_basic():
             temperature=0.0,
         )
 
-        # Should call query with prompt and disconnect/connect for cleanup
+        # Should call query with prompt (clients stay connected, no disconnect)
         mock_client.query.assert_called_once_with("Test prompt")
-        mock_client.disconnect.assert_called()
-        mock_client.connect.assert_called()
         assert response == "Test response from agent"
 
 
