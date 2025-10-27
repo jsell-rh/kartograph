@@ -478,15 +478,16 @@ class ProgressDisplay:
                 if state.get("status", "active") == "completed"
             )
 
-            # Build header
+            # Build header with worker summary
+            total_workers = len(worker_states)
             if completed_count > 0:
                 panel_content = (
-                    f"Workers: [bold cyan]{active_count} active[/bold cyan], "
-                    f"[bold green]{completed_count} completed[/bold green]\n"
+                    f"[bold]Workers:[/bold] {active_count}/{total_workers} active, "
+                    f"{completed_count} completed this cycle\n\n"
                 )
             else:
                 panel_content = (
-                    f"Workers: [bold cyan]{active_count} active[/bold cyan]\n"
+                    f"[bold]Workers:[/bold] {active_count}/{total_workers} active\n\n"
                 )
 
             for wid in sorted(worker_states.keys()):
@@ -535,56 +536,59 @@ class ProgressDisplay:
         # Main progress bar
         components = [self.progress]
 
-        # Current chunk info
-        # Always show chunk table to maintain consistent panel height (prevents visual glitches)
-        chunk_table = Table.grid(padding=(0, 2))
-        chunk_table.add_column(style="bold cyan")
-        chunk_table.add_column()
+        # Current chunk info - ONLY for non-parallel mode
+        # In parallel mode, this info doesn't make sense (20 workers = 20 chunks)
+        # The worker panel shows per-worker chunk info instead
+        if not self.worker_states:
+            # Sequential mode - show current chunk info
+            chunk_table = Table.grid(padding=(0, 2))
+            chunk_table.add_column(style="bold cyan")
+            chunk_table.add_column()
 
-        if self.current_chunk_info:
-            files = self.current_chunk_info.get("files", [])
-            file_count = len(files)
+            if self.current_chunk_info:
+                files = self.current_chunk_info.get("files", [])
+                file_count = len(files)
 
-            chunk_table.add_row("Chunk:", self.current_chunk_info.get("id", ""))
-            chunk_table.add_row("Files/Chunk:", str(file_count))
-            chunk_table.add_row(
-                "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
-            )
-
-            # In verbose mode, always reserve space for optional rows (consistent height)
-            if self.verbose:
-                # Current file row (always present in verbose, may be empty)
-                current_file_display = (
-                    Text(self.current_file, style="bold yellow")
-                    if self.current_file
-                    else ""
+                chunk_table.add_row("Chunk:", self.current_chunk_info.get("id", ""))
+                chunk_table.add_row("Files/Chunk:", str(file_count))
+                chunk_table.add_row(
+                    "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
                 )
-                chunk_table.add_row("Current File:", current_file_display)
 
-                # Files list row (always present in verbose, may be empty)
-                if files:
-                    filenames = [f.name for f in files]
-                    # Show first 5 filenames, then "... and N more" if needed
-                    if len(filenames) <= 5:
-                        files_display = ", ".join(filenames)
+                # In verbose mode, always reserve space for optional rows (consistent height)
+                if self.verbose:
+                    # Current file row (always present in verbose, may be empty)
+                    current_file_display = (
+                        Text(self.current_file, style="bold yellow")
+                        if self.current_file
+                        else ""
+                    )
+                    chunk_table.add_row("Current File:", current_file_display)
+
+                    # Files list row (always present in verbose, may be empty)
+                    if files:
+                        filenames = [f.name for f in files]
+                        # Show first 5 filenames, then "... and N more" if needed
+                        if len(filenames) <= 5:
+                            files_display = ", ".join(filenames)
+                        else:
+                            files_display = (
+                                ", ".join(filenames[:5])
+                                + f" ... and {len(filenames) - 5} more"
+                            )
+                        chunk_table.add_row("Files:", Text(files_display, style="dim"))
                     else:
-                        files_display = (
-                            ", ".join(filenames[:5])
-                            + f" ... and {len(filenames) - 5} more"
-                        )
-                    chunk_table.add_row("Files:", Text(files_display, style="dim"))
-                else:
+                        chunk_table.add_row("Files:", "")
+            else:
+                # Placeholder rows to maintain height even when no chunk info
+                chunk_table.add_row("Chunk:", "")
+                chunk_table.add_row("Files/Chunk:", "")
+                chunk_table.add_row("Size:", "")
+                if self.verbose:
+                    chunk_table.add_row("Current File:", "")
                     chunk_table.add_row("Files:", "")
-        else:
-            # Placeholder rows to maintain height even when no chunk info
-            chunk_table.add_row("Chunk:", "")
-            chunk_table.add_row("Files/Chunk:", "")
-            chunk_table.add_row("Size:", "")
-            if self.verbose:
-                chunk_table.add_row("Current File:", "")
-                chunk_table.add_row("Files:", "")
 
-        components.append(chunk_table)
+            components.append(chunk_table)
 
         # Statistics - Two column layout
         # Left column: Entity/Graph stats
