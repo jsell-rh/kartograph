@@ -595,6 +595,33 @@ async def main(argv: list[str] | None = None) -> int:
 
             return 0
 
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully
+            if progress_display:
+                progress_display.stop()
+
+            logger.info("\n" + "=" * 70)
+            logger.info("EXTRACTION INTERRUPTED BY USER (Ctrl+C)")
+            logger.info("=" * 70)
+
+            # Inform about checkpoint status
+            if (
+                orchestrator.checkpoint_store
+                and hasattr(config, "checkpoint")
+                and config.checkpoint.enabled
+            ):
+                logger.info(
+                    f"Progress saved in checkpoint: {orchestrator.checkpoint_store.checkpoint_dir}"
+                )
+                logger.info(
+                    "Resume with: --resume (checkpoint will be automatically detected)"
+                )
+            else:
+                logger.info("No checkpoint enabled - progress was not saved")
+
+            logger.info("=" * 70)
+            return 130  # Standard exit code for Ctrl+C (128 + SIGINT)
+
         except Exception as e:
             if progress_display:
                 progress_display.stop()
