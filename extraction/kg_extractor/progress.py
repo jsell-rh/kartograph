@@ -539,7 +539,12 @@ class ProgressDisplay:
         # Current chunk info - ONLY for non-parallel mode
         # In parallel mode, this info doesn't make sense (20 workers = 20 chunks)
         # The worker panel shows per-worker chunk info instead
-        if not self.worker_states:
+        # Determine if we're in parallel mode by checking for active workers
+        worker_states = (
+            self.orchestrator.get_worker_states() if self.orchestrator else {}
+        )
+
+        if not worker_states:
             # Sequential mode - show current chunk info
             chunk_table = Table.grid(padding=(0, 2))
             chunk_table.add_column(style="bold cyan")
