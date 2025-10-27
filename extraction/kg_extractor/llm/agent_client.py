@@ -663,53 +663,36 @@ class AgentClient:
             return result_text
 
         finally:
-            # CRITICAL: Disconnect and reconnect client to clear session state
-            # This ensures each chunk gets a fresh session without prior context
-            client_to_return = None
-            client_is_reusable = False
-
+            # CRITICAL: Return client to pool to prevent leaks
+            # Even if session cleanup fails, we MUST return it - better a dirty client than a leaked one
             try:
-                await client.disconnect()
-                await client.connect()
-                client_to_return = client
-                client_is_reusable = True
-            except Exception as e:
-                # Disconnect/reconnect failed - client is broken
-                logger.warning(
-                    f"Client disconnect/reconnect failed: {e}. Creating fresh client."
-                )
-                client_is_reusable = False
+                # Try to disconnect/reconnect to clear session (best effort)
+                try:
+                    await client.disconnect()
+                    await client.connect()
+                    logger.debug("Client session cleared successfully")
+                except Exception as e:
+                    # Session cleanup failed - log but still return client to pool
+                    # The client may have stale session state, but it's still usable
+                    logger.warning(
+                        f"Client session cleanup failed (will return to pool anyway): {e}"
+                    )
 
-                # IMPORTANT: Explicitly close the broken client to free resources
+                # ALWAYS return the client to the pool
+                # This prevents pool depletion even when cleanup fails
+                await client_pool.put(client)
+
+            except Exception as e:
+                # Even returning to pool failed - this is catastrophic
+                # Try one last desperate attempt to clean up
+                logger.error(
+                    f"CRITICAL: Failed to return client to pool: {e}. "
+                    f"Client will leak. Pool may be depleted."
+                )
                 try:
                     await client.disconnect()
                 except Exception:
-                    pass  # Already disconnected or broken
-
-                # Try to create a fresh replacement client
-                try:
-                    fresh_client = self._create_client_instance()
-                    await fresh_client.connect()
-                    client_to_return = fresh_client
-                    client_is_reusable = True
-                except Exception as create_error:
-                    logger.error(
-                        f"Failed to create fresh client: {create_error}. "
-                        f"Pool will be short one client until next request."
-                    )
-                    client_to_return = None
-
-            # Return exactly ONE client to the pool (or none if all attempts failed)
-            if client_to_return is not None:
-                try:
-                    await client_pool.put(client_to_return)
-                except Exception as e:
-                    logger.error(f"Failed to return client to pool: {e}")
-                    # If we can't return to pool, explicitly disconnect to free resources
-                    try:
-                        await client_to_return.disconnect()
-                    except Exception:
-                        pass
+                    pass  # Can't do anything more
 
     async def generate(
         self,
