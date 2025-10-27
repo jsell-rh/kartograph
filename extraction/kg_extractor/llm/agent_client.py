@@ -11,6 +11,7 @@ Features rate limiting transparency:
 
 import asyncio
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any, ClassVar
@@ -18,6 +19,8 @@ from typing import Any, ClassVar
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
 
 from kg_extractor.config import AuthConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AgentClient:
@@ -210,9 +213,6 @@ class AgentClient:
         if AgentClient._rate_limited_until is not None:
             wait_time = AgentClient._rate_limited_until - time.time()
             if wait_time > 0:
-                import logging
-
-                logger = logging.getLogger("kg_extractor.llm")
                 logger.warning(
                     f"Rate limit backoff in effect. Waiting {wait_time:.1f} seconds..."
                 )
@@ -273,9 +273,6 @@ class AgentClient:
         """
         AgentClient._rate_limited_until = time.time() + backoff_seconds
 
-        import logging
-
-        logger = logging.getLogger("kg_extractor.llm")
         logger.warning(
             f"Global rate limit backoff set for {backoff_seconds:.1f} seconds. "
             f"All AgentClient instances will pause until {time.strftime('%H:%M:%S', time.localtime(AgentClient._rate_limited_until))}"
@@ -319,8 +316,6 @@ class AgentClient:
             RuntimeError: If no response received
             Exception: Any API errors (will be caught by retry logic in calling methods)
         """
-        import logging
-
         from claude_agent_sdk.types import (
             AssistantMessage,
             ControlErrorResponse,
@@ -328,8 +323,6 @@ class AgentClient:
             StreamEvent,
             ToolUseBlock,
         )
-
-        logger = logging.getLogger("kg_extractor.llm")
 
         # 1. Wait if globally rate limited (transparent coordination)
         await self._wait_for_rate_limit_clearance()
@@ -767,9 +760,6 @@ class AgentClient:
                     if is_rate_limit:
                         self._set_global_backoff(backoff)
 
-                    import logging
-
-                    logger = logging.getLogger("kg_extractor.llm")
                     logger.warning(
                         f"{'Rate limit' if is_rate_limit else 'Error'} on attempt {attempt + 1}/{self.max_retries}: {e}. "
                         f"Retrying in {backoff:.1f}s..."
@@ -819,10 +809,6 @@ class AgentClient:
         Raises:
             Exception: On agent errors or invalid response format
         """
-        import logging
-
-        logger = logging.getLogger("kg_extractor.llm")
-
         # Use provided prompt or build one (for backward compatibility)
         if prompt is None:
             if data_files is None:
