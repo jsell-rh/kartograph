@@ -59,6 +59,9 @@ class AgentClient:
     _client_pool: ClassVar[asyncio.Queue | None] = (
         None  # Pool of ClaudeSDKClient instances
     )
+    _shared_mcp_server: ClassVar[Any | None] = (
+        None  # Shared MCP server instance (ExtractionResultServer)
+    )
 
     def __init__(
         self,
@@ -100,17 +103,19 @@ class AgentClient:
         self._mcp_result = None  # Store result from MCP tool
         self.last_usage = None  # Store usage stats from last API call
 
-    def _create_client_instance(self) -> ClaudeSDKClient:
+    async def _create_client_instance(self) -> ClaudeSDKClient:
         """Create a new ClaudeSDKClient instance for the pool."""
-        import sys
+        logger.debug(
+            "Creating new ClaudeSDKClient instance (will use shared MCP server)"
+        )
 
-        logger.debug("Creating new ClaudeSDKClient instance (will spawn MCP server)")
-
-        # Configure MCP server
+        # Configure MCP server to use shared instance (not subprocess)
+        # All clients share ONE MCP server instance instead of spawning 20 subprocesses
         mcp_config = {
             "extraction": {
-                "command": sys.executable,
-                "args": ["-m", "kg_extractor.llm.extraction_mcp_server"],
+                "type": "sdk",
+                "name": "extraction",
+                "instance": AgentClient._shared_mcp_server.server,
             }
         }
 
@@ -135,7 +140,12 @@ class AgentClient:
             os.environ["ANTHROPIC_API_KEY"] = self.auth_config.api_key
 
         client = ClaudeSDKClient(options=options)
-        logger.debug("ClaudeSDKClient instance created successfully")
+
+        # IMPORTANT: Connect once during creation, not on every use
+        # Calling connect() repeatedly spawns new claude CLI subprocesses
+        await client.connect()
+
+        logger.debug("ClaudeSDKClient instance created and connected successfully")
         return client
 
     def _build_tool_detail(self, tool_name: str, tool_input: dict) -> str | None:
@@ -183,12 +193,24 @@ class AgentClient:
         ):
             return AgentClient._rate_limit_semaphore, AgentClient._client_pool
 
-        # Slow path: need to create semaphore and pool (with lock)
+        # Slow path: need to create semaphore, MCP server, and pool (with lock)
         async with AgentClient._semaphore_lock:
             # Double-check (another instance may have created it while we waited for lock)
             if AgentClient._rate_limit_semaphore is None:
                 AgentClient._rate_limit_semaphore = asyncio.Semaphore(
                     self.max_concurrent
+                )
+
+            # Create shared MCP server instance (ONE for all clients)
+            if AgentClient._shared_mcp_server is None:
+                from kg_extractor.llm.extraction_mcp_server import (
+                    ExtractionResultServer,
+                )
+
+                logger.info("Creating shared MCP server instance (one for all clients)")
+                AgentClient._shared_mcp_server = ExtractionResultServer()
+                logger.debug(
+                    f"Shared MCP server created: {AgentClient._shared_mcp_server.server.name}"
                 )
 
             if AgentClient._client_pool is None:
@@ -199,7 +221,7 @@ class AgentClient:
                     f"Creating client pool with {self.max_concurrent} ClaudeSDKClient instances"
                 )
                 for i in range(self.max_concurrent):
-                    client = self._create_client_instance()
+                    client = await self._create_client_instance()
                     await AgentClient._client_pool.put(client)
                     logger.debug(f"Initialized client {i+1}/{self.max_concurrent}")
 
@@ -340,11 +362,8 @@ class AgentClient:
         try:
             # 4. Acquire semaphore to enforce rate limit
             async with semaphore:
-                # Ensure client is connected
-                try:
-                    await client.connect()
-                except:
-                    pass  # Might already be connected
+                # Client is already connected (done once during creation)
+                # DO NOT call connect() here - it spawns new claude CLI subprocesses
 
                 # Log prompt if enabled
                 if self.log_prompts:

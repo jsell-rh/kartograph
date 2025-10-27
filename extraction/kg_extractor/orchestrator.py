@@ -680,11 +680,11 @@ class ExtractionOrchestrator:
                     if pool_stats.get("initialized"):
                         current_size = pool_stats["current_size"]
                         max_size = pool_stats["max_size"]
-                        available = pool_stats["available_slots"]
+                        workers_busy = max_size - current_size
 
                         logger.debug(
-                            f"Client pool health check: {current_size}/{max_size} clients "
-                            f"({available} available slots)"
+                            f"Client pool health check: {workers_busy}/{max_size} workers active, "
+                            f"{current_size} idle in pool"
                         )
 
                         # CRITICAL: Pool should NEVER exceed max_size
@@ -734,18 +734,18 @@ class ExtractionOrchestrator:
             if pool_stats.get("initialized"):
                 current_size = pool_stats["current_size"]
                 max_size = pool_stats["max_size"]
-                available = pool_stats["available_slots"]
+                workers_busy = max_size - current_size
 
                 logger.info(
-                    f"Final client pool status: {current_size}/{max_size} clients "
-                    f"({available} available slots)"
+                    f"Final client pool status: {workers_busy}/{max_size} workers still active, "
+                    f"{current_size} idle in pool"
                 )
 
                 # All workers should have returned their clients
                 if current_size != max_size:
                     logger.warning(
-                        f"⚠️  Expected all {max_size} clients back in pool, "
-                        f"but only {current_size} present. "
+                        f"⚠️  Expected all {max_size} workers idle, "
+                        f"but {workers_busy} still active. "
                         f"Some clients may have failed cleanup."
                     )
 
