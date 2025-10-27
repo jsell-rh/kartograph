@@ -663,10 +663,26 @@ class AgentClient:
             return result_text
 
         finally:
-            # CRITICAL: Always return client to pool
-            # Session state persistence is OK - each chunk gets a fresh complete prompt
-            # Attempting disconnect/reconnect causes asyncio cancel scope errors and provides no benefit
+            # CRITICAL: Clear session history and return client to pool
+            # Use /clear command to reset session without disconnect/reconnect errors
             try:
+                # Clear session history so next chunk gets fresh context
+                await client.query("/clear")
+
+                # Drain the /clear response (we don't need it)
+                async for _ in client.receive_response():
+                    pass
+
+                logger.debug("Client session cleared with /clear command")
+            except Exception as e:
+                # Session clear failed - log but continue (still return client to pool)
+                logger.warning(
+                    f"Failed to clear client session with /clear: {e}. "
+                    f"Client may have stale context."
+                )
+
+            try:
+                # Always return client to pool (even if /clear failed)
                 await client_pool.put(client)
                 logger.debug("Client returned to pool")
             except Exception as e:
