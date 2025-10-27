@@ -94,6 +94,9 @@ class ExtractionAgent:
                 prompt=full_prompt,
                 event_callback=event_callback,
             )
+        except PromptTooLongError:
+            # Re-raise PromptTooLongError so orchestrator can split chunk
+            raise
         except Exception as e:
             raise ExtractionError(f"LLM extraction failed: {e}") from e
 
