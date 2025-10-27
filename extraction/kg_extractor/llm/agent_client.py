@@ -647,8 +647,26 @@ class AgentClient:
             return result_text
 
         finally:
-            # Return client to pool for reuse by other workers
-            await client_pool.put(client)
+            # CRITICAL: Disconnect and reconnect client to clear session state
+            # This ensures each chunk gets a fresh session without prior context
+            try:
+                await client.disconnect()
+            except Exception:
+                pass  # Client might already be disconnected
+
+            # Reconnect or create fresh client if needed
+            try:
+                await client.connect()
+                await client_pool.put(client)
+            except Exception:
+                # If reconnect fails, create brand new client
+                try:
+                    fresh_client = self._create_client_instance()
+                    await client_pool.put(fresh_client)
+                except Exception as e:
+                    logger.error(f"Failed to return client to pool: {e}")
+                    # Put client back anyway - pool will be recreated on next request
+                    await client_pool.put(client)
 
     async def generate(
         self,

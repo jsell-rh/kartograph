@@ -354,11 +354,22 @@ class ExtractionOrchestrator:
         # Initialize tracking
         all_entities: list[Entity] = []
         all_validation_errors: list[ValidationError] = []
-        chunks_processed = 0
+
+        # Progress tracking - separates successful, failed, and skipped chunks
+        chunks_processed = 0  # Total attempted (successful + failed)
+        chunks_successful = 0  # Successfully completed
+        chunks_failed = 0  # Failed and skipped
+        chunks_skipped = 0  # Skipped from checkpoint resume
         chunk_index = 0
         completed_chunk_ids: set[str] = (
             set()
         )  # Track which chunks are done (for parallel resume)
+
+        # Failure detection (circuit breaker)
+        consecutive_failures = 0
+        MAX_CONSECUTIVE_FAILURES = 5
+        FAILURE_RATE_THRESHOLD = 0.10
+        MIN_CHUNKS_FOR_RATE_CHECK = 10
 
         # Track actual usage across all chunks for cost comparison
         total_input_tokens = 0
@@ -467,8 +478,10 @@ class ExtractionOrchestrator:
 
                     # Skip chunks that are already completed (from checkpoint)
                     if chunk.chunk_id in completed_chunk_ids:
+                        chunks_skipped += 1
                         logger.info(
-                            f"Skipping chunk {chunk.chunk_id} (already completed in checkpoint)"
+                            f"Skipping chunk {chunk.chunk_id} (already completed in checkpoint) "
+                            f"[{chunks_skipped} skipped so far]"
                         )
                         chunk_index += 1
                         continue
@@ -540,20 +553,81 @@ class ExtractionOrchestrator:
 
                         except ValueError as split_error:
                             # Can't split further (single file too large)
+                            chunks_failed += 1
+                            consecutive_failures += 1
+                            chunks_processed += 1
+
                             logger.error(
                                 f"Cannot split chunk {chunk.chunk_id} further: {split_error}. "
-                                f"Skipping this chunk."
+                                f"Skipping this chunk (single file too large). "
+                                f"Progress: {chunks_successful} successful, {chunks_failed} failed, {chunks_skipped} skipped"
                             )
-                            chunks_processed += 1
+
+                            # Update progress display
+                            if self.progress_callback:
+                                self.progress_callback(
+                                    chunks_processed,
+                                    total_chunks,
+                                    f"Skipped unsplittable chunk {chunk.chunk_id}",
+                                )
 
                         # Worker is now available
                         available_workers.add(worker_id)
                         continue
 
                     except Exception as e:
-                        # Other error - log and skip
-                        logger.error(f"Error processing chunk {chunk.chunk_id}: {e}")
+                        # Track failure
+                        chunks_failed += 1
+                        consecutive_failures += 1
                         chunks_processed += 1
+
+                        # Log with full context
+                        logger.error(
+                            f"Error processing chunk {chunk.chunk_id} (worker {worker_id}): {e}",
+                            exc_info=True,
+                        )
+
+                        # Calculate failure metrics
+                        failure_rate = chunks_failed / max(chunks_processed, 1)
+
+                        # Circuit breaker: abort on consecutive failures
+                        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                            logger.error(
+                                f"ABORTING: {consecutive_failures} consecutive chunk failures. "
+                                f"Systematic issue detected. Last error: {e}"
+                            )
+                            raise ExtractionError(
+                                f"Too many consecutive failures ({consecutive_failures}). "
+                                f"Failed chunk: {chunk.chunk_id}"
+                            ) from e
+
+                        # Circuit breaker: abort on high failure rate
+                        if (
+                            chunks_processed >= MIN_CHUNKS_FOR_RATE_CHECK
+                            and failure_rate > FAILURE_RATE_THRESHOLD
+                        ):
+                            logger.error(
+                                f"ABORTING: Failure rate too high ({failure_rate:.1%} > {FAILURE_RATE_THRESHOLD:.0%}). "
+                                f"Failed: {chunks_failed}/{chunks_processed} chunks."
+                            )
+                            raise ExtractionError(
+                                f"Chunk failure rate ({failure_rate:.1%}) exceeds threshold. "
+                                f"Failed {chunks_failed}/{chunks_processed} chunks."
+                            ) from e
+
+                        # Log current status
+                        logger.warning(
+                            f"Progress: {chunks_successful} successful, {chunks_failed} failed, {chunks_skipped} skipped | "
+                            f"Failure rate: {failure_rate:.1%}, consecutive: {consecutive_failures}/{MAX_CONSECUTIVE_FAILURES}"
+                        )
+
+                        # Update progress display with failure indication
+                        if self.progress_callback:
+                            self.progress_callback(
+                                chunks_processed,
+                                total_chunks,
+                                f"Chunk {chunk.chunk_id} failed (continuing)",
+                            )
 
                         # Worker is now available
                         available_workers.add(worker_id)
@@ -567,14 +641,18 @@ class ExtractionOrchestrator:
                         total_output_tokens += result["chunk_output_tokens"]
                         total_cost_usd += result["chunk_cost"]
 
+                    # Success - track and reset failure counter
                     chunks_processed += 1
+                    chunks_successful += 1
+                    consecutive_failures = 0  # Reset on success
                     completed_chunk_ids.add(
                         chunk.chunk_id
                     )  # Track completion for checkpoint
 
                     logger.debug(
                         f"Worker {worker_id} completed chunk {chunk.chunk_id} "
-                        f"({chunks_processed}/{total_chunks} total, "
+                        f"({chunks_successful}/{total_chunks} successful, "
+                        f"{chunks_failed} failed, {chunks_skipped} skipped, "
                         f"{len(result['entities'])} entities extracted)"
                     )
 
@@ -582,12 +660,11 @@ class ExtractionOrchestrator:
                     if worker_id in self._worker_states:
                         self._worker_states[worker_id]["status"] = "completed"
 
-                    # Report progress
+                    # Report progress with detailed status
                     if self.progress_callback:
-                        # Use total_chunks which accounts for initial count
-                        # Note: This may be less than len(chunks_to_process) if chunks were split
+                        # Use total chunks done (successful + skipped from checkpoint)
                         self.progress_callback(
-                            chunks_processed,
+                            chunks_successful + chunks_skipped,
                             total_chunks,
                             f"Processed chunk {chunk.chunk_id}",
                         )
@@ -645,6 +722,34 @@ class ExtractionOrchestrator:
             # No extraction agent - just skip all chunks
             chunks_processed = len(chunks_to_process)
 
+        # Final processing summary
+        total_attempted = chunks_successful + chunks_failed
+        effective_total = (
+            total_chunks - chunks_skipped
+        )  # What we actually needed to process
+
+        logger.info("=" * 70)
+        logger.info("EXTRACTION PROCESSING SUMMARY")
+        logger.info("=" * 70)
+        logger.info(f"  Total chunks:        {total_chunks}")
+        logger.info(f"  Skipped (resumed):   {chunks_skipped}")
+        logger.info(f"  Attempted:           {total_attempted}")
+        logger.info(f"  Successful:          {chunks_successful}")
+        logger.info(f"  Failed:              {chunks_failed}")
+
+        if chunks_failed > 0:
+            failure_rate = chunks_failed / total_attempted if total_attempted > 0 else 0
+            logger.warning(
+                f"  Failure rate:        {failure_rate:.1%}\n"
+                f"\n"
+                f"  ⚠️  {chunks_failed} chunks failed and will be retried on next resume.\n"
+                f"  Failed chunks are NOT in checkpoint and will be re-attempted."
+            )
+            logger.info("=" * 70)
+        elif chunks_successful > 0:
+            logger.info(f"  ✓ All {chunks_successful} chunks processed successfully!")
+            logger.info("=" * 70)
+
         # 4. Deduplicate entities
         if all_entities:
             dedup_result = self.deduplicator.deduplicate(all_entities)
@@ -668,7 +773,9 @@ class ExtractionOrchestrator:
         duration = time.time() - start_time
         metrics = ExtractionMetrics(
             total_chunks=len(chunks),
-            chunks_processed=chunks_processed,
+            chunks_processed=chunks_successful,
+            chunks_failed=chunks_failed,
+            chunks_skipped=chunks_skipped,
             entities_extracted=len(final_entities),
             validation_errors=len(all_validation_errors),
             duration_seconds=duration,

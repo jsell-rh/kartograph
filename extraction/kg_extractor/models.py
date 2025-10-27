@@ -184,7 +184,17 @@ class ExtractionMetrics(BaseModel):
     )
     chunks_processed: int = Field(
         ge=0,
-        description="Number of chunks processed so far",
+        description="Number of chunks successfully processed",
+    )
+    chunks_failed: int = Field(
+        default=0,
+        ge=0,
+        description="Number of chunks that failed during processing",
+    )
+    chunks_skipped: int = Field(
+        default=0,
+        ge=0,
+        description="Number of chunks skipped (from checkpoint resume)",
     )
     entities_extracted: int = Field(
         ge=0,
@@ -194,6 +204,24 @@ class ExtractionMetrics(BaseModel):
         ge=0,
         description="Total validation errors encountered",
     )
+
+    @property
+    def chunks_attempted(self) -> int:
+        """Total chunks attempted (successful + failed)."""
+        return self.chunks_processed + self.chunks_failed
+
+    @property
+    def success_rate(self) -> float:
+        """Chunk success rate (0.0 to 1.0)."""
+        if self.chunks_attempted == 0:
+            return 0.0
+        return self.chunks_processed / self.chunks_attempted
+
+    @property
+    def failure_rate(self) -> float:
+        """Chunk failure rate (0.0 to 1.0)."""
+        return 1.0 - self.success_rate
+
     duration_seconds: float = Field(
         ge=0.0,
         description="Total extraction duration in seconds",
