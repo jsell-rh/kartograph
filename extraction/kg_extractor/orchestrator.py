@@ -15,7 +15,7 @@ from kg_extractor.chunking.models import Chunk
 from kg_extractor.config import ExtractionConfig
 from kg_extractor.cost_estimator import CostEstimate, CostEstimator
 from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
-from kg_extractor.exceptions import PromptTooLongError
+from kg_extractor.exceptions import ExtractionError, PromptTooLongError
 from kg_extractor.loaders.file_system import DiskFileSystem
 from kg_extractor.models import Entity, ExtractionMetrics, ValidationError
 from kg_extractor.output.metrics import MetricsExporter
@@ -672,6 +672,29 @@ class ExtractionOrchestrator:
                     # Worker is now available for next chunk
                     available_workers.add(worker_id)
 
+                # Monitor client pool health (every 10 chunks)
+                if chunks_successful % 10 == 0 and chunks_successful > 0:
+                    from kg_extractor.llm.agent_client import AgentClient
+
+                    pool_stats = AgentClient.get_pool_stats()
+                    if pool_stats.get("initialized"):
+                        current_size = pool_stats["current_size"]
+                        max_size = pool_stats["max_size"]
+                        available = pool_stats["available_slots"]
+
+                        logger.debug(
+                            f"Client pool health check: {current_size}/{max_size} clients "
+                            f"({available} available slots)"
+                        )
+
+                        # CRITICAL: Pool should NEVER exceed max_size
+                        if current_size > max_size:
+                            logger.error(
+                                f"⚠️  CLIENT POOL SIZE ANOMALY DETECTED! "
+                                f"Pool has {current_size} clients but max is {max_size}. "
+                                f"This indicates a memory leak in client cleanup."
+                            )
+
                 # Save checkpoint based on configured strategy - can checkpoint anytime!
                 # We now track completed_chunk_ids, so we can skip already-done chunks on resume
                 # No need to wait for workers to be idle!
@@ -703,6 +726,28 @@ class ExtractionOrchestrator:
 
             # Clear worker states after all chunks complete
             self._worker_states.clear()
+
+            # Final client pool health check
+            from kg_extractor.llm.agent_client import AgentClient
+
+            pool_stats = AgentClient.get_pool_stats()
+            if pool_stats.get("initialized"):
+                current_size = pool_stats["current_size"]
+                max_size = pool_stats["max_size"]
+                available = pool_stats["available_slots"]
+
+                logger.info(
+                    f"Final client pool status: {current_size}/{max_size} clients "
+                    f"({available} available slots)"
+                )
+
+                # All workers should have returned their clients
+                if current_size != max_size:
+                    logger.warning(
+                        f"⚠️  Expected all {max_size} clients back in pool, "
+                        f"but only {current_size} present. "
+                        f"Some clients may have failed cleanup."
+                    )
 
             # Save final checkpoint after all chunks complete
             if self.checkpoint_store and self.config.checkpoint.enabled:

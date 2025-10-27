@@ -186,10 +186,15 @@ class AgentClient:
 
             if AgentClient._client_pool is None:
                 # Create pool with N client instances
+                # IMPORTANT: maxsize ensures pool CANNOT grow beyond this limit
                 AgentClient._client_pool = asyncio.Queue(maxsize=self.max_concurrent)
-                for _ in range(self.max_concurrent):
+                logger.info(
+                    f"Creating client pool with {self.max_concurrent} ClaudeSDKClient instances"
+                )
+                for i in range(self.max_concurrent):
                     client = self._create_client_instance()
                     await AgentClient._client_pool.put(client)
+                    logger.debug(f"Initialized client {i+1}/{self.max_concurrent}")
 
             return AgentClient._rate_limit_semaphore, AgentClient._client_pool
 
@@ -275,6 +280,24 @@ class AgentClient:
             f"Global rate limit backoff set for {backoff_seconds:.1f} seconds. "
             f"All AgentClient instances will pause until {time.strftime('%H:%M:%S', time.localtime(AgentClient._rate_limited_until))}"
         )
+
+    @classmethod
+    def get_pool_stats(cls) -> dict[str, Any]:
+        """
+        Get current client pool statistics for monitoring memory leaks.
+
+        Returns:
+            Dictionary with pool_size, max_size, available_slots
+        """
+        if cls._client_pool is None:
+            return {"initialized": False}
+
+        return {
+            "initialized": True,
+            "current_size": cls._client_pool.qsize(),
+            "max_size": cls._client_pool.maxsize,
+            "available_slots": cls._client_pool.maxsize - cls._client_pool.qsize(),
+        }
 
     async def _send_and_receive(self, prompt: str, event_callback: Any = None) -> str:
         """
@@ -649,24 +672,51 @@ class AgentClient:
         finally:
             # CRITICAL: Disconnect and reconnect client to clear session state
             # This ensures each chunk gets a fresh session without prior context
+            client_to_return = None
+            client_is_reusable = False
+
             try:
                 await client.disconnect()
-            except Exception:
-                pass  # Client might already be disconnected
-
-            # Reconnect or create fresh client if needed
-            try:
                 await client.connect()
-                await client_pool.put(client)
-            except Exception:
-                # If reconnect fails, create brand new client
+                client_to_return = client
+                client_is_reusable = True
+            except Exception as e:
+                # Disconnect/reconnect failed - client is broken
+                logger.warning(
+                    f"Client disconnect/reconnect failed: {e}. Creating fresh client."
+                )
+                client_is_reusable = False
+
+                # IMPORTANT: Explicitly close the broken client to free resources
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass  # Already disconnected or broken
+
+                # Try to create a fresh replacement client
                 try:
                     fresh_client = self._create_client_instance()
-                    await client_pool.put(fresh_client)
+                    await fresh_client.connect()
+                    client_to_return = fresh_client
+                    client_is_reusable = True
+                except Exception as create_error:
+                    logger.error(
+                        f"Failed to create fresh client: {create_error}. "
+                        f"Pool will be short one client until next request."
+                    )
+                    client_to_return = None
+
+            # Return exactly ONE client to the pool (or none if all attempts failed)
+            if client_to_return is not None:
+                try:
+                    await client_pool.put(client_to_return)
                 except Exception as e:
                     logger.error(f"Failed to return client to pool: {e}")
-                    # Put client back anyway - pool will be recreated on next request
-                    await client_pool.put(client)
+                    # If we can't return to pool, explicitly disconnect to free resources
+                    try:
+                        await client_to_return.disconnect()
+                    except Exception:
+                        pass
 
     async def generate(
         self,
