@@ -104,6 +104,8 @@ class AgentClient:
         """Create a new ClaudeSDKClient instance for the pool."""
         import sys
 
+        logger.debug("Creating new ClaudeSDKClient instance (will spawn MCP server)")
+
         # Configure MCP server
         mcp_config = {
             "extraction": {
@@ -132,7 +134,9 @@ class AgentClient:
 
             os.environ["ANTHROPIC_API_KEY"] = self.auth_config.api_key
 
-        return ClaudeSDKClient(options=options)
+        client = ClaudeSDKClient(options=options)
+        logger.debug("ClaudeSDKClient instance created successfully")
+        return client
 
     def _build_tool_detail(self, tool_name: str, tool_input: dict) -> str | None:
         """
@@ -663,26 +667,10 @@ class AgentClient:
             return result_text
 
         finally:
-            # CRITICAL: Clear session history and return client to pool
-            # Use /clear command to reset session without disconnect/reconnect errors
+            # CRITICAL: Return client to pool immediately
+            # DO NOT clear session - each chunk prompt is self-contained anyway
+            # Any session clearing (disconnect, /clear) causes MCP process leaks
             try:
-                # Clear session history so next chunk gets fresh context
-                await client.query("/clear")
-
-                # Drain the /clear response (we don't need it)
-                async for _ in client.receive_response():
-                    pass
-
-                logger.debug("Client session cleared with /clear command")
-            except Exception as e:
-                # Session clear failed - log but continue (still return client to pool)
-                logger.warning(
-                    f"Failed to clear client session with /clear: {e}. "
-                    f"Client may have stale context."
-                )
-
-            try:
-                # Always return client to pool (even if /clear failed)
                 await client_pool.put(client)
                 logger.debug("Client returned to pool")
             except Exception as e:
@@ -691,7 +679,7 @@ class AgentClient:
                     f"CRITICAL: Failed to return client to pool: {e}. "
                     f"Client will leak. Pool may be depleted."
                 )
-                # Try to at least disconnect to free resources
+                # Try to disconnect as last resort
                 try:
                     await client.disconnect()
                 except Exception:
