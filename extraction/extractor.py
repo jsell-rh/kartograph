@@ -409,6 +409,9 @@ async def main(argv: list[str] | None = None) -> int:
         logger.info("Starting knowledge graph extraction")
         logger.info(f"Data directory: {config.data_dir}")
         logger.info(f"Output file: {config.output_file}")
+        logger.info(f"Model: {config.llm.model}")
+        logger.info(f"Workers: {config.workers}")
+        logger.info(f"Deduplication strategy: {config.deduplication.strategy}")
 
         # Create components
         file_system = DiskFileSystem()
