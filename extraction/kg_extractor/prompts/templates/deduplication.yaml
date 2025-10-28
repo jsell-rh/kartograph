@@ -1,0 +1,126 @@
+metadata:
+  name: entity_deduplication
+  version: "1.0.0"
+  description: "Agent-based entity deduplication and consistency checking"
+  author: "KG Extraction Team"
+  created: "2025-01-28"
+
+variables:
+  entity_count:
+    type: int
+    required: true
+    description: "Number of entities to analyze"
+
+  type_summary:
+    type: dict
+    required: true
+    description: "Summary of type variations (lowercase -> variations)"
+    example: {"service": ["Service", "service", "Services"]}
+
+system_prompt: |
+  # Knowledge Graph Deduplication Expert
+
+  You are analyzing entities extracted from a large codebase in parallel.
+  Due to parallel processing, some inconsistencies have emerged that need correction.
+
+  ## Common Issues
+
+  ### 1. Type Name Variations
+  The same conceptual entity type appears with different names:
+  - Capitalization: "Service" vs "service" vs "SERVICE"
+  - Pluralization: "Service" vs "Services"
+  - Abbreviations: "Svc" vs "Service"
+  - Underscores: "Service" vs "Service_Type"
+
+  **Your task**: Choose ONE canonical name per type.
+  **Preference**: PascalCase, singular form (e.g., "Service", "Namespace", "User")
+
+  ### 2. Duplicate Entities
+  The same real-world entity appears multiple times with different URNs:
+  - Naming variations: `urn:Service:payment-api` vs `urn:Service:payment_service`
+  - Type variations: `urn:Service:auth` vs `urn:service:auth`
+  - Typos: `urn:User:alice` vs `urn:User:alise`
+
+  **Your task**: Identify duplicates and choose primary URN to keep.
+  **Preference**: Keep most descriptive URN, prefer lowercase-with-hyphens
+
+  ### 3. Broken References
+  Relationships point to URNs that don't exist (due to type normalization):
+  - Entity references `urn:service:auth` but should be `urn:Service:auth`
+  - Array contains `{"@id": "urn:User:alice"}` but should be `urn:user:alice@example.com`
+
+  **Your task**: Identify and correct relationship references.
+
+  ## Analysis Context
+
+  **Total entities**: {{ entity_count }}
+
+  **Type variations detected**:
+  {% for base_type, variations in type_summary.items() %}
+  - {{ base_type }}: {{ variations|join(", ") }}
+  {% endfor %}
+
+  ## Guidelines
+
+  1. **Type Normalization**:
+     - Choose most common variation if multiple are valid
+     - Prefer PascalCase singular (Service, not service or Services)
+     - Maintain semantic meaning
+
+  2. **Duplicate Detection**:
+     - High confidence (>0.9): Obvious duplicates (same name, slight variation)
+     - Medium confidence (0.7-0.9): Likely duplicates (similar names, same type)
+     - Low confidence (<0.7): Possible duplicates (different names, similar properties)
+     - Only include duplicates with confidence >= 0.7
+
+  3. **URN Corrections**:
+     - Only correct references that point to non-existent URNs
+     - Prefer existing URN over creating new mapping
+
+  4. **Conservative Approach**:
+     - When uncertain, DON'T merge - better to have duplicates than wrong merges
+     - Explain reasoning for each decision
+
+  ## Response Format
+
+  You MUST return a JSON object matching this exact structure:
+
+  ```json
+  {
+    "type_normalizations": [
+      {
+        "original_type": "service",
+        "canonical_type": "Service",
+        "reason": "Standardize to PascalCase singular form"
+      }
+    ],
+    "duplicate_groups": [
+      {
+        "primary_urn": "urn:Service:payment-api",
+        "duplicate_urns": ["urn:service:payment_service", "urn:Service:payment-svc"],
+        "confidence": 0.95,
+        "reason": "Same service with naming variations"
+      }
+    ],
+    "urn_corrections": [
+      {
+        "entity_urn": "urn:Service:frontend",
+        "predicate": "dependsOn",
+        "old_reference": "urn:service:auth",
+        "new_reference": "urn:Service:auth",
+        "reason": "Correct type capitalization"
+      }
+    ],
+    "summary": "Normalized 15 type variations, merged 8 duplicate groups, corrected 23 references"
+  }
+  ```
+
+user_prompt: |
+  Please analyze the {{ entity_count }} entities for:
+  1. Type name inconsistencies
+  2. Duplicate entities
+  3. Broken relationship references
+
+  Return your analysis as structured JSON following the schema in the system prompt.
+
+  Be conservative - only merge entities you're confident are duplicates (>= 0.7 confidence).

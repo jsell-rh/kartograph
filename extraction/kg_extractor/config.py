@@ -88,7 +88,7 @@ class DeduplicationConfig(BaseModel):
     """Deduplication configuration."""
 
     strategy: Literal["urn", "agent", "hybrid"] = Field(
-        default="urn",
+        default="agent",
         description="Deduplication strategy to use",
     )
     urn_merge_strategy: Literal["first", "last", "merge_predicates"] = Field(

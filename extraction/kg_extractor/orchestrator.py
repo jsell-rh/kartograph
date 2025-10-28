@@ -14,6 +14,8 @@ from kg_extractor.chunking.hybrid_chunker import HybridChunker
 from kg_extractor.chunking.models import Chunk
 from kg_extractor.config import ExtractionConfig
 from kg_extractor.cost_estimator import CostEstimate, CostEstimator
+from kg_extractor.deduplication.agent_deduplicator import AgentBasedDeduplicator
+from kg_extractor.deduplication.protocol import DeduplicationStrategy
 from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.exceptions import ExtractionError, PromptTooLongError
 from kg_extractor.loaders.file_system import DiskFileSystem
@@ -163,7 +165,7 @@ class ExtractionOrchestrator:
         file_system: DiskFileSystem | None = None,
         chunker: HybridChunker | None = None,
         extraction_agent: ExtractionAgent | None = None,
-        deduplicator: URNDeduplicator | None = None,
+        deduplicator: DeduplicationStrategy | None = None,
         checkpoint_store: DiskCheckpointStore | None = None,
         progress_callback: Callable[[int, int, str], None] | None = None,
     ):
@@ -183,7 +185,25 @@ class ExtractionOrchestrator:
         self.file_system = file_system or DiskFileSystem()
         self.chunker = chunker or HybridChunker(config=config.chunking)
         self.extraction_agent = extraction_agent
-        self.deduplicator = deduplicator or URNDeduplicator(config=config.deduplication)
+
+        # Initialize deduplicator based on strategy
+        if deduplicator is None:
+            if config.deduplication.strategy == "agent":
+                # Agent-based deduplication requires prompt loader
+                from kg_extractor.prompts.loader import PromptLoader
+
+                prompt_loader = PromptLoader(template_dir=config.prompt_template_dir)
+                self.deduplicator = AgentBasedDeduplicator(
+                    config=config.deduplication,
+                    auth_config=config.auth,
+                    prompt_loader=prompt_loader,
+                )
+            else:
+                # Default to URN-based deduplication
+                self.deduplicator = URNDeduplicator(config=config.deduplication)
+        else:
+            self.deduplicator = deduplicator
+
         self.validator = EntityValidator(config=config.validation)
         self.progress_callback = progress_callback
 
