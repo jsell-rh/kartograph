@@ -102,6 +102,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Number of concurrent workers for parallel chunk processing (default: 3, max: 20)",
     )
 
+    # LLM configuration
+    llm_group = parser.add_argument_group("llm")
+    llm_group.add_argument(
+        "--model",
+        help="LLM model to use (default: claude-sonnet-4-5@20250929)",
+    )
+
     # Authentication
     auth_group = parser.add_argument_group("authentication")
     auth_group.add_argument(
@@ -287,6 +294,14 @@ def build_config_from_args(
 
     if checkpoint_dict:
         config_dict["checkpoint"] = checkpoint_dict
+
+    # LLM overrides
+    llm_dict = {}
+    if args.model:
+        llm_dict["model"] = args.model
+
+    if llm_dict:
+        config_dict["llm"] = llm_dict
 
     # Top-level overrides
     if args.output_file != Path(
