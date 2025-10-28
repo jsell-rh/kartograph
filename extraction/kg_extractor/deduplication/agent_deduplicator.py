@@ -13,7 +13,7 @@ from kg_extractor.deduplication.models import (
     DeduplicationResult,
 )
 from kg_extractor.models import Entity
-from kg_extractor.prompts.loader import PromptLoader
+from kg_extractor.prompts.loader import DiskPromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class AgentBasedDeduplicator:
         self,
         config: DeduplicationConfig,
         auth_config: AuthConfig,
-        prompt_loader: PromptLoader | None = None,
+        prompt_loader: DiskPromptLoader | None = None,
     ):
         """
         Initialize agent-based deduplicator.
@@ -47,9 +47,7 @@ class AgentBasedDeduplicator:
 
         # Create prompt loader if not provided
         if prompt_loader is None:
-            from kg_extractor.prompts.loader import PromptLoader
-
-            prompt_loader = PromptLoader(
+            prompt_loader = DiskPromptLoader(
                 template_dir=Path(__file__).parent.parent / "prompts" / "templates"
             )
         self.prompt_loader = prompt_loader

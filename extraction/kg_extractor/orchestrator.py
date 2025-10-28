@@ -190,9 +190,11 @@ class ExtractionOrchestrator:
         if deduplicator is None:
             if config.deduplication.strategy == "agent":
                 # Agent-based deduplication requires prompt loader
-                from kg_extractor.prompts.loader import PromptLoader
+                from kg_extractor.prompts.loader import DiskPromptLoader
 
-                prompt_loader = PromptLoader(template_dir=config.prompt_template_dir)
+                prompt_loader = DiskPromptLoader(
+                    template_dir=config.prompt_template_dir
+                )
                 self.deduplicator = AgentBasedDeduplicator(
                     config=config.deduplication,
                     auth_config=config.auth,
