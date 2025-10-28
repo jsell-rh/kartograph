@@ -125,6 +125,17 @@ class AgentBasedDeduplicator:
             # Parse response content
             response_text = response.content[0].text
 
+            # Strip markdown code fences if present
+            response_text = response_text.strip()
+            if response_text.startswith("```"):
+                # Remove opening fence (```json or ```)
+                lines = response_text.split("\n")
+                lines = lines[1:]  # Remove first line with ```json
+                # Remove closing fence
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+                response_text = "\n".join(lines)
+
             # 4. Parse structured response
             try:
                 analysis = DeduplicationAnalysis.model_validate_json(response_text)
