@@ -198,6 +198,7 @@ class ExtractionOrchestrator:
                 self.deduplicator = AgentBasedDeduplicator(
                     config=config.deduplication,
                     auth_config=config.auth,
+                    model=config.llm.model,
                     prompt_loader=prompt_loader,
                 )
             elif config.deduplication.strategy == "hybrid":

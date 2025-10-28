@@ -32,6 +32,7 @@ class AgentBasedDeduplicator:
         self,
         config: DeduplicationConfig,
         auth_config: AuthConfig,
+        model: str,
         prompt_loader: DiskPromptLoader | None = None,
     ):
         """
@@ -40,10 +41,12 @@ class AgentBasedDeduplicator:
         Args:
             config: Deduplication configuration
             auth_config: Authentication configuration
+            model: LLM model to use for deduplication
             prompt_loader: Optional prompt loader (created if not provided)
         """
         self.config = config
         self.auth_config = auth_config
+        self.model = model
 
         # Create prompt loader if not provided
         if prompt_loader is None:
@@ -107,10 +110,10 @@ class AgentBasedDeduplicator:
         )
 
         # 3. Call LLM with structured output
-        logger.info("Calling LLM for deduplication analysis...")
+        logger.info(f"Calling LLM ({self.model}) for deduplication analysis...")
         try:
             response = self.client.messages.create(
-                model="claude-sonnet-4-5@20250929",
+                model=self.model,
                 max_tokens=8000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],

@@ -34,7 +34,7 @@ class AuthConfig(BaseModel):
         description="Google Cloud project ID for Vertex AI",
     )
     vertex_region: str = Field(
-        default="us-central1",
+        default="us-east1",
         description="Google Cloud region for Vertex AI",
     )
     vertex_credentials_file: Optional[Path] = Field(

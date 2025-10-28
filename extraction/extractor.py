@@ -126,7 +126,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     auth_group.add_argument(
         "--vertex-region",
-        default="us-central1",
+        default="us-east1",
         help="Google Cloud region (for vertex_ai auth)",
     )
     auth_group.add_argument(
@@ -241,7 +241,7 @@ def build_config_from_args(
         auth_dict["api_key"] = args.api_key
     if args.vertex_project_id:
         auth_dict["vertex_project_id"] = args.vertex_project_id
-    if args.vertex_region != "us-central1":  # Only override if not default
+    if args.vertex_region != "us-east1":  # Only override if not default
         auth_dict["vertex_region"] = args.vertex_region
     if args.vertex_credentials_file:
         auth_dict["vertex_credentials_file"] = args.vertex_credentials_file
