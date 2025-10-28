@@ -145,6 +145,11 @@ class AgentBasedDeduplicator:
 
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
+            if "404" in str(e) or "NOT_FOUND" in str(e):
+                logger.error(
+                    f"Model '{self.model}' not found in Vertex AI region '{self.auth_config.vertex_region}'. "
+                    f"Consider using --auth-method=api_key or check available models in your region."
+                )
             # Fall back to no changes
             analysis = DeduplicationAnalysis(
                 type_normalizations=[],
