@@ -57,7 +57,14 @@ class AgentBasedDeduplicator:
             self.client = Anthropic(api_key=auth_config.api_key)
         else:
             # Vertex AI
-            from anthropic.vertex import AnthropicVertex
+            try:
+                from anthropic.vertex import AnthropicVertex
+            except ImportError as e:
+                raise ImportError(
+                    "Vertex AI support requires the anthropic[vertex] extra. "
+                    "Install with: pip install 'anthropic[vertex]' google-cloud-aiplatform\n"
+                    "Or use API key auth with: --auth-method=api_key --api-key=<your-key>"
+                ) from e
 
             self.client = AnthropicVertex(
                 project_id=auth_config.vertex_project_id,
