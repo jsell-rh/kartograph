@@ -172,14 +172,14 @@ class DgraphLoader:
                 # Mixed types detected
                 mixed_type_count += 1
 
-                # If uid is mixed with any scalar type, default to string
+                # If uid is mixed with any scalar type, prefer uid (relationships are more important)
                 if "uid" in observed_types:
                     print(
-                        f"  ⚠️  {predicate}: mixed types {observed_types} → defaulting to string"
+                        f"  ⚠️  {predicate}: mixed types {observed_types} → preferring uid (relationships)"
                     )
-                    self.predicate_types[predicate] = "string"
-                    # Remove from relationship predicates
-                    self.relationship_predicates.discard(predicate)
+                    self.predicate_types[predicate] = "uid"
+                    # Keep in relationship predicates
+                    self.relationship_predicates.add(predicate)
                 else:
                     # Mixed scalar types - choose string as most permissive
                     print(
@@ -289,16 +289,36 @@ class DgraphLoader:
                             obj = self._encode_urn(item["@id"])
                             nquads.append(f"{subject} <{predicate}> {obj} .")
                         elif isinstance(item, dict):
+                            # Skip nested objects if predicate is uid type
+                            if (
+                                predicate in self.predicate_types
+                                and self.predicate_types[predicate] == "uid"
+                            ):
+                                continue
                             # Nested object (serialize as JSON string)
                             obj_str = json.dumps(item).replace('"', '\\"')
                             nquads.append(f'{subject} <{predicate}> "{obj_str}" .')
                         else:
+                            # Skip scalars if predicate is uid type
+                            if (
+                                predicate in self.predicate_types
+                                and self.predicate_types[predicate] == "uid"
+                            ):
+                                continue
                             obj = self._format_literal(item)
                             if obj:  # Only add if not None
                                 nquads.append(f"{subject} <{predicate}> {obj} .")
 
                 else:
                     # Scalar value
+                    # Skip if this predicate is defined as uid type (mixed type case)
+                    if (
+                        predicate in self.predicate_types
+                        and self.predicate_types[predicate] == "uid"
+                    ):
+                        # This predicate should only have uid values, skip scalars
+                        continue
+
                     obj = self._format_literal(value)
                     if obj:  # Only add if not None
                         nquads.append(f"{subject} <{predicate}> {obj} .")
