@@ -58,7 +58,7 @@ class AgentBasedDeduplicator:
         else:
             # Vertex AI
             try:
-                from anthropic.vertex import AnthropicVertex
+                from anthropic import AnthropicVertex
             except ImportError as e:
                 raise ImportError(
                     "Vertex AI support requires the anthropic[vertex] extra. "
