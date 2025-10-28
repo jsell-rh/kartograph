@@ -828,6 +828,19 @@ class ExtractionOrchestrator:
                         f"({entities_before - entities_after} duplicates removed)"
                     )
 
+                    # Save checkpoint after deduplication to persist deduplicated state
+                    if self.checkpoint_store and self.config.checkpoint.enabled:
+                        self._save_checkpoint_with_completed_ids(
+                            chunk_index=chunk_index,
+                            total_chunks=len(chunks_to_process),
+                            chunks_processed=chunks_processed,
+                            all_entities=all_entities,
+                            completed_chunk_ids=completed_chunk_ids,
+                        )
+                        logger.info(
+                            f"Checkpoint updated after deduplication: {len(all_entities)} entities"
+                        )
+
             # Clear worker states after all chunks complete
             self._worker_states.clear()
 

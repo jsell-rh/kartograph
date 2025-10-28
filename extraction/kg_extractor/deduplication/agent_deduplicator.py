@@ -196,10 +196,24 @@ class AgentBasedDeduplicator:
 
         if norm_map:
             logger.info(f"Applying {len(norm_map)} type normalizations")
-            for orig, canonical in list(norm_map.items())[:5]:  # Show first 5
-                logger.debug(f"  {orig} → {canonical}")
+
+            # Show first 5 normalizations with example entity names
+            normalizations_shown = 0
+            for orig, canonical in norm_map.items():
+                if normalizations_shown >= 5:
+                    break
+                # Find an example entity with this type
+                example_entity = next((e for e in entities if e.type == orig), None)
+                if example_entity:
+                    logger.debug(
+                        f"  {orig} → {canonical} (e.g., '{example_entity.name}')"
+                    )
+                else:
+                    logger.debug(f"  {orig} → {canonical}")
+                normalizations_shown += 1
+
             if len(norm_map) > 5:
-                logger.debug(f"  ... and {len(norm_map) - 5} more")
+                logger.debug(f"  ... and {len(norm_map) - 5} more normalizations")
 
         normalized = []
         for entity in entities:
@@ -225,6 +239,9 @@ class AgentBasedDeduplicator:
         self, entities: list[Entity], analysis: DeduplicationAnalysis
     ) -> list[Entity]:
         """Apply duplicate merges."""
+        # Build entity lookup for detailed logging
+        entity_lookup = {e.id: e for e in entities}
+
         # Build URN mapping (duplicate -> primary)
         urn_map = {}
         for group in analysis.duplicate_groups:
@@ -240,9 +257,16 @@ class AgentBasedDeduplicator:
 
         if urn_map:
             logger.info(f"Merging {len(urn_map)} duplicate entities")
-            # Show first few merges
+            # Show first few merges with entity names
             for dup_urn, primary_urn in list(urn_map.items())[:3]:
-                logger.debug(f"  {dup_urn} → {primary_urn}")
+                dup_entity = entity_lookup.get(dup_urn)
+                primary_entity = entity_lookup.get(primary_urn)
+                dup_name = dup_entity.name if dup_entity else "unknown"
+                primary_name = primary_entity.name if primary_entity else "unknown"
+                logger.debug(
+                    f"  Merging: {dup_entity.type if dup_entity else '?'}:'{dup_name}' ({dup_urn}) "
+                    f"→ {primary_entity.type if primary_entity else '?'}:'{primary_name}' ({primary_urn})"
+                )
             if len(urn_map) > 3:
                 logger.debug(f"  ... and {len(urn_map) - 3} more merges")
 
