@@ -102,14 +102,26 @@ class AgentBasedDeduplicator:
         type_summary = self._build_type_summary(entities)
         logger.info(f"Detected {len(type_summary)} base types with variations")
 
-        # 2. Load and render prompt
+        # 2. Serialize entities to compact format
+        entities_data = [
+            {
+                "id": e.id,
+                "type": e.type,
+                "name": e.name,
+                "properties": e.properties,
+            }
+            for e in entities
+        ]
+
+        # 3. Load and render prompt
         template = self.prompt_loader.load("deduplication")
         system_prompt, user_prompt = template.render(
             entity_count=len(entities),
             type_summary=type_summary,
+            entities=entities_data,
         )
 
-        # 3. Call LLM with structured output using tool use
+        # 4. Call LLM with structured output using tool use
         logger.info(f"Calling LLM ({self.model}) for deduplication analysis...")
 
         # Define tool schema for structured output
@@ -199,7 +211,7 @@ class AgentBasedDeduplicator:
                 tool_choice={"type": "tool", "name": "submit_deduplication_analysis"},
             )
 
-            # 4. Extract structured output from tool use
+            # 5. Extract structured output from tool use
             tool_use = next(
                 (block for block in response.content if block.type == "tool_use"), None
             )
@@ -230,12 +242,12 @@ class AgentBasedDeduplicator:
                 summary=f"LLM call failed: {e}",
             )
 
-        # 5. Apply normalizations and merges
+        # 6. Apply normalizations and merges
         normalized_entities = self._apply_normalizations(entities, analysis)
         deduplicated_entities = self._apply_merges(normalized_entities, analysis)
         corrected_entities = self._apply_corrections(deduplicated_entities, analysis)
 
-        # 6. Build metrics
+        # 7. Build metrics
         metrics = DeduplicationMetrics(
             total_input_entities=len(entities),
             total_output_entities=len(corrected_entities),

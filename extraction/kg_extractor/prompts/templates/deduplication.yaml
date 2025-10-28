@@ -17,6 +17,11 @@ variables:
     description: "Summary of type variations (lowercase -> variations)"
     example: {"service": ["Service", "service", "Services"]}
 
+  entities:
+    type: list
+    required: true
+    description: "List of entities to analyze (compact format with id, type, name, properties)"
+
 system_prompt: |
   # Knowledge Graph Deduplication Expert
 
@@ -87,7 +92,14 @@ system_prompt: |
   Include all fields with clear reasoning for each decision.
 
 user_prompt: |
-  Please analyze the {{ entity_count }} entities for:
+  Please analyze these {{ entity_count }} entities:
+
+  {% for entity in entities %}
+  - {{ entity.id }} ({{ entity.type }}){% if entity.name %}: "{{ entity.name }}"{% endif %}
+    {% if entity.properties %}Properties: {{ entity.properties | tojson }}{% endif %}
+  {% endfor %}
+
+  Analyze for:
   1. Type name inconsistencies (normalize to PascalCase singular)
   2. Duplicate entities (merge only if confidence >= 0.7)
   3. Broken relationship references (fix URNs after type changes)
