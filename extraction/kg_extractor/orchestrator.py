@@ -200,6 +200,14 @@ class ExtractionOrchestrator:
                     auth_config=config.auth,
                     prompt_loader=prompt_loader,
                 )
+            elif config.deduplication.strategy == "hybrid":
+                # Hybrid not yet implemented - warn and fall back to URN
+                logger.warning(
+                    "Hybrid deduplication strategy is not yet implemented. "
+                    "Falling back to URN-based deduplication. "
+                    "Use --dedup-strategy=agent for LLM-powered semantic deduplication."
+                )
+                self.deduplicator = URNDeduplicator(config=config.deduplication)
             else:
                 # Default to URN-based deduplication
                 self.deduplicator = URNDeduplicator(config=config.deduplication)

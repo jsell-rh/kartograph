@@ -453,10 +453,10 @@ class DgraphLoader:
 
             if dgraph_cmd:
                 # Execute dgraph live command
-                # Timeout: 60 minutes for large datasets (354K+ triples)
+                # Timeout: 3h for large datasets (354K+ triples)
                 # Note: Loading can be slow due to indexing, especially with sparse types
                 result = subprocess.run(
-                    dgraph_cmd, capture_output=True, text=True, timeout=3600
+                    dgraph_cmd, capture_output=True, text=True, timeout=60 * 60 * 3
                 )
 
                 # dgraph live outputs to stderr even on success, check return code

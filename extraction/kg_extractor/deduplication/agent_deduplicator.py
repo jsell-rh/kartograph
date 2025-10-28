@@ -196,6 +196,10 @@ class AgentBasedDeduplicator:
 
         if norm_map:
             logger.info(f"Applying {len(norm_map)} type normalizations")
+            for orig, canonical in list(norm_map.items())[:5]:  # Show first 5
+                logger.debug(f"  {orig} → {canonical}")
+            if len(norm_map) > 5:
+                logger.debug(f"  ... and {len(norm_map) - 5} more")
 
         normalized = []
         for entity in entities:
@@ -236,6 +240,11 @@ class AgentBasedDeduplicator:
 
         if urn_map:
             logger.info(f"Merging {len(urn_map)} duplicate entities")
+            # Show first few merges
+            for dup_urn, primary_urn in list(urn_map.items())[:3]:
+                logger.debug(f"  {dup_urn} → {primary_urn}")
+            if len(urn_map) > 3:
+                logger.debug(f"  ... and {len(urn_map) - 3} more merges")
 
         # Group entities by resolved URN
         entity_groups: dict[str, list[Entity]] = {}
@@ -294,6 +303,11 @@ class AgentBasedDeduplicator:
 
         if corrections:
             logger.info(f"Applying {len(corrections)} URN corrections")
+            # Show first few corrections
+            for (entity_urn, pred, old_ref), new_ref in list(corrections.items())[:3]:
+                logger.debug(f"  {entity_urn}.{pred}: {old_ref} → {new_ref}")
+            if len(corrections) > 3:
+                logger.debug(f"  ... and {len(corrections) - 3} more corrections")
 
         # Apply corrections
         corrected = []
