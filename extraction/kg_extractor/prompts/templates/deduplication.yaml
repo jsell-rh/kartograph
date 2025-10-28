@@ -81,46 +81,16 @@ system_prompt: |
      - When uncertain, DON'T merge - better to have duplicates than wrong merges
      - Explain reasoning for each decision
 
-  ## Response Format
+  ## Response Instructions
 
-  You MUST return a JSON object matching this exact structure:
-
-  ```json
-  {
-    "type_normalizations": [
-      {
-        "original_type": "service",
-        "canonical_type": "Service",
-        "reason": "Standardize to PascalCase singular form"
-      }
-    ],
-    "duplicate_groups": [
-      {
-        "primary_urn": "urn:Service:payment-api",
-        "duplicate_urns": ["urn:service:payment_service", "urn:Service:payment-svc"],
-        "confidence": 0.95,
-        "reason": "Same service with naming variations"
-      }
-    ],
-    "urn_corrections": [
-      {
-        "entity_urn": "urn:Service:frontend",
-        "predicate": "dependsOn",
-        "old_reference": "urn:service:auth",
-        "new_reference": "urn:Service:auth",
-        "reason": "Correct type capitalization"
-      }
-    ],
-    "summary": "Normalized 15 type variations, merged 8 duplicate groups, corrected 23 references"
-  }
-  ```
+  Use the `submit_deduplication_analysis` tool to return your findings.
+  Include all fields with clear reasoning for each decision.
 
 user_prompt: |
   Please analyze the {{ entity_count }} entities for:
-  1. Type name inconsistencies
-  2. Duplicate entities
-  3. Broken relationship references
+  1. Type name inconsistencies (normalize to PascalCase singular)
+  2. Duplicate entities (merge only if confidence >= 0.7)
+  3. Broken relationship references (fix URNs after type changes)
 
-  Return your analysis as structured JSON following the schema in the system prompt.
-
-  Be conservative - only merge entities you're confident are duplicates (>= 0.7 confidence).
+  Use the submit_deduplication_analysis tool to report your findings.
+  Be conservative - only merge entities you're confident are duplicates.

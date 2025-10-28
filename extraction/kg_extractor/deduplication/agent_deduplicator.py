@@ -109,45 +109,106 @@ class AgentBasedDeduplicator:
             type_summary=type_summary,
         )
 
-        # 3. Call LLM with structured output
+        # 3. Call LLM with structured output using tool use
         logger.info(f"Calling LLM ({self.model}) for deduplication analysis...")
+
+        # Define tool schema for structured output
+        tools = [
+            {
+                "name": "submit_deduplication_analysis",
+                "description": "Submit the deduplication analysis results with type normalizations, duplicate groups, and URN corrections",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "type_normalizations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "original_type": {"type": "string"},
+                                    "canonical_type": {"type": "string"},
+                                    "reason": {"type": "string"},
+                                },
+                                "required": [
+                                    "original_type",
+                                    "canonical_type",
+                                    "reason",
+                                ],
+                            },
+                        },
+                        "duplicate_groups": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "primary_urn": {"type": "string"},
+                                    "duplicate_urns": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                    },
+                                    "confidence": {"type": "number"},
+                                    "reason": {"type": "string"},
+                                },
+                                "required": [
+                                    "primary_urn",
+                                    "duplicate_urns",
+                                    "confidence",
+                                    "reason",
+                                ],
+                            },
+                        },
+                        "urn_corrections": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "entity_urn": {"type": "string"},
+                                    "predicate": {"type": "string"},
+                                    "old_reference": {"type": "string"},
+                                    "new_reference": {"type": "string"},
+                                    "reason": {"type": "string"},
+                                },
+                                "required": [
+                                    "entity_urn",
+                                    "predicate",
+                                    "old_reference",
+                                    "new_reference",
+                                    "reason",
+                                ],
+                            },
+                        },
+                        "summary": {"type": "string"},
+                    },
+                    "required": [
+                        "type_normalizations",
+                        "duplicate_groups",
+                        "urn_corrections",
+                        "summary",
+                    ],
+                },
+            }
+        ]
+
         try:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=8000,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
-                # Use JSON mode for structured output
-                # Note: Anthropic's structured output feature might have different API
-                # For now, we'll rely on the prompt to return valid JSON
+                tools=tools,
+                tool_choice={"type": "tool", "name": "submit_deduplication_analysis"},
             )
 
-            # Parse response content
-            response_text = response.content[0].text
+            # 4. Extract structured output from tool use
+            tool_use = next(
+                (block for block in response.content if block.type == "tool_use"), None
+            )
 
-            # Strip markdown code fences if present
-            response_text = response_text.strip()
-            if response_text.startswith("```"):
-                # Remove opening fence (```json or ```)
-                lines = response_text.split("\n")
-                lines = lines[1:]  # Remove first line with ```json
-                # Remove closing fence
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                response_text = "\n".join(lines)
+            if not tool_use:
+                raise ValueError("LLM did not return tool use in response")
 
-            # 4. Parse structured response
-            try:
-                analysis = DeduplicationAnalysis.model_validate_json(response_text)
-            except ValidationError as e:
-                logger.error(f"Failed to parse deduplication analysis: {e}")
-                # Fall back to no changes
-                analysis = DeduplicationAnalysis(
-                    type_normalizations=[],
-                    duplicate_groups=[],
-                    urn_corrections=[],
-                    summary="Failed to parse LLM response, no changes applied",
-                )
+            # tool_use.input is already a dict, no parsing needed!
+            analysis = DeduplicationAnalysis(**tool_use.input)
 
             logger.info(f"Analysis summary: {analysis.summary}")
             logger.info(f"  - {len(analysis.type_normalizations)} type normalizations")
