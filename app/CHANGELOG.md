@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.1](https://github.com/jsell-rh/kartograph/compare/v0.2.0...v0.2.1) (2025-10-28)
+
+
+### Bug Fixes
+
+* improve 413 error handling and prevent context overflow ([#17](https://github.com/jsell-rh/kartograph/issues/17)) ([9fa55a4](https://github.com/jsell-rh/kartograph/commit/9fa55a4808b0eb26e9f155bdd6f0d8667120641b)), closes [#16](https://github.com/jsell-rh/kartograph/issues/16)
+
+
+### Chores
+
+* **release:** 0.2.0 ([fbfd60e](https://github.com/jsell-rh/kartograph/commit/fbfd60e0b82de2b4ece5b1e6f0ca8ab0fff66703))
+
 ## [0.2.0](https://github.com/jsell-rh/kartograph/compare/v0.1.10...v0.2.0) (2025-10-24)
 
 

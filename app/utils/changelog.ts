@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [
-    "KG Extraction CLI (#14)"
-  ],
+  "features": [],
   "improvements": [],
-  "bugFixes": []
+  "bugFixes": [
+    "Improve 413 error handling and prevent context overflow (#17)"
+  ]
 };
 
 export default changelog;
