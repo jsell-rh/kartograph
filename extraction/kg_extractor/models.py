@@ -68,11 +68,62 @@ class Entity(BaseModel):
 
         return v
 
+    def _normalize_property_value(self, value: Any) -> Any:
+        """
+        Normalize property values to valid JSON-LD format.
+
+        Converts entity references to proper {"@id": "urn:..."} format.
+        Flattens nested lists and ensures consistent formatting.
+
+        Args:
+            value: Property value to normalize
+
+        Returns:
+            Normalized value
+        """
+        # Handle None
+        if value is None:
+            return None
+
+        # Handle lists - flatten and normalize each item
+        if isinstance(value, list):
+            normalized_items = []
+            for item in value:
+                # Recursively normalize nested lists
+                if isinstance(item, list):
+                    # Flatten nested list
+                    for nested_item in item:
+                        norm = self._normalize_property_value(nested_item)
+                        if norm is not None:
+                            normalized_items.append(norm)
+                else:
+                    norm = self._normalize_property_value(item)
+                    if norm is not None:
+                        normalized_items.append(norm)
+            return normalized_items if normalized_items else None
+
+        # Handle entity references (dicts with @id)
+        if isinstance(value, dict):
+            if "@id" in value:
+                # Already in correct format
+                return value
+            else:
+                # Pass through non-reference dicts
+                return value
+
+        # Handle plain string URNs - convert to {"@id": "urn:..."}
+        if isinstance(value, str) and value.startswith("urn:"):
+            return {"@id": value}
+
+        # Pass through other scalar values (strings, numbers, booleans)
+        return value
+
     def to_jsonld(self) -> dict[str, Any]:
         """
         Convert entity to JSON-LD format.
 
         Returns a dictionary with @id, @type, and all properties.
+        Normalizes all entity references to proper {"@id": "urn:..."} format.
         """
         jsonld: dict[str, Any] = {
             "@id": self.id,
@@ -83,8 +134,11 @@ class Entity(BaseModel):
         if self.description:
             jsonld["description"] = self.description
 
-        # Add custom properties
-        jsonld.update(self.properties)
+        # Add custom properties with normalization
+        for key, value in self.properties.items():
+            normalized = self._normalize_property_value(value)
+            if normalized is not None:  # Skip None values
+                jsonld[key] = normalized
 
         return jsonld
 
