@@ -208,6 +208,92 @@ export interface AuditContext {
 }
 
 /**
+ * Intelligently truncate large query results to prevent context overflow
+ * Returns truncated data with metadata about truncation
+ */
+function truncateLargeResults(data: any, maxSizeBytes: number = 50000): {
+  data: any;
+  wasTruncated: boolean;
+  originalCount?: number;
+  truncatedCount?: number;
+  message?: string;
+} {
+  const fullJson = JSON.stringify(data);
+  const fullSize = fullJson.length;
+
+  // If within limit, return as-is
+  if (fullSize <= maxSizeBytes) {
+    return { data, wasTruncated: false };
+  }
+
+  // Data is too large, need to truncate intelligently
+  log.warn(
+    { fullSize, maxSize: maxSizeBytes, ratio: (fullSize / maxSizeBytes).toFixed(2) },
+    "Query result too large, truncating"
+  );
+
+  // For object responses with array properties, truncate the arrays
+  if (typeof data === "object" && data !== null && !Array.isArray(data)) {
+    const truncatedData: any = {};
+    let totalOriginalCount = 0;
+    let totalTruncatedCount = 0;
+
+    for (const [key, value] of Object.entries(data)) {
+      if (Array.isArray(value) && value.length > 0) {
+        const originalCount = value.length;
+        // Calculate how many items we can keep (aim for ~1/4 of max size per key)
+        const targetSizePerKey = maxSizeBytes / (4 * Object.keys(data).length);
+        const avgItemSize = JSON.stringify(value[0]).length;
+        const maxItems = Math.max(10, Math.floor(targetSizePerKey / avgItemSize));
+
+        if (value.length > maxItems) {
+          truncatedData[key] = value.slice(0, maxItems);
+          totalOriginalCount += originalCount;
+          totalTruncatedCount += maxItems;
+        } else {
+          truncatedData[key] = value;
+          totalTruncatedCount += value.length;
+        }
+      } else {
+        truncatedData[key] = value;
+      }
+    }
+
+    if (totalOriginalCount > totalTruncatedCount) {
+      return {
+        data: truncatedData,
+        wasTruncated: true,
+        originalCount: totalOriginalCount,
+        truncatedCount: totalTruncatedCount,
+        message: `⚠️ RESULTS TRUNCATED: Showing ${totalTruncatedCount} of ${totalOriginalCount} total items to prevent context overflow. To see all results, refine your query with:\n- More specific filters (e.g., @filter(regexp(name, /specific-pattern/i)))\n- Use first: N in your DQL query to explicitly limit results\n- Query by specific entity UIDs if known\n- Break the query into smaller chunks by type or other criteria`
+      };
+    }
+  }
+
+  // Fallback: if data is array or couldn't be truncated intelligently, slice it
+  if (Array.isArray(data)) {
+    const maxItems = 50; // Conservative limit for top-level arrays
+    if (data.length > maxItems) {
+      return {
+        data: data.slice(0, maxItems),
+        wasTruncated: true,
+        originalCount: data.length,
+        truncatedCount: maxItems,
+        message: `⚠️ RESULTS TRUNCATED: Showing ${maxItems} of ${data.length} total items. Refine your query to see specific results.`
+      };
+    }
+  }
+
+  // Last resort: return first ~half of max size as raw JSON substring (not ideal but prevents crash)
+  const truncatedJson = fullJson.substring(0, maxSizeBytes / 2);
+  return {
+    data: { truncated: true, partial_data: truncatedJson },
+    wasTruncated: true,
+    message: "⚠️ RESULTS SEVERELY TRUNCATED: Response was too large. Please refine your query significantly."
+  };
+}
+
+/**
  * Execute a tool by name with given input
  *
  * @param toolName - Name of the tool to execute
@@ -232,10 +318,18 @@ export async function executeTool(
       const data = await executeDQL(dql);
       const executionTimeMs = Date.now() - startTime;
 
+      // Check if results need truncation
+      const { data: finalData, wasTruncated, originalCount, truncatedCount, message } =
+        truncateLargeResults(data);
+
       toolLog.info(
         {
           description,
-          resultSize: JSON.stringify(data).length,
+          resultSize: JSON.stringify(finalData).length,
+          originalSize: JSON.stringify(data).length,
+          wasTruncated,
+          originalCount,
+          truncatedCount,
           executionTimeMs,
         },
         "Tool execution successful",
@@ -253,7 +347,13 @@ export async function executeTool(
         );
       }
 
-      return JSON.stringify({ query: description, results: data }, null, 2);
+      // Build response with truncation notice if needed
+      const response: any = { query: description, results: finalData };
+      if (wasTruncated && message) {
+        response.truncation_notice = message;
+      }
+
+      return JSON.stringify(response, null, 2);
     } catch (error) {
       const executionTimeMs = Date.now() - startTime;
       const errorMessage =

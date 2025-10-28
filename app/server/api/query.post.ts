@@ -75,6 +75,30 @@ function hasToolResults(message: Anthropic.MessageParam): boolean {
 }
 
 /**
+ * Extract a user-friendly error message from Anthropic API errors
+ * Handles nested error structures like: { error: { error: { message: "..." } } }
+ */
+function extractErrorMessage(error: any): string {
+  // Check for nested Anthropic error structure
+  if (error?.error?.error?.message) {
+    return error.error.error.message;
+  }
+
+  // Check for single-level nested error
+  if (error?.error?.message) {
+    return error.error.message;
+  }
+
+  // Check for direct message
+  if (error?.message) {
+    return error.message;
+  }
+
+  // Fallback
+  return "An error occurred while processing your request";
+}
+
+/**
  * Progressive context truncation for handling prompt length errors
  * Returns trimmed message history in decreasing sizes: full → half → quarter → recent 5 → recent 2 → empty
  *
@@ -1286,22 +1310,29 @@ export default defineEventHandler(async (event) => {
           );
           controller.close();
         } catch (error) {
+          // Extract clean error message for user display
+          const userMessage = extractErrorMessage(error);
+
           log.error(
             {
               error: error instanceof Error ? error.message : String(error),
               stack: error instanceof Error ? error.stack : undefined,
               elapsed: `${Date.now() - startTime}ms`,
+              userMessage,
             },
             "Fatal error",
           );
 
           if (!streamClosed) {
+            // Provide helpful context for common errors
+            let enhancedMessage = userMessage;
+            if (userMessage.toLowerCase().includes("prompt is too long")) {
+              enhancedMessage = "The conversation context became too large. This usually happens when queries return too much data. Please try:\n- Starting a new conversation\n- Using more specific filters in your query\n- Asking about fewer entities at once";
+            }
+
             pushEvent("done", {
               success: false,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Internal server error",
+              error: enhancedMessage,
               entities: [],
             });
           }
