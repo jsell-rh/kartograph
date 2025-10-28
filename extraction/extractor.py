@@ -171,6 +171,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="merge_predicates",
         help="How to merge duplicate URNs",
     )
+    dedup_group.add_argument(
+        "--dedup-batch-size",
+        type=int,
+        default=50,
+        help="Run deduplication every N chunks (incremental batching, default: 50)",
+    )
 
     # Logging
     log_group = parser.add_argument_group("logging")
@@ -263,6 +269,8 @@ def build_config_from_args(
         dedup_dict["strategy"] = args.dedup_strategy
     if args.urn_merge_strategy != "merge_predicates":  # Only override if not default
         dedup_dict["urn_merge_strategy"] = args.urn_merge_strategy
+    if args.dedup_batch_size != 50:  # Only override if not default
+        dedup_dict["batch_size"] = args.dedup_batch_size
 
     if dedup_dict:
         config_dict["deduplication"] = dedup_dict
@@ -412,6 +420,9 @@ async def main(argv: list[str] | None = None) -> int:
         logger.info(f"Model: {config.llm.model}")
         logger.info(f"Workers: {config.workers}")
         logger.info(f"Deduplication strategy: {config.deduplication.strategy}")
+        logger.info(
+            f"Deduplication batch size: every {config.deduplication.batch_size} chunks"
+        )
 
         # Create components
         file_system = DiskFileSystem()

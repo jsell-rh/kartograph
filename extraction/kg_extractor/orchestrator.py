@@ -802,6 +802,32 @@ class ExtractionOrchestrator:
                         f"Checkpoint saved: {chunks_processed} chunks, {len(completed_chunk_ids)} chunk IDs tracked"
                     )
 
+                # Run incremental deduplication every N chunks
+                should_deduplicate = False
+                if (
+                    chunks_successful % self.config.deduplication.batch_size == 0
+                    and chunks_successful > 0
+                    and all_entities
+                ):
+                    should_deduplicate = True
+
+                if should_deduplicate:
+                    logger.info(
+                        f"Running incremental deduplication on {len(all_entities)} entities "
+                        f"(batch at {chunks_successful}/{len(chunks_to_process)} chunks)..."
+                    )
+                    dedup_result = self.deduplicator.deduplicate(all_entities)
+
+                    # Replace entities with deduplicated version
+                    entities_before = len(all_entities)
+                    all_entities = dedup_result.entities
+                    entities_after = len(all_entities)
+
+                    logger.info(
+                        f"Deduplication complete: {entities_before} → {entities_after} entities "
+                        f"({entities_before - entities_after} duplicates removed)"
+                    )
+
             # Clear worker states after all chunks complete
             self._worker_states.clear()
 
@@ -875,10 +901,27 @@ class ExtractionOrchestrator:
             logger.info(f"  ✓ All {chunks_successful} chunks processed successfully!")
             logger.info("=" * 70)
 
-        # 4. Deduplicate entities
-        if all_entities:
+        # 4. Final deduplication (for any remaining entities not caught in batches)
+        # Only run if we have entities that weren't just deduplicated
+        chunks_since_last_dedup = (
+            chunks_successful % self.config.deduplication.batch_size
+        )
+        if all_entities and chunks_since_last_dedup > 0:
+            logger.info(
+                f"Running final deduplication on {len(all_entities)} entities "
+                f"({chunks_since_last_dedup} chunks since last batch dedup)..."
+            )
             dedup_result = self.deduplicator.deduplicate(all_entities)
             final_entities = dedup_result.entities
+            logger.info(
+                f"Final deduplication complete: {len(all_entities)} → {len(final_entities)} entities"
+            )
+        elif all_entities:
+            # Already deduplicated in last batch, no need to run again
+            logger.info(
+                f"Skipping final deduplication (already deduplicated in last batch)"
+            )
+            final_entities = all_entities
         else:
             final_entities = []
 
