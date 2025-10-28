@@ -17,7 +17,6 @@ from kg_extractor.config import (
     LoggingConfig,
     ValidationConfig,
 )
-from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.llm.agent_client import AgentClient
 from kg_extractor.loaders.file_system import DiskFileSystem
 from kg_extractor.orchestrator import ExtractionOrchestrator
@@ -427,7 +426,8 @@ async def main(argv: list[str] | None = None) -> int:
         # Create components
         file_system = DiskFileSystem()
         chunker = HybridChunker(config=config.chunking)
-        deduplicator = URNDeduplicator(config=config.deduplication)
+        # Let orchestrator create the right deduplicator based on config.deduplication.strategy
+        deduplicator = None
 
         # Create LLM client
         llm_client = AgentClient(
