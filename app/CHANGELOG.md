@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.2](https://github.com/jsell-rh/kartograph/compare/v0.2.1...v0.2.2) (2025-10-29)
+
+
+### Features
+
+* **extraction:** Parallel chunk processing with production-ready improvements ([#19](https://github.com/jsell-rh/kartograph/issues/19)) ([3ab070a](https://github.com/jsell-rh/kartograph/commit/3ab070a130d7d8bfe5f8cae85b267a7842cc551d)), closes [#15](https://github.com/jsell-rh/kartograph/issues/15) [#15](https://github.com/jsell-rh/kartograph/issues/15) [#15](https://github.com/jsell-rh/kartograph/issues/15) [#15](https://github.com/jsell-rh/kartograph/issues/15) [#15](https://github.com/jsell-rh/kartograph/issues/15) [#15](https://github.com/jsell-rh/kartograph/issues/15) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16) [#16](https://github.com/jsell-rh/kartograph/issues/16)
+
+
+### Chores
+
+* **release:** 0.2.1 ([863e601](https://github.com/jsell-rh/kartograph/commit/863e601a2a886050ec6eedcd3d1a6882348b6260))
+
 ### [0.2.1](https://github.com/jsell-rh/kartograph/compare/v0.2.0...v0.2.1) (2025-10-28)
 
 

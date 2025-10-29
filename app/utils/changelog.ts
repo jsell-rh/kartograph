@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [],
+  "features": [
+    "Parallel chunk processing with production-ready improvements (#19)"
+  ],
   "improvements": [],
-  "bugFixes": [
-    "Improve 413 error handling and prevent context overflow (#17)"
-  ]
+  "bugFixes": []
 };
 
 export default changelog;
