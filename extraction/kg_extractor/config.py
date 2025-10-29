@@ -102,7 +102,7 @@ class DeduplicationConfig(BaseModel):
         description="Similarity threshold for agent-based dedup",
     )
     batch_size: int = Field(
-        default=50,
+        default=10,  # Reduced from 50 to avoid huge dedup batches
         ge=1,
         le=500,
         description="Run deduplication every N chunks (incremental batching)",
