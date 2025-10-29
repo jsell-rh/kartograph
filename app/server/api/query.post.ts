@@ -14,6 +14,9 @@ import { setResponseStatus, setHeader, sendStream } from "h3";
 import { createRequestLogger, truncateForLog } from "../lib/logger";
 import { withRetry } from "../lib/retry";
 import { getSession } from "../utils/auth";
+import { extractErrorMessage, isContextLengthError } from "../utils/errorUtils";
+import { EntityExtractor, type Entity } from "../services/EntityExtractor";
+import { ProgressiveTrimStrategy } from "../strategies/ContextTruncationStrategy";
 import { db } from "../db";
 import {
   conversations,
@@ -21,133 +24,6 @@ import {
   type ThinkingStep,
 } from "../db/schema";
 import { eq, and } from "drizzle-orm";
-
-// Entity extraction regex
-const URN_PATTERN = /<urn:([^:]+):([^>]+)>/g;
-
-interface Entity {
-  urn: string;
-  type: string;
-  id: string;
-  displayName: string;
-}
-
-/**
- * Extract entities from assistant message text
- */
-function extractEntities(text: string): Entity[] {
-  const entities: Entity[] = [];
-  const matches = text.matchAll(URN_PATTERN);
-
-  for (const match of matches) {
-    const [fullUrn, type, id] = match;
-    if (!fullUrn || !type || !id) continue;
-    entities.push({
-      urn: fullUrn,
-      type,
-      id,
-      displayName: id.replace(/-/g, " ").replace(/_/g, " "),
-    });
-  }
-
-  // Deduplicate by URN
-  const uniqueEntities = entities.filter(
-    (entity, index, self) =>
-      index === self.findIndex((e) => e.urn === entity.urn),
-  );
-
-  return uniqueEntities;
-}
-
-/**
- * Check if a message contains tool_result blocks
- */
-function hasToolResults(message: Anthropic.MessageParam): boolean {
-  if (message.role !== "user") return false;
-
-  const content = message.content;
-  if (typeof content === "string") return false;
-
-  return (
-    Array.isArray(content) &&
-    content.some((block: any) => block.type === "tool_result")
-  );
-}
-
-/**
- * Extract a user-friendly error message from Anthropic API errors
- * Handles nested error structures like: { error: { error: { message: "..." } } }
- */
-function extractErrorMessage(error: any): string {
-  // Check for nested Anthropic error structure
-  if (error?.error?.error?.message) {
-    return error.error.error.message;
-  }
-
-  // Check for single-level nested error
-  if (error?.error?.message) {
-    return error.error.message;
-  }
-
-  // Check for direct message
-  if (error?.message) {
-    return error.message;
-  }
-
-  // Fallback
-  return "An error occurred while processing your request";
-}
-
-/**
- * Progressive context truncation for handling prompt length errors
- * Returns trimmed message history in decreasing sizes: full → half → quarter → recent 5 → recent 2 → empty
- *
- * IMPORTANT: Ensures tool_use/tool_result pairing is preserved by removing orphaned tool_result messages
- * that would reference tool_use blocks that were truncated.
- */
-function getProgressivelyTrimmedHistory(
-  originalHistory: Anthropic.MessageParam[],
-  attempt: number,
-): Anthropic.MessageParam[] {
-  const historyLength = originalHistory.length;
-
-  let trimmed: Anthropic.MessageParam[];
-
-  switch (attempt) {
-    case 0:
-      // First attempt: use full history
-      trimmed = originalHistory;
-      break;
-    case 1:
-      // Second attempt: keep last half
-      trimmed = originalHistory.slice(-Math.ceil(historyLength / 2));
-      break;
-    case 2:
-      // Third attempt: keep last quarter
-      trimmed = originalHistory.slice(-Math.ceil(historyLength / 4));
-      break;
-    case 3:
-      // Fourth attempt: keep last 5 messages
-      trimmed = originalHistory.slice(-5);
-      break;
-    case 4:
-      // Fifth attempt: keep last 2 messages
-      trimmed = originalHistory.slice(-2);
-      break;
-    default:
-      // Final attempt: no history, just current prompt
-      return [];
-  }
-
-  // Remove orphaned tool_result messages at the start
-  // If first message is a user message with tool_results, it references tool_use blocks
-  // that were truncated, so we must remove it to avoid API errors
-  while (trimmed.length > 0 && trimmed[0] && hasToolResults(trimmed[0])) {
-    trimmed = trimmed.slice(1);
-  }
-
-  return trimmed;
-}
 
 /**
  * Build system prompt with current graph statistics
@@ -697,6 +573,8 @@ export default defineEventHandler(async (event) => {
 
           // Track all extracted entities
           const allEntities: Entity[] = [];
+          const entityExtractor = new EntityExtractor();
+          const contextTruncationStrategy = new ProgressiveTrimStrategy();
 
           // Track assistant's response text for database persistence
           let assistantResponseText = "";
@@ -780,12 +658,7 @@ export default defineEventHandler(async (event) => {
                 break; // Success, exit retry loop
               } catch (error: any) {
                 // Check if this is a context length error (413 or "prompt is too long")
-                const isContextError =
-                  error?.status === 413 ||
-                  error?.error?.message
-                    ?.toLowerCase()
-                    .includes("prompt is too long") ||
-                  error?.message?.toLowerCase().includes("prompt is too long");
+                const isContextError = isContextLengthError(error);
 
                 if (
                   isContextError &&
@@ -795,7 +668,7 @@ export default defineEventHandler(async (event) => {
                   currentHistoryTrimLevel = contextTruncationAttempt;
 
                   // Get trimmed history
-                  const trimmedHistory = getProgressivelyTrimmedHistory(
+                  const trimmedHistory = contextTruncationStrategy.truncate(
                     sanitizedHistory,
                     contextTruncationAttempt,
                   );
@@ -978,7 +851,7 @@ export default defineEventHandler(async (event) => {
               }
 
               pushEvent("thinking", { text: fullText });
-              const entities = extractEntities(fullText);
+              const entities = entityExtractor.extract(fullText);
               allEntities.push(...entities);
 
               if (entities.length > 0) {
