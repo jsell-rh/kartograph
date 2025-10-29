@@ -888,7 +888,7 @@ export default defineEventHandler(async (event) => {
               () =>
                 (anthropic as any).messages.create({
                   model,
-                  max_tokens: 8000,
+                  max_tokens: 18000,
                   system: fullSystemPrompt,
                   messages,
                   tools: dgraphTools,
