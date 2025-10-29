@@ -19,6 +19,7 @@ import { EntityExtractor, type Entity } from "../services/EntityExtractor";
 import { ProgressiveTrimStrategy } from "../strategies/ContextTruncationStrategy";
 import { SSEStreamManager } from "../stream/SSEStreamManager";
 import { SystemPromptBuilder } from "../services/SystemPromptBuilder";
+import { ConversationService } from "../services/ConversationService";
 import { db } from "../db";
 import {
   conversations,
@@ -69,48 +70,22 @@ export default defineEventHandler(async (event) => {
     }
 
     // Handle conversation persistence
+    const conversationService = new ConversationService(log);
     let activeConversationId = conversationId;
 
     if (conversationId) {
       // Verify user owns the conversation
-      const existing = await db
-        .select()
-        .from(conversations)
-        .where(
-          and(
-            eq(conversations.id, conversationId),
-            eq(conversations.userId, userId),
-          ),
-        )
-        .limit(1);
+      const existing = await conversationService.get(conversationId, userId);
 
-      if (!existing || existing.length === 0) {
+      if (!existing) {
         throw createError({
           statusCode: 404,
           message: "Conversation not found",
         });
       }
-
-      log.debug({ conversationId }, "Using existing conversation");
     } else {
       // Create new conversation
-      activeConversationId = crypto.randomUUID();
-      const now = new Date();
-
-      await db.insert(conversations).values({
-        id: activeConversationId,
-        userId,
-        title: "New Conversation", // Will be updated with auto-naming later
-        messageCount: 0,
-        isArchived: false,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      log.info(
-        { conversationId: activeConversationId },
-        "Created new conversation",
-      );
+      activeConversationId = await conversationService.create(userId);
     }
 
     // Validate and sanitize conversation history
@@ -534,38 +509,23 @@ export default defineEventHandler(async (event) => {
               let savedAssistantMessageId: string | undefined;
 
               try {
-                const messageTimestamp = new Date();
+                const { userMessageId, assistantMessageId } =
+                  await conversationService.saveMessages(
+                    activeConversationId,
+                    prompt,
+                    assistantResponseText,
+                    {
+                      thinkingSteps: assistantThinkingSteps,
+                      entities: allEntities,
+                      elapsedSeconds,
+                    },
+                  );
 
-                // Save user message
-                const userMessageId = crypto.randomUUID();
                 savedUserMessageId = userMessageId;
-                await db.insert(messagesTable).values({
-                  id: userMessageId,
-                  conversationId: activeConversationId,
-                  role: "user",
-                  content: prompt,
-                  createdAt: messageTimestamp,
-                });
-
-                // Save assistant message
-                const assistantMessageId = crypto.randomUUID();
                 savedAssistantMessageId = assistantMessageId;
-                await db.insert(messagesTable).values({
-                  id: assistantMessageId,
-                  conversationId: activeConversationId,
-                  role: "assistant",
-                  content: assistantResponseText,
-                  thinkingSteps:
-                    assistantThinkingSteps.length > 0
-                      ? assistantThinkingSteps
-                      : undefined,
-                  entities: allEntities.length > 0 ? allEntities : undefined,
-                  elapsedSeconds,
-                  createdAt: messageTimestamp,
-                });
 
-                // Update conversation metadata
-                // Count messages in this conversation (should be 2 after we just added user + assistant)
+                // Auto-generate conversation title after first exchange
+                // Check if this is the first exchange (messageCount would be 2: user + assistant)
                 const messageCountResult = await db
                   .select()
                   .from(messagesTable)
@@ -573,85 +533,21 @@ export default defineEventHandler(async (event) => {
                     eq(messagesTable.conversationId, activeConversationId),
                   );
 
-                await db
-                  .update(conversations)
-                  .set({
-                    lastMessageAt: messageTimestamp,
-                    messageCount: messageCountResult.length,
-                    updatedAt: messageTimestamp,
-                  })
-                  .where(eq(conversations.id, activeConversationId));
-
-                log.info(
-                  {
-                    conversationId: activeConversationId,
-                    messageCount: messageCountResult.length,
-                  },
-                  "Messages saved to database",
-                );
-
-                // Auto-generate conversation title after first exchange
                 if (messageCountResult.length === 2) {
-                  try {
-                    log.debug(
-                      {
-                        conversationId: activeConversationId,
-                        userPrompt: prompt,
-                      },
-                      "Generating conversation title",
-                    );
+                  const titleModel = hasVertexAI
+                    ? "claude-3-5-haiku@20241022"
+                    : "claude-3-5-haiku-20241022";
 
-                    const titleResponse: Anthropic.Message = await (
-                      anthropic as any
-                    ).messages.create({
-                      model: hasVertexAI
-                        ? "claude-3-5-haiku@20241022"
-                        : "claude-3-5-haiku-20241022",
-                      max_tokens: 50,
-                      messages: [
-                        {
-                          role: "user",
-                          content: `Generate a concise, descriptive 3-5 word title for a conversation that starts with this question: "${prompt}"\n\nRespond with ONLY the title, no quotes or punctuation.`,
-                        },
-                      ],
-                    });
+                  const generatedTitle = await conversationService.generateTitle(
+                    prompt,
+                    anthropic,
+                    titleModel,
+                  );
 
-                    const titleBlock = titleResponse.content.find(
-                      (
-                        block: Anthropic.Messages.ContentBlock,
-                      ): block is Anthropic.Messages.TextBlock =>
-                        block.type === "text",
-                    );
-
-                    if (titleBlock && titleBlock.text) {
-                      const generatedTitle = titleBlock.text
-                        .trim()
-                        .replace(/^["']|["']$/g, "");
-
-                      await db
-                        .update(conversations)
-                        .set({ title: generatedTitle })
-                        .where(eq(conversations.id, activeConversationId));
-
-                      log.info(
-                        {
-                          conversationId: activeConversationId,
-                          generatedTitle,
-                        },
-                        "Auto-generated conversation title",
-                      );
-                    }
-                  } catch (titleError) {
-                    // Gracefully fail - keep "New Conversation" title
-                    log.warn(
-                      {
-                        conversationId: activeConversationId,
-                        error:
-                          titleError instanceof Error
-                            ? titleError.message
-                            : String(titleError),
-                      },
-                      "Failed to auto-generate conversation title",
+                  if (generatedTitle) {
+                    await conversationService.updateMetadata(
+                      activeConversationId,
+                      { title: generatedTitle },
                     );
                   }
                 }
