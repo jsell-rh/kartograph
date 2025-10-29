@@ -17,6 +17,7 @@ import { getSession } from "../utils/auth";
 import { extractErrorMessage, isContextLengthError } from "../utils/errorUtils";
 import { EntityExtractor, type Entity } from "../services/EntityExtractor";
 import { ProgressiveTrimStrategy } from "../strategies/ContextTruncationStrategy";
+import { SSEStreamManager } from "../stream/SSEStreamManager";
 import { db } from "../db";
 import {
   conversations,
@@ -542,20 +543,14 @@ export default defineEventHandler(async (event) => {
     log.debug("Creating response stream");
 
     // Create a manual event stream
-    let streamClosed = false;
-    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // Helper to push SSE formatted data
-        const pushEvent = (eventType: string, data: any) => {
-          if (streamClosed) return;
-          const message = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
-          controller.enqueue(encoder.encode(message));
-        };
+        // Initialize SSE stream manager
+        const sse = new SSEStreamManager(controller);
 
         try {
           // Send keepalive
-          controller.enqueue(encoder.encode(":\n\n"));
+          sse.keepalive();
           log.info("SSE connection established");
 
           // Build system prompt with current graph stats
@@ -647,7 +642,7 @@ export default defineEventHandler(async (event) => {
                   async (attempt, delayMs) => {
                     // Send retry event to frontend
                     const delaySeconds = Math.ceil(delayMs / 1000);
-                    pushEvent("retry", {
+                    sse.pushEvent("retry", {
                       attempt,
                       delayMs,
                       delaySeconds,
@@ -686,7 +681,7 @@ export default defineEventHandler(async (event) => {
                   );
 
                   // Notify frontend of context truncation
-                  pushEvent("context_truncated", {
+                  sse.pushEvent("context_truncated", {
                     attempt: contextTruncationAttempt,
                     originalCount: initialHistoryLength,
                     newCount: trimmedHistory.length,
@@ -756,7 +751,7 @@ export default defineEventHandler(async (event) => {
                   // Stream text to client
                   const delta = chunk.delta.text;
                   currentText += delta;
-                  pushEvent("text", { delta });
+                  sse.pushEvent("text", { delta });
                 } else if (chunk.delta.type === "input_json_delta") {
                   // Tool input is being streamed (we'll handle complete tool call later)
                   log.debug(
@@ -799,7 +794,7 @@ export default defineEventHandler(async (event) => {
               async (attempt, delayMs) => {
                 // Send retry event to frontend
                 const delaySeconds = Math.ceil(delayMs / 1000);
-                pushEvent("retry", {
+                sse.pushEvent("retry", {
                   attempt,
                   delayMs,
                   delaySeconds,
@@ -850,7 +845,7 @@ export default defineEventHandler(async (event) => {
                 assistantResponseText = fullText;
               }
 
-              pushEvent("thinking", { text: fullText });
+              sse.pushEvent("thinking", { text: fullText });
               const entities = entityExtractor.extract(fullText);
               allEntities.push(...entities);
 
@@ -863,7 +858,7 @@ export default defineEventHandler(async (event) => {
                   },
                   "Entities extracted from response",
                 );
-                pushEvent("entities", { entities });
+                sse.pushEvent("entities", { entities });
               }
             }
 
@@ -1031,7 +1026,7 @@ export default defineEventHandler(async (event) => {
                 );
               }
 
-              pushEvent("done", {
+              sse.pushEvent("done", {
                 success: true,
                 turns: turnCount,
                 entities: allEntities,
@@ -1080,7 +1075,7 @@ export default defineEventHandler(async (event) => {
               };
               assistantThinkingSteps.push(toolStep);
 
-              pushEvent("tool_call", {
+              sse.pushEvent("tool_call", {
                 id: toolCall.id,
                 name: toolCall.name,
                 description,
@@ -1109,7 +1104,7 @@ export default defineEventHandler(async (event) => {
                 toolStep.metadata!.timing = toolElapsedMs;
 
                 // Send completion event with timing
-                pushEvent("tool_complete", {
+                sse.pushEvent("tool_complete", {
                   toolId: toolCall.id,
                   elapsedMs: toolElapsedMs,
                 });
@@ -1141,7 +1136,7 @@ export default defineEventHandler(async (event) => {
                 toolStep.metadata!.error = errorMessage;
 
                 // Send completion event with timing even on error
-                pushEvent("tool_complete", {
+                sse.pushEvent("tool_complete", {
                   toolId: toolCall.id,
                   elapsedMs: toolElapsedMs,
                   error: true,
@@ -1153,7 +1148,7 @@ export default defineEventHandler(async (event) => {
                   content: `Error: ${errorMessage}`,
                   is_error: true,
                 });
-                pushEvent("tool_error", {
+                sse.pushEvent("tool_error", {
                   toolId: toolCall.id,
                   error: errorMessage,
                 });
@@ -1169,7 +1164,7 @@ export default defineEventHandler(async (event) => {
 
           if (turnCount >= maxTurns) {
             log.warn("Hit max turns limit");
-            pushEvent("done", {
+            sse.pushEvent("done", {
               success: false,
               error: "Max turns reached",
               turns: turnCount,
@@ -1181,7 +1176,7 @@ export default defineEventHandler(async (event) => {
             { turns: turnCount, elapsed: `${Date.now() - startTime}ms` },
             "Stream complete",
           );
-          controller.close();
+          sse.close();
         } catch (error) {
           // Extract clean error message for user display
           const userMessage = extractErrorMessage(error);
@@ -1196,23 +1191,21 @@ export default defineEventHandler(async (event) => {
             "Fatal error",
           );
 
-          if (!streamClosed) {
+          if (!sse.isClosed()) {
             // Provide helpful context for common errors
             let enhancedMessage = userMessage;
             if (userMessage.toLowerCase().includes("prompt is too long")) {
               enhancedMessage = "The conversation context became too large. This usually happens when queries return too much data. Please try:\n- Starting a new conversation\n- Using more specific filters in your query\n- Asking about fewer entities at once";
             }
 
-            pushEvent("done", {
+            sse.pushEvent("done", {
               success: false,
               error: enhancedMessage,
               entities: [],
             });
           }
 
-          controller.close();
-        } finally {
-          streamClosed = true;
+          sse.close();
         }
       },
     });
