@@ -20,6 +20,7 @@ import { ProgressiveTrimStrategy } from "../strategies/ContextTruncationStrategy
 import { SSEStreamManager } from "../stream/SSEStreamManager";
 import { SystemPromptBuilder } from "../services/SystemPromptBuilder";
 import { ConversationService } from "../services/ConversationService";
+import { QueryAgent } from "../orchestrator/QueryAgent";
 import { db } from "../db";
 import {
   conversations,
@@ -183,22 +184,16 @@ export default defineEventHandler(async (event) => {
             "System prompt built",
           );
 
-          // Track all extracted entities
+          // Track all extracted entities and thinking steps
           const allEntities: Entity[] = [];
-          const entityExtractor = new EntityExtractor();
+          let assistantThinkingSteps: ThinkingStep[] = [];
+          let assistantResponseText = "";
+
+          // Setup context truncation strategy
           const contextTruncationStrategy = new ProgressiveTrimStrategy();
 
-          // Track assistant's response text for database persistence
-          let assistantResponseText = "";
-          let assistantThinkingSteps: ThinkingStep[] = [];
-          let currentToolCallStep: ThinkingStep | null = null;
-
           // Conversation history (messages back and forth with Claude)
-          // Include previous conversation context + new prompt
-          // Keep track of initial history length for context truncation on 413 errors
-          let currentHistoryTrimLevel = 0; // 0 = full history, increases on 413 errors
           const initialHistoryLength = sanitizedHistory.length;
-
           const messages: Anthropic.MessageParam[] = [
             ...sanitizedHistory,
             {
@@ -216,299 +211,83 @@ export default defineEventHandler(async (event) => {
             "Starting conversation with history",
           );
 
-          // Agentic loop - keep calling Claude until it stops requesting tools
-          let turnCount = 0;
-          const maxTurns = 50;
+          // Determine model identifier
+          const model = hasVertexAI
+            ? "claude-sonnet-4-5@20250929"
+            : "claude-sonnet-4-20250514";
 
-          while (turnCount < maxTurns) {
-            turnCount++;
-            log.info(
-              {
-                turn: turnCount,
-                maxTurns,
-                messageCount: messages.length,
-              },
-              "Starting turn",
-            );
+          // Create Query Agent
+          const queryAgent = new QueryAgent(
+            anthropic,
+            dgraphTools,
+            {
+              maxTurns: 50,
+              maxContextTruncationAttempts: 6,
+              model,
+              maxTokens: 8000,
+            },
+            log,
+            contextTruncationStrategy,
+          );
+          // Setup Query Agent event listeners
+          queryAgent.on("text", ({ delta }) => {
+            sse.pushEvent("text", { delta });
+          });
 
-            // Determine model identifier
-            const model = hasVertexAI
-              ? "claude-sonnet-4-5@20250929"
-              : "claude-sonnet-4-20250514";
-
-            // Wrap API call with context length error handling
-            let stream: any;
-            let contextTruncationAttempt = 0;
-            const maxContextTruncationAttempts = 6;
-
-            while (contextTruncationAttempt < maxContextTruncationAttempts) {
-              try {
-                // Call Claude with streaming (with retry on 429)
-                stream = await withRetry(
-                  () =>
-                    (anthropic as any).messages.create({
-                      model,
-                      max_tokens: 8000,
-                      system: fullSystemPrompt,
-                      messages,
-                      tools: dgraphTools,
-                      stream: true,
-                    }),
-                  `anthropic-stream-turn-${turnCount}`,
-                  log,
-                  async (attempt, delayMs) => {
-                    // Send retry event to frontend
-                    const delaySeconds = Math.ceil(delayMs / 1000);
-                    sse.pushEvent("retry", {
-                      attempt,
-                      delayMs,
-                      delaySeconds,
-                      message: `Rate limit hit. Retrying in ${delaySeconds}s... (attempt ${attempt})`,
-                    });
-                  },
-                );
-                break; // Success, exit retry loop
-              } catch (error: any) {
-                // Check if this is a context length error (413 or "prompt is too long")
-                const isContextError = isContextLengthError(error);
-
-                if (
-                  isContextError &&
-                  contextTruncationAttempt < maxContextTruncationAttempts - 1
-                ) {
-                  contextTruncationAttempt++;
-                  currentHistoryTrimLevel = contextTruncationAttempt;
-
-                  // Get trimmed history
-                  const trimmedHistory = contextTruncationStrategy.truncate(
-                    sanitizedHistory,
-                    contextTruncationAttempt,
-                  );
-
-                  log.warn(
-                    {
-                      turn: turnCount,
-                      attempt: contextTruncationAttempt,
-                      originalHistoryLength: initialHistoryLength,
-                      trimmedHistoryLength: trimmedHistory.length,
-                      droppedMessages:
-                        initialHistoryLength - trimmedHistory.length,
-                    },
-                    "Context length exceeded, trimming history",
-                  );
-
-                  // Notify frontend of context truncation
-                  sse.pushEvent("context_truncated", {
-                    attempt: contextTruncationAttempt,
-                    originalCount: initialHistoryLength,
-                    newCount: trimmedHistory.length,
-                    droppedCount: initialHistoryLength - trimmedHistory.length,
-                    message:
-                      trimmedHistory.length === 0
-                        ? "Conversation too long. Using only current message (history cleared)."
-                        : `Conversation too long. Dropped ${initialHistoryLength - trimmedHistory.length} older messages to fit context.`,
-                  });
-
-                  // Rebuild messages array with trimmed history
-                  // Keep: trimmed history + current prompt + accumulated session messages
-                  const sessionMessagesStart = initialHistoryLength + 1; // After original history + prompt
-                  const sessionMessages = messages.slice(sessionMessagesStart);
-
-                  // Rebuild messages array
-                  messages.length = 0; // Clear array
-                  messages.push(...trimmedHistory);
-                  messages.push({ role: "user", content: prompt });
-                  messages.push(...sessionMessages);
-
-                  log.info(
-                    {
-                      rebuiltMessageCount: messages.length,
-                      historyCount: trimmedHistory.length,
-                      sessionMessageCount: sessionMessages.length,
-                    },
-                    "Rebuilt messages with trimmed history",
-                  );
-
-                  // Continue to next retry attempt
-                  continue;
-                } else {
-                  // Not a context error or exhausted retries, rethrow
-                  throw error;
-                }
-              }
-            }
-
-            if (!stream) {
-              throw new Error(
-                "Failed to create stream after context truncation retries",
-              );
-            }
-
-            let currentText = "";
-            let currentToolCalls: Anthropic.Messages.ToolUseBlock[] = [];
-
-            // Process stream
-            for await (const chunk of stream) {
-              if (chunk.type === "content_block_start") {
-                if (chunk.content_block.type === "text") {
-                  // Text block starting
-                  log.debug("Text block started");
-                } else if (chunk.content_block.type === "tool_use") {
-                  // Tool use block starting
-                  log.debug(
-                    {
-                      toolId: chunk.content_block.id,
-                      toolName: chunk.content_block.name,
-                    },
-                    "Tool use block started",
-                  );
-                }
-              } else if (chunk.type === "content_block_delta") {
-                if (chunk.delta.type === "text_delta") {
-                  // Stream text to client
-                  const delta = chunk.delta.text;
-                  currentText += delta;
-                  sse.pushEvent("text", { delta });
-                } else if (chunk.delta.type === "input_json_delta") {
-                  // Tool input is being streamed (we'll handle complete tool call later)
-                  log.debug(
-                    { partial: chunk.delta.partial_json },
-                    "Tool input delta",
-                  );
-                }
-              } else if (chunk.type === "content_block_stop") {
-                log.debug({ index: chunk.index }, "Content block stopped");
-              } else if (chunk.type === "message_delta") {
-                log.debug(
-                  { stopReason: chunk.delta.stop_reason },
-                  "Message delta",
-                );
-              } else if (chunk.type === "message_stop") {
-                log.debug("Message stopped");
-              }
-            }
-
-            // After stream completes, get the complete message
-            // We need to reconstruct it from what we know
-            // OR we can make a non-streaming call to get the complete message
-            // For now, let's use non-streaming to get tool calls
-
-            // Make non-streaming call to get complete message with tool calls (with retry on 429)
-            // Note: Context truncation already handled in streaming call above,
-            // so this call should succeed with the same trimmed messages array
-            const response = await withRetry<Anthropic.Message>(
-              () =>
-                (anthropic as any).messages.create({
-                  model,
-                  max_tokens: 8000,
-                  system: fullSystemPrompt,
-                  messages,
-                  tools: dgraphTools,
-                  stream: false,
-                }),
-              `anthropic-complete-turn-${turnCount}`,
-              log,
-              async (attempt, delayMs) => {
-                // Send retry event to frontend
-                const delaySeconds = Math.ceil(delayMs / 1000);
-                sse.pushEvent("retry", {
-                  attempt,
-                  delayMs,
-                  delaySeconds,
-                  message: `Rate limit hit. Retrying in ${delaySeconds}s... (attempt ${attempt})`,
-                });
-              },
-            );
-
-            // Extract tool calls
-            currentToolCalls = response.content.filter(
-              (
-                block: Anthropic.Messages.ContentBlock,
-              ): block is Anthropic.Messages.ToolUseBlock =>
-                block.type === "tool_use",
-            );
-
-            // Extract text content
-            const textBlocks = response.content.filter(
-              (
-                block: Anthropic.Messages.ContentBlock,
-              ): block is Anthropic.Messages.TextBlock => block.type === "text",
-            );
-            const fullText = textBlocks
-              .map((b: Anthropic.Messages.TextBlock) => b.text)
-              .join("");
-
-            // Log assistant response
-            if (fullText) {
-              log.debug(
-                {
-                  turn: turnCount,
-                  responseLength: fullText.length,
-                  responsePreview: truncateForLog(fullText, 200),
-                  hasToolCalls: currentToolCalls.length > 0,
-                },
-                "Assistant response received",
-              );
-
-              // Track thinking steps and final response
-              if (currentToolCalls.length > 0) {
-                // This is a thinking step (has tool calls)
-                assistantThinkingSteps.push({
-                  type: "thinking",
-                  content: fullText,
-                });
-              } else {
-                // This is the final response (no tool calls)
-                assistantResponseText = fullText;
-              }
-
-              sse.pushEvent("thinking", { text: fullText });
-              const entities = entityExtractor.extract(fullText);
-              allEntities.push(...entities);
-
-              if (entities.length > 0) {
-                log.info(
-                  {
-                    turn: turnCount,
-                    entitiesExtracted: entities.length,
-                    entityTypes: [...new Set(entities.map((e) => e.type))],
-                  },
-                  "Entities extracted from response",
-                );
-                sse.pushEvent("entities", { entities });
-              }
-            }
-
-            // Add assistant message to history
-            messages.push({
-              role: "assistant",
-              content: response.content,
+          queryAgent.on("thinking", ({ text }) => {
+            sse.pushEvent("thinking", { text });
+            assistantThinkingSteps.push({
+              type: "thinking",
+              content: text,
             });
+          });
 
-            // If no tool calls, we're done
-            if (currentToolCalls.length === 0) {
-              const elapsedSeconds = Math.floor(
-                (Date.now() - startTime) / 1000,
-              );
+          queryAgent.on("entities", ({ entities }) => {
+            allEntities.push(...entities);
+            sse.pushEvent("entities", { entities });
+          });
 
-              log.info(
-                {
-                  turns: turnCount,
-                  totalEntities: allEntities.length,
-                  inputTokens: response.usage.input_tokens,
-                  outputTokens: response.usage.output_tokens,
-                  totalTokens:
-                    response.usage.input_tokens + response.usage.output_tokens,
-                  elapsedSeconds,
-                },
-                "Conversation complete",
-              );
+          queryAgent.on("retry", (data) => {
+            sse.pushEvent("retry", data);
+          });
+
+          queryAgent.on("context_truncated", (data) => {
+            sse.pushEvent("context_truncated", data);
+          });
+
+          queryAgent.on("tool_call", (data) => {
+            sse.pushEvent("tool_call", data);
+            assistantThinkingSteps.push({
+              type: "tool_call",
+              content: data.description,
+              metadata: {
+                toolName: data.name,
+                description: data.description,
+              },
+            });
+          });
+
+          queryAgent.on("tool_complete", (data) => {
+            sse.pushEvent("tool_complete", data);
+          });
+
+          queryAgent.on("tool_error", (data) => {
+            sse.pushEvent("tool_error", data);
+          });
+
+          queryAgent.on("done", async (result) => {
+            if (result.success && result.response) {
+              assistantResponseText = result.response;
 
               // Save messages to database
               let savedUserMessageId: string | undefined;
               let savedAssistantMessageId: string | undefined;
 
               try {
+                const elapsedSeconds = Math.floor(
+                  (Date.now() - startTime) / 1000,
+                );
+
                 const { userMessageId, assistantMessageId } =
                   await conversationService.saveMessages(
                     activeConversationId,
@@ -525,7 +304,6 @@ export default defineEventHandler(async (event) => {
                 savedAssistantMessageId = assistantMessageId;
 
                 // Auto-generate conversation title after first exchange
-                // Check if this is the first exchange (messageCount would be 2: user + assistant)
                 const messageCountResult = await db
                   .select()
                   .from(messagesTable)
@@ -566,155 +344,32 @@ export default defineEventHandler(async (event) => {
 
               sse.pushEvent("done", {
                 success: true,
-                turns: turnCount,
+                turns: result.turns,
                 entities: allEntities,
-                usage: response.usage,
+                usage: result.usage,
                 conversationId: activeConversationId,
                 userMessageId: savedUserMessageId,
                 assistantMessageId: savedAssistantMessageId,
               });
-              break;
-            }
-
-            // Execute tool calls
-            log.info(
-              {
-                toolCount: currentToolCalls.length,
-                tools: currentToolCalls.map((t) => t.name),
-              },
-              "Executing tools",
-            );
-            const toolResults: Anthropic.Messages.ToolResultBlockParam[] = [];
-
-            for (const toolCall of currentToolCalls) {
-              const toolStartTime = Date.now();
-              const description =
-                (toolCall.input as any).description || "Executing query...";
-
-              // Log tool call details
-              log.debug(
-                {
-                  toolId: toolCall.id,
-                  toolName: toolCall.name,
-                  toolInput: toolCall.input,
-                  turn: turnCount,
-                },
-                "Tool call started",
-              );
-
-              // Create thinking step for this tool call
-              const toolStep: ThinkingStep = {
-                type: "tool_call",
-                content: description,
-                metadata: {
-                  toolName: toolCall.name,
-                  description,
-                },
-              };
-              assistantThinkingSteps.push(toolStep);
-
-              sse.pushEvent("tool_call", {
-                id: toolCall.id,
-                name: toolCall.name,
-                description,
+            } else {
+              sse.pushEvent("done", {
+                success: false,
+                error: result.error,
+                turns: result.turns,
+                entities: allEntities,
               });
-
-              try {
-                const result = await executeTool(toolCall.name, toolCall.input);
-                const toolElapsedMs = Date.now() - toolStartTime;
-
-                // Log successful tool result
-                log.info(
-                  {
-                    toolId: toolCall.id,
-                    toolName: toolCall.name,
-                    toolElapsedMs,
-                    resultLength:
-                      typeof result === "string"
-                        ? result.length
-                        : JSON.stringify(result).length,
-                    resultPreview: truncateForLog(result, 200),
-                  },
-                  "Tool execution succeeded",
-                );
-
-                // Update tool step with timing
-                toolStep.metadata!.timing = toolElapsedMs;
-
-                // Send completion event with timing
-                sse.pushEvent("tool_complete", {
-                  toolId: toolCall.id,
-                  elapsedMs: toolElapsedMs,
-                });
-
-                toolResults.push({
-                  type: "tool_result",
-                  tool_use_id: toolCall.id,
-                  content: result,
-                });
-              } catch (error) {
-                const toolElapsedMs = Date.now() - toolStartTime;
-                const errorMessage =
-                  error instanceof Error ? error.message : "Unknown error";
-
-                log.error(
-                  {
-                    toolId: toolCall.id,
-                    toolName: toolCall.name,
-                    toolElapsedMs,
-                    error: errorMessage,
-                    errorStack:
-                      error instanceof Error ? error.stack : undefined,
-                  },
-                  "Tool execution failed",
-                );
-
-                // Update tool step with error
-                toolStep.metadata!.timing = toolElapsedMs;
-                toolStep.metadata!.error = errorMessage;
-
-                // Send completion event with timing even on error
-                sse.pushEvent("tool_complete", {
-                  toolId: toolCall.id,
-                  elapsedMs: toolElapsedMs,
-                  error: true,
-                });
-
-                toolResults.push({
-                  type: "tool_result",
-                  tool_use_id: toolCall.id,
-                  content: `Error: ${errorMessage}`,
-                  is_error: true,
-                });
-                sse.pushEvent("tool_error", {
-                  toolId: toolCall.id,
-                  error: errorMessage,
-                });
-              }
             }
+          });
 
-            // Add tool results to conversation
-            messages.push({
-              role: "user",
-              content: toolResults,
-            });
-          }
-
-          if (turnCount >= maxTurns) {
-            log.warn("Hit max turns limit");
-            sse.pushEvent("done", {
-              success: false,
-              error: "Max turns reached",
-              turns: turnCount,
-              entities: allEntities,
-            });
-          }
-
-          log.info(
-            { turns: turnCount, elapsed: `${Date.now() - startTime}ms` },
-            "Stream complete",
+          // Execute the agent
+          await queryAgent.execute(
+            fullSystemPrompt,
+            messages,
+            initialHistoryLength,
+            sanitizedHistory,
+            prompt,
           );
-          sse.close();
+
         } catch (error) {
           // Extract clean error message for user display
           const userMessage = extractErrorMessage(error);
