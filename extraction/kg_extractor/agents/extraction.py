@@ -8,6 +8,8 @@ from kg_extractor.models import Entity, ExtractionResult, ValidationError
 from kg_extractor.prompts.protocol import PromptLoader
 from kg_extractor.validation.entity_validator import EntityValidator
 
+from kg_extractor.llm.protocol import LLMClient
+
 
 class ExtractionAgent:
     """
@@ -23,7 +25,7 @@ class ExtractionAgent:
 
     def __init__(
         self,
-        llm_client: Any,  # LLMClient protocol
+        llm_client: LLMClient,
         prompt_loader: PromptLoader,
         validator: EntityValidator,
         prompt_name: str = "entity_extraction",
@@ -47,6 +49,7 @@ class ExtractionAgent:
         files: list[Path],
         chunk_id: str = "chunk-001",
         schema_dir: Path | None = None,
+        known_entities: list[dict] | None = None,
         **kwargs: Any,
     ) -> ExtractionResult:
         """
@@ -56,6 +59,8 @@ class ExtractionAgent:
             files: List of files to extract from
             chunk_id: Identifier for the chunk being processed
             schema_dir: Optional schema directory for reference
+            known_entities: Optional list of known entities from previous extractions
+                           (for entity-aware context). Each dict should have 'id', 'type', 'name'.
             **kwargs: Additional variables for prompt rendering
 
         Returns:
@@ -74,6 +79,7 @@ class ExtractionAgent:
         prompt_vars = {
             "file_paths": files,
             "schema_dir": schema_dir,
+            "known_entities": known_entities or [],
         }
 
         # Render template

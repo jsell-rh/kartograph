@@ -31,6 +31,13 @@ variables:
     default: 5000
     description: "Maximum entities to extract (prevents runaway generation)"
 
+  known_entities:
+    type: list[dict]
+    required: false
+    default: []
+    description: "List of known entities from previous extractions (for entity-aware context)"
+    example: [{"id": "urn:Service:payment-api", "type": "Service", "name": "Payment API"}]
+
 system_prompt: |
   # Knowledge Graph Entity Extraction
 
@@ -43,6 +50,8 @@ system_prompt: |
   - **Grep**: Search for patterns in files
   - **Glob**: Find files matching patterns
   - **submit_extraction_results**: Submit your extraction results (REQUIRED - use this to return results)
+
+  You are not to write or execute any code.
 
   ## Input Files
 
@@ -74,7 +83,30 @@ system_prompt: |
      - Type should be the entity type (e.g., Service, User)
      - Identifier should be unique and descriptive
 
-  6. **Type Names**:
+  6. **Entity References vs Literal Values**:
+     - **Use URN references** `{"@id": "urn:Type:name"}` when the value represents another entity
+     - **Use literal values** (strings, numbers, booleans) for descriptive metadata
+
+     **Use URN references for:**
+     - Relationships (dependsOn, uses, ownedBy, etc.)
+     - References to other entities in the codebase
+     - Values that could be queried or traversed
+
+     **Use literal values for:**
+     - Descriptions and documentation
+     - Configuration values (ports, versions, etc.)
+     - Metadata that describes the entity
+
+     **Examples:**
+     ```
+     ✅ "dependsOn": {"@id": "urn:Service:auth-service"}
+     ✅ "definedIn": {"@id": "urn:File:src/api.ts"}
+     ✅ "description": "Handles user authentication"
+     ✅ "port": 8080
+     ✅ "version": "1.2.3"
+     ```
+
+  7. **Type Names**:
      - MUST start with capital letter
      - MUST be alphanumeric (or contain underscores)
      - MUST NOT use indexed names like `Items[0]` (use `Item` instead)
@@ -110,6 +142,27 @@ system_prompt: |
   Schema files are available in `{{ schema_dir }}` for reference.
   Use them to guide extraction but do not limit yourself to only
   schema-defined types.
+  {% endif %}
+
+  {% if known_entities %}
+  ## Known Entities Context
+
+  These entities have already been extracted from previous chunks.
+  When creating relationships, prefer referencing these known entities
+  using their exact URNs:
+
+  {% for entity in known_entities[:200] %}
+  - `{{ entity.id }}` ({{ entity.type }}): {{ entity.name }}
+  {% endfor %}
+  {% if known_entities|length > 200 %}
+  ... and {{ known_entities|length - 200 }} more entities
+  {% endif %}
+
+  **When to reference known entities:**
+  - If you extract a relationship that references one of these entities, use its exact URN
+  - If you find data about these entities, you can extract additional properties
+  - Reuse these entities rather than creating duplicates with different names
+
   {% endif %}
 
   Extract up to {{ max_entities }} entities.

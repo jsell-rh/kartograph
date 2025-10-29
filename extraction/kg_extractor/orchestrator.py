@@ -291,11 +291,45 @@ class ExtractionOrchestrator:
 
         return total_relationships
 
+    def _build_entity_context(
+        self, entities: list[Entity], max_entities: int = 200
+    ) -> list[dict]:
+        """
+        Build compact entity context for entity-aware extraction.
+
+        Provides workers with knowledge of previously extracted entities
+        to help them create consistent references and avoid duplicates.
+
+        Args:
+            entities: List of accumulated entities from previous chunks
+            max_entities: Maximum number of entities to include (to avoid prompt bloat)
+
+        Returns:
+            List of entity dicts with id, type, name (compact format)
+        """
+        # Take most recent entities (assuming they're more relevant)
+        entities_to_include = (
+            entities[-max_entities:] if len(entities) > max_entities else entities
+        )
+
+        # Build compact format (just id, type, name)
+        context = [
+            {
+                "id": entity.id,
+                "type": entity.type,
+                "name": entity.name,
+            }
+            for entity in entities_to_include
+        ]
+
+        return context
+
     async def _process_chunk(
         self,
         chunk: Chunk,
         chunk_index: int,
         schema_dir: Path | None,
+        known_entities: list[dict] | None = None,
         worker_id: int | None = None,
         event_callback: Any = None,
     ) -> dict[str, Any]:
@@ -306,6 +340,7 @@ class ExtractionOrchestrator:
             chunk: Chunk to process
             chunk_index: Index of the chunk in the list
             schema_dir: Optional schema directory
+            known_entities: Optional list of known entities for entity-aware extraction
             worker_id: Optional worker ID for tracking (used in multi-worker mode)
             event_callback: Optional per-worker event callback (overrides global callback)
 
@@ -337,6 +372,7 @@ class ExtractionOrchestrator:
             "files": chunk.files,
             "chunk_id": chunk.chunk_id,
             "schema_dir": schema_dir,
+            "known_entities": known_entities or [],
         }
 
         # Use provided event_callback (per-worker), or fall back to global callback
@@ -533,6 +569,12 @@ class ExtractionOrchestrator:
             pending = {}  # task -> (chunk_index_in_list, chunk, worker_id)
             available_workers = set(range(self.config.workers))
 
+            # Build initial entity context for entity-aware extraction
+            entity_context = self._build_entity_context(all_entities)
+            logger.debug(
+                f"Built entity context with {len(entity_context)} known entities"
+            )
+
             logger.debug(
                 f"Starting streaming worker pool with {self.config.workers} workers "
                 f"for {len(chunks_to_process)} chunks"
@@ -563,6 +605,7 @@ class ExtractionOrchestrator:
                             chunk,
                             current_chunk_index,
                             schema_dir,
+                            known_entities=entity_context,
                             worker_id=worker_id,
                             event_callback=make_worker_callback(worker_id, chunk),
                         )
@@ -827,6 +870,12 @@ class ExtractionOrchestrator:
                     logger.info(
                         f"Deduplication complete: {entities_before} → {entities_after} entities "
                         f"({entities_before - entities_after} duplicates removed)"
+                    )
+
+                    # Rebuild entity context with deduplicated entities for subsequent chunks
+                    entity_context = self._build_entity_context(all_entities)
+                    logger.debug(
+                        f"Updated entity context with {len(entity_context)} deduplicated entities"
                     )
 
                     # Save checkpoint after deduplication to persist deduplicated state
