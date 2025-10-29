@@ -26,8 +26,12 @@ class DgraphLoader:
         self.dgraph_url = dgraph_url.rstrip("/")
         self.drop_all = drop_all
         self.predicate_types: Dict[str, str] = {}
+        self.predicate_type_observations: Dict[str, Set[str]] = (
+            {}
+        )  # Track all types seen
         self.relationship_predicates: Set[str] = set()
         self.entity_types: Set[str] = set()
+        self.type_predicates: Dict[str, Set[str]] = {}  # Track predicates per type
 
     def load_jsonld(self, filepath: str) -> Dict[str, Any]:
         """Load and parse JSON-LD file."""
@@ -72,25 +76,41 @@ class DgraphLoader:
         return True
 
     def analyze_schema(self, jsonld: Dict[str, Any]):
-        """Analyze JSON-LD to infer Dgraph schema."""
+        """Analyze JSON-LD to infer Dgraph schema with mixed type detection."""
         print("🔬 Analyzing schema...")
 
         entities = jsonld["@graph"]
-        context = jsonld.get("@context", {})
 
         # Analyze entities to determine predicate types and collect entity types
         for entity in entities:
             # Collect entity types for schema generation
+            entity_types_for_this_entity = []
             if "@type" in entity:
                 entity_type = entity["@type"]
                 if isinstance(entity_type, list):
                     self.entity_types.update(entity_type)
+                    entity_types_for_this_entity = entity_type
                 else:
                     self.entity_types.add(entity_type)
+                    entity_types_for_this_entity = [entity_type]
 
             for key, value in entity.items():
                 if key in ["@id", "@type"]:
                     continue
+
+                # Clean predicate name (strip @ prefix) to avoid duplicates
+                # Both @name and name should map to the same predicate
+                clean_key = self._encode_predicate(key)
+
+                # Track which types use this predicate (for sparse type definitions)
+                for etype in entity_types_for_this_entity:
+                    if etype not in self.type_predicates:
+                        self.type_predicates[etype] = set()
+                    self.type_predicates[etype].add(clean_key)
+
+                # Initialize tracking set if needed
+                if clean_key not in self.predicate_type_observations:
+                    self.predicate_type_observations[clean_key] = set()
 
                 # Check if it's a relationship (reference to another entity)
                 is_relationship = False
@@ -98,43 +118,104 @@ class DgraphLoader:
                 if isinstance(value, dict) and "@id" in value:
                     is_relationship = True
                 elif isinstance(value, list):
-                    if value and isinstance(value[0], dict) and "@id" in value[0]:
-                        is_relationship = True
+                    # Check all items in list to detect mixed types
+                    for item in value:
+                        if isinstance(item, dict) and "@id" in item:
+                            is_relationship = True
+                        elif item is not None:
+                            # Non-reference item in list
+                            scalar_type = self._infer_scalar_type(item)
+                            if scalar_type:  # Only add if not None
+                                self.predicate_type_observations[clean_key].add(
+                                    scalar_type
+                                )
 
                 if is_relationship:
-                    self.relationship_predicates.add(key)
-                    self.predicate_types[key] = "uid"
-                elif key not in self.predicate_types:
-                    # Infer scalar type
-                    if isinstance(value, bool):
-                        self.predicate_types[key] = "bool"
-                    elif isinstance(value, int):
-                        self.predicate_types[key] = "int"
-                    elif isinstance(value, float):
-                        self.predicate_types[key] = "float"
-                    else:
-                        self.predicate_types[key] = "string"
+                    self.relationship_predicates.add(clean_key)
+                    self.predicate_type_observations[clean_key].add("uid")
+                else:
+                    # Infer and track scalar type
+                    scalar_type = self._infer_scalar_type(value)
+                    if scalar_type:  # Only add if not None (skip dicts/lists)
+                        self.predicate_type_observations[clean_key].add(scalar_type)
+
+        # Resolve mixed types
+        self._resolve_predicate_types()
 
         print(f"  Found {len(self.predicate_types)} predicates")
         print(f"  Found {len(self.relationship_predicates)} relationships")
         print(f"  Found {len(self.entity_types)} entity types")
 
+    def _infer_scalar_type(self, value: Any) -> str:
+        """Infer the scalar type of a value."""
+        # Skip dicts and lists - they're not scalar types
+        if isinstance(value, (dict, list)):
+            return None
+
+        if isinstance(value, bool):
+            return "bool"
+        elif isinstance(value, int):
+            return "int"
+        elif isinstance(value, float):
+            return "float"
+        else:
+            return "string"
+
+    def _resolve_predicate_types(self):
+        """
+        Resolve predicate types based on all observations.
+        If a predicate has mixed types (e.g., sometimes uid, sometimes string),
+        default to string to avoid type mismatch errors.
+        """
+        print("🔄 Resolving mixed types...")
+
+        mixed_type_count = 0
+
+        for predicate, observed_types in self.predicate_type_observations.items():
+            if len(observed_types) == 1:
+                # Only one type seen - use it
+                self.predicate_types[predicate] = list(observed_types)[0]
+            else:
+                # Mixed types detected
+                mixed_type_count += 1
+
+                # If uid is mixed with any scalar type, prefer uid (relationships are more important)
+                if "uid" in observed_types:
+                    print(
+                        f"  ⚠️  {predicate}: mixed types {observed_types} → preferring uid (relationships)"
+                    )
+                    self.predicate_types[predicate] = "uid"
+                    # Keep in relationship predicates
+                    self.relationship_predicates.add(predicate)
+                else:
+                    # Mixed scalar types - choose string as most permissive
+                    print(
+                        f"  ⚠️  {predicate}: mixed scalar types {observed_types} → defaulting to string"
+                    )
+                    self.predicate_types[predicate] = "string"
+
+        if mixed_type_count > 0:
+            print(f"  Found {mixed_type_count} predicates with mixed types")
+
     def generate_schema(self) -> str:
-        """Generate Dgraph schema from inferred types."""
+        """Generate Dgraph schema from inferred types with sparse type definitions."""
         schema_lines = []
 
-        # Define Dgraph types for expand(_all_) support
-        # All types include all predicates for simplicity
-        all_predicates = []
-        for predicate in sorted(self.predicate_types.keys()):
-            clean_predicate = self._encode_predicate(predicate)
-            all_predicates.append(f"  {clean_predicate}")
-
+        # Generate sparse type definitions - each type only lists predicates it uses
+        print("📋 Generating sparse type definitions...")
+        total_type_predicates = 0
         for entity_type in sorted(self.entity_types):
-            schema_lines.append(f"type {entity_type} {{")
-            schema_lines.extend(all_predicates)
-            schema_lines.append("}")
+            if entity_type in self.type_predicates:
+                predicates = sorted(self.type_predicates[entity_type])
+                schema_lines.append(f"type {entity_type} {{")
+                for predicate in predicates:
+                    schema_lines.append(f"  {predicate}")
+                schema_lines.append("}")
+                total_type_predicates += len(predicates)
 
+        print(
+            f"  Generated {len(self.entity_types)} types with avg {total_type_predicates // max(len(self.entity_types), 1)} predicates each"
+        )
         schema_lines.append("")  # Blank line for readability
 
         # Predicates that should be indexed for fast queries
@@ -143,45 +224,41 @@ class DgraphLoader:
         # Add type predicate (from @type in JSON-LD) with index first
         schema_lines.append("type: string @index(exact, term) .")
 
-        # Add type definitions
+        # Add predicate definitions
+        # Note: predicates are already cleaned (@ prefix stripped) during analyze_schema
         for predicate, pred_type in sorted(self.predicate_types.items()):
-            # Use simple clean predicate name
-            clean_predicate = self._encode_predicate(predicate)
+            # Skip 'type' since we already defined it explicitly above
+            if predicate == "type":
+                continue
 
             if pred_type == "uid":
                 # Relationship with reverse edge
-                schema_lines.append(f"{clean_predicate}: [uid] @reverse .")
+                schema_lines.append(f"{predicate}: [uid] @reverse .")
             else:
-                # Add indexes for key predicates
+                # Add indexes for key predicates (check against cleaned name)
                 if predicate in indexed_predicates:
                     if pred_type == "string":
                         # Add trigram, fulltext, and standard indexes for name predicate
                         # trigram is required for regexp() matching
                         if predicate == "name":
                             schema_lines.append(
-                                f"{clean_predicate}: {pred_type} @index(exact, term, fulltext, trigram) ."
+                                f"{predicate}: {pred_type} @index(exact, term, fulltext, trigram) ."
                             )
                         else:
                             schema_lines.append(
-                                f"{clean_predicate}: {pred_type} @index(exact, term, trigram) ."
+                                f"{predicate}: {pred_type} @index(exact, term, trigram) ."
                             )
                     elif pred_type == "int":
-                        schema_lines.append(
-                            f"{clean_predicate}: {pred_type} @index(int) ."
-                        )
+                        schema_lines.append(f"{predicate}: {pred_type} @index(int) .")
                     elif pred_type == "bool":
-                        schema_lines.append(
-                            f"{clean_predicate}: {pred_type} @index(bool) ."
-                        )
+                        schema_lines.append(f"{predicate}: {pred_type} @index(bool) .")
                     elif pred_type == "float":
-                        schema_lines.append(
-                            f"{clean_predicate}: {pred_type} @index(float) ."
-                        )
+                        schema_lines.append(f"{predicate}: {pred_type} @index(float) .")
                     else:
-                        schema_lines.append(f"{clean_predicate}: {pred_type} .")
+                        schema_lines.append(f"{predicate}: {pred_type} .")
                 else:
                     # Scalar type without index
-                    schema_lines.append(f"{clean_predicate}: {pred_type} .")
+                    schema_lines.append(f"{predicate}: {pred_type} .")
 
         return "\n".join(schema_lines)
 
@@ -223,16 +300,39 @@ class DgraphLoader:
                             obj = self._encode_urn(item["@id"])
                             nquads.append(f"{subject} <{predicate}> {obj} .")
                         elif isinstance(item, dict):
+                            # Skip nested objects if predicate is uid type
+                            if (
+                                predicate in self.predicate_types
+                                and self.predicate_types[predicate] == "uid"
+                            ):
+                                continue
+                            # Skip empty objects
+                            if not item:
+                                continue
                             # Nested object (serialize as JSON string)
                             obj_str = json.dumps(item).replace('"', '\\"')
                             nquads.append(f'{subject} <{predicate}> "{obj_str}" .')
                         else:
+                            # Skip scalars if predicate is uid type
+                            if (
+                                predicate in self.predicate_types
+                                and self.predicate_types[predicate] == "uid"
+                            ):
+                                continue
                             obj = self._format_literal(item)
                             if obj:  # Only add if not None
                                 nquads.append(f"{subject} <{predicate}> {obj} .")
 
                 else:
                     # Scalar value
+                    # Skip if this predicate is defined as uid type (mixed type case)
+                    if (
+                        predicate in self.predicate_types
+                        and self.predicate_types[predicate] == "uid"
+                    ):
+                        # This predicate should only have uid values, skip scalars
+                        continue
+
                     obj = self._format_literal(value)
                     if obj:  # Only add if not None
                         nquads.append(f"{subject} <{predicate}> {obj} .")
@@ -247,14 +347,40 @@ class DgraphLoader:
         return f"<{encoded}>"
 
     def _encode_predicate(self, predicate: str) -> str:
-        """Clean predicate name (strip @ prefix)."""
+        """Clean predicate name (strip @ prefix and sanitize special characters)."""
         # Strip @ prefix if present (e.g., @type -> type)
-        return predicate.lstrip("@")
+        clean = predicate.lstrip("@")
+
+        # Replace special characters that aren't valid in Dgraph predicates
+        # Dgraph allows: alphanumeric, underscore, hyphen, period
+        # Replace $ with underscore (e.g., $schema -> _schema, $ref -> _ref)
+        clean = clean.replace("$", "_")
+
+        # Replace other potentially problematic characters
+        clean = clean.replace(":", "_")
+        clean = clean.replace("/", "_")
+        clean = clean.replace("\\", "_")
+
+        # Handle Dgraph reserved words by prefixing with underscore
+        # Reserved: uid, dgraph.*, etc.
+        dgraph_reserved = {"uid"}
+        if clean in dgraph_reserved:
+            clean = f"_{clean}"
+
+        # Prevent predicates starting with "dgraph." (reserved namespace)
+        if clean.startswith("dgraph."):
+            clean = f"_{clean}"
+
+        return clean
 
     def _format_literal(self, value: Any) -> str:
         """Format literal value for N-Quads."""
         # Skip None values
         if value is None:
+            return None
+
+        # Skip empty dicts/objects (they should be relationships, not literals)
+        if isinstance(value, dict):
             return None
 
         if isinstance(value, bool):
@@ -271,8 +397,14 @@ class DgraphLoader:
                 .replace('"', '\\"')
                 .replace("\n", "\\n")
             )
-            # Skip if contains complex characters or "None" string
-            if "{{" in value_str or "}}" in value_str or value_str == "None":
+            # Skip if contains braces (serialized objects), brackets (serialized arrays), or "None" string
+            if (
+                "{" in value_str
+                or "}" in value_str
+                or "[" in value_str
+                or "]" in value_str
+                or value_str == "None"
+            ):
                 return None
             return f'"{value_str}"'
 
@@ -291,38 +423,73 @@ class DgraphLoader:
     def apply_schema(self, schema: str):
         """Apply schema to Dgraph."""
         print("📝 Applying schema...")
-
-        response = requests.post(
-            f"{self.dgraph_url}/alter",
-            data=schema,
-            headers={"Content-Type": "text/plain"},
+        print(
+            f"  Schema length: {len(schema)} characters, {len(schema.split(chr(10)))} lines"
         )
 
-        if response.status_code == 200:
-            print("✅ Schema applied")
-        else:
-            print(f"⚠️  Schema application returned: {response.text}")
-            # Continue anyway - schema may be partially applied
+        try:
+            response = requests.post(
+                f"{self.dgraph_url}/alter",
+                data=schema,
+                headers={"Content-Type": "text/plain"},
+                timeout=30,
+            )
 
-    def load_nquads(self, nquads: List[str], schema: str):
-        """Load N-Quads into Dgraph using dgraph live command."""
+            if response.status_code == 200:
+                # Check for errors in JSON response (Dgraph returns 200 even with errors!)
+                try:
+                    result = response.json()
+                    if "errors" in result and result["errors"]:
+                        errors = result["errors"]
+                        error_msgs = [e.get("message", str(e)) for e in errors]
+                        print(f"❌ Schema application returned errors:")
+                        for msg in error_msgs:
+                            print(f"  - {msg}")
+                        raise Exception(f"Schema errors: {'; '.join(error_msgs)}")
+                    else:
+                        print("✅ Schema applied successfully")
+                except json.JSONDecodeError:
+                    # Not JSON, probably success
+                    print("✅ Schema applied successfully")
+                    print(f"  Response (text): {response.text[:200]}")
+            else:
+                print(
+                    f"❌ Schema application failed with status {response.status_code}"
+                )
+                print(f"  Response: {response.text[:500]}")
+                raise Exception(f"Schema application failed: {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Network error applying schema: {e}")
+            raise
+
+    def load_nquads(self, nquads: List[str], schema: str = None):
+        """
+        Load N-Quads into Dgraph using dgraph live command.
+
+        Args:
+            nquads: List of N-Quad triples to load
+            schema: Optional schema string to pass to dgraph live (prevents auto-schema)
+        """
         print(f"📊 Loading {len(nquads)} triples into Dgraph...")
 
         # Filter out None values (skipped triples)
         nquads = [nq for nq in nquads if nq is not None]
 
-        # Create temporary files for schema and data
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".txt", delete=False
-        ) as schema_file:
-            schema_file.write(schema)
-            schema_path = schema_file.name
-
+        # Create temporary file for data
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".rdf", delete=False
         ) as data_file:
             data_file.write("\n".join(nquads))
             data_path = data_file.name
+
+        # Create temporary file for schema (prevents dgraph live from auto-generating)
+        schema_path = None
+        if schema:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".schema", delete=False
+            ) as schema_file:
+                schema_file.write(schema)
+                schema_path = schema_file.name
 
         try:
             # Parse dgraph URL to get host and port
@@ -348,7 +515,8 @@ class DgraphLoader:
             # Skip dgraph live if alpha_port is not available (remote dgraph)
             if alpha_port is None:
                 print(f"  Remote dgraph detected - using HTTP API...")
-                self._load_via_http(nquads)
+                self._load_via_http(nquads, schema=schema)
+                return
             # Check if dgraph is available locally
             if subprocess.run(["which", "dgraph"], capture_output=True).returncode == 0:
                 dgraph_cmd = [
@@ -356,14 +524,15 @@ class DgraphLoader:
                     "live",
                     "-f",
                     data_path,
-                    "-s",
-                    schema_path,
                     "-a",
                     f"{host}:{alpha_port}",
                     "-z",
                     f"{host}:{zero_port}",
                     "--format=rdf",
                 ]
+                # Add schema file if provided (prevents auto-schema generation)
+                if schema_path:
+                    dgraph_cmd.extend(["-s", schema_path])
             # Check if Docker is available - use dgraph Docker image
             elif (
                 subprocess.run(["which", "docker"], capture_output=True).returncode == 0
@@ -377,27 +546,38 @@ class DgraphLoader:
                     "--network=host",  # Use host network to access localhost ports
                     "-v",
                     f"{data_path}:/tmp/data.rdf:ro",
-                    "-v",
-                    f"{schema_path}:/tmp/schema.txt:ro",
-                    "dgraph/dgraph:v23.1.1",
-                    "dgraph",
-                    "live",
-                    "-f",
-                    "/tmp/data.rdf",
-                    "-s",
-                    "/tmp/schema.txt",
-                    "-a",
-                    f"{host}:{alpha_port}",
-                    "-z",
-                    f"{host}:{zero_port}",
-                    "--format=rdf",
                 ]
+                # Mount schema file if provided
+                if schema_path:
+                    dgraph_cmd.extend(["-v", f"{schema_path}:/tmp/schema.txt:ro"])
+
+                dgraph_cmd.extend(
+                    [
+                        "dgraph/dgraph:v23.1.1",
+                        "dgraph",
+                        "live",
+                        "-f",
+                        "/tmp/data.rdf",
+                        "-a",
+                        f"{host}:{alpha_port}",
+                        "-z",
+                        f"{host}:{zero_port}",
+                        "--format=rdf",
+                    ]
+                )
+
+                # Add schema flag if provided
+                if schema_path:
+                    dgraph_cmd.extend(["-s", "/tmp/schema.txt"])
+
                 print(f"Running: '{' '.join(dgraph_cmd)}'")
 
             if dgraph_cmd:
                 # Execute dgraph live command
+                # Timeout: 3h for large datasets (354K+ triples)
+                # Note: Loading can be slow due to indexing, especially with sparse types
                 result = subprocess.run(
-                    dgraph_cmd, capture_output=True, text=True, timeout=300
+                    dgraph_cmd, capture_output=True, text=True, timeout=60 * 60 * 3
                 )
 
                 # dgraph live outputs to stderr even on success, check return code
@@ -419,23 +599,32 @@ class DgraphLoader:
                     print(f"❌ dgraph live failed (exit code {result.returncode})")
                     print(f"  {result.stderr}")
                     print(f"  Falling back to HTTP API...")
-                    self._load_via_http(nquads)
+                    self._load_via_http(nquads, schema=schema)
             else:
                 print(f"  No dgraph command available, using HTTP API...")
-                self._load_via_http(nquads)
+                self._load_via_http(nquads, schema=schema)
 
         finally:
             # Clean up temporary files
             try:
-                os.unlink(schema_path)
                 os.unlink(data_path)
             except:
                 pass
+            if schema_path:
+                try:
+                    os.unlink(schema_path)
+                except:
+                    pass
 
-    def _load_via_http(self, nquads: List[str]):
+    def _load_via_http(self, nquads: List[str], schema: str = None):
         """Fallback: Load via HTTP API (less reliable for bulk data)."""
         print(f"  ⚠️  Warning: HTTP API may not persist large datasets reliably")
         print(f"  💡 Tip: Use 'dgraph live' command manually for best results")
+
+        # Apply schema via HTTP if provided (since we're not using dgraph live)
+        if schema:
+            print(f"  📝 Applying schema via HTTP...")
+            self.apply_schema(schema)
 
         # Batch mutations for efficiency
         BATCH_SIZE = 1000
@@ -516,16 +705,21 @@ class DgraphLoader:
         self.analyze_schema(jsonld)
         schema = self.generate_schema()
 
+        # Debug: Save schema to file for inspection
+        with open("/tmp/dgraph_schema_debug.txt", "w") as f:
+            f.write(schema)
+        print(f"📄 Schema saved to /tmp/dgraph_schema_debug.txt for inspection")
+
         # Drop existing data if requested
         if self.drop_all:
             self.drop_all_data()
 
-        # Apply schema BEFORE loading data (critical for reverse indexes)
-        self.apply_schema(schema)
-
-        # Convert to N-Quads and load via dgraph live
+        # Convert to N-Quads
         nquads = self.convert_to_nquads(jsonld)
-        self.load_nquads(nquads, schema)
+
+        # Load data with schema (schema passed to dgraph live, or applied via HTTP as fallback)
+        # Note: Schema is NOT applied via HTTP first because dgraph live with -s flag will handle it
+        self.load_nquads(nquads, schema=schema)
 
         # Report statistics
         self.query_stats()
@@ -570,7 +764,7 @@ Examples:
     if args.drop_all:
         print("⚠️  WARNING: --drop-all will delete ALL existing data in Dgraph!")
         confirm = input("Type 'yes' to confirm: ")
-        if confirm.lower() != "yes":
+        if confirm.lower().strip() != "yes":
             print("Aborted.")
             sys.exit(0)
 

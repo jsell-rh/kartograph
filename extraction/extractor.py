@@ -17,7 +17,6 @@ from kg_extractor.config import (
     LoggingConfig,
     ValidationConfig,
 )
-from kg_extractor.deduplication.urn_deduplicator import URNDeduplicator
 from kg_extractor.llm.agent_client import AgentClient
 from kg_extractor.loaders.file_system import DiskFileSystem
 from kg_extractor.orchestrator import ExtractionOrchestrator
@@ -58,10 +57,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("knowledge_graph.jsonld"),
         help="Output JSON-LD file path",
     )
-    parser.add_argument(
+    # Checkpointing
+    checkpoint_group = parser.add_argument_group("checkpointing")
+    checkpoint_group.add_argument(
         "--resume",
         action="store_true",
         help="Resume from latest checkpoint",
+    )
+    checkpoint_group.add_argument(
+        "--no-checkpoint",
+        action="store_true",
+        help="Disable checkpointing (not recommended for long extractions)",
+    )
+    checkpoint_group.add_argument(
+        "--checkpoint-strategy",
+        choices=["per_chunk", "every_n"],
+        help="Checkpoint strategy: per_chunk (after each chunk) or every_n (every N chunks)",
+    )
+    checkpoint_group.add_argument(
+        "--checkpoint-every-n",
+        type=int,
+        help="Checkpoint every N chunks (only used with --checkpoint-strategy every_n)",
     )
     parser.add_argument(
         "--metrics-output",
@@ -77,6 +93,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Estimate cost and preview extraction without calling LLM",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=3,
+        help="Number of concurrent workers for parallel chunk processing (default: 3, max: 20)",
+    )
+
+    # LLM configuration
+    llm_group = parser.add_argument_group("llm")
+    llm_group.add_argument(
+        "--model",
+        help="LLM model to use (default: claude-sonnet-4-5@20250929)",
     )
 
     # Authentication
@@ -97,7 +126,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     auth_group.add_argument(
         "--vertex-region",
-        default="us-central1",
+        default="us-east1",
         help="Google Cloud region (for vertex_ai auth)",
     )
     auth_group.add_argument(
@@ -140,6 +169,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=["first", "last", "merge_predicates"],
         default="merge_predicates",
         help="How to merge duplicate URNs",
+    )
+    dedup_group.add_argument(
+        "--dedup-batch-size",
+        type=int,
+        default=50,
+        help="Run deduplication every N chunks (incremental batching, default: 50)",
     )
 
     # Logging
@@ -206,7 +241,7 @@ def build_config_from_args(
         auth_dict["api_key"] = args.api_key
     if args.vertex_project_id:
         auth_dict["vertex_project_id"] = args.vertex_project_id
-    if args.vertex_region != "us-central1":  # Only override if not default
+    if args.vertex_region != "us-east1":  # Only override if not default
         auth_dict["vertex_region"] = args.vertex_region
     if args.vertex_credentials_file:
         auth_dict["vertex_credentials_file"] = args.vertex_credentials_file
@@ -233,6 +268,8 @@ def build_config_from_args(
         dedup_dict["strategy"] = args.dedup_strategy
     if args.urn_merge_strategy != "merge_predicates":  # Only override if not default
         dedup_dict["urn_merge_strategy"] = args.urn_merge_strategy
+    if args.dedup_batch_size != 50:  # Only override if not default
+        dedup_dict["batch_size"] = args.dedup_batch_size
 
     if dedup_dict:
         config_dict["deduplication"] = dedup_dict
@@ -253,6 +290,26 @@ def build_config_from_args(
     if logging_dict:
         config_dict["logging"] = logging_dict
 
+    # Checkpoint overrides
+    checkpoint_dict = {}
+    if args.no_checkpoint:
+        checkpoint_dict["enabled"] = False
+    if args.checkpoint_strategy:
+        checkpoint_dict["strategy"] = args.checkpoint_strategy
+    if args.checkpoint_every_n:
+        checkpoint_dict["every_n_chunks"] = args.checkpoint_every_n
+
+    if checkpoint_dict:
+        config_dict["checkpoint"] = checkpoint_dict
+
+    # LLM overrides
+    llm_dict = {}
+    if args.model:
+        llm_dict["model"] = args.model
+
+    if llm_dict:
+        config_dict["llm"] = llm_dict
+
     # Top-level overrides
     if args.output_file != Path(
         "knowledge_graph.jsonld"
@@ -260,6 +317,8 @@ def build_config_from_args(
         config_dict["output_file"] = args.output_file
     if args.resume:
         config_dict["resume"] = args.resume
+    if args.workers != 3:  # Only override if not default
+        config_dict["workers"] = args.workers
 
     # Create config - pydantic-settings will load from .env (in current dir) and env vars, then override with our dict
     config = ExtractionConfig(**config_dict)
@@ -357,17 +416,25 @@ async def main(argv: list[str] | None = None) -> int:
         logger.info("Starting knowledge graph extraction")
         logger.info(f"Data directory: {config.data_dir}")
         logger.info(f"Output file: {config.output_file}")
+        logger.info(f"Model: {config.llm.model}")
+        logger.info(f"Workers: {config.workers}")
+        logger.info(f"Deduplication strategy: {config.deduplication.strategy}")
+        logger.info(
+            f"Deduplication batch size: every {config.deduplication.batch_size} chunks"
+        )
 
         # Create components
         file_system = DiskFileSystem()
         chunker = HybridChunker(config=config.chunking)
-        deduplicator = URNDeduplicator(config=config.deduplication)
+        # Let orchestrator create the right deduplicator based on config.deduplication.strategy
+        deduplicator = None
 
         # Create LLM client
         llm_client = AgentClient(
             auth_config=config.auth,
             model=config.llm.model,
             log_prompts=config.logging.log_llm_prompts,
+            max_concurrent=config.workers,
         )
 
         # Create prompt loader
@@ -401,6 +468,7 @@ async def main(argv: list[str] | None = None) -> int:
                 total_chunks=total_chunks,
                 verbose=config.logging.verbose,
                 data_dir=config.data_dir,
+                num_workers=config.workers,
             )
 
         # Create progress callback
@@ -423,6 +491,10 @@ async def main(argv: list[str] | None = None) -> int:
             deduplicator=deduplicator,
             progress_callback=progress_callback,
         )
+
+        # Set orchestrator reference for multi-worker display
+        if progress_display:
+            progress_display.orchestrator = orchestrator
 
         # Set event callback for verbose mode (streaming agent activity)
         if progress_display:
@@ -551,6 +623,33 @@ async def main(argv: list[str] | None = None) -> int:
                 logger.info("Extraction pipeline complete!")
 
             return 0
+
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully
+            if progress_display:
+                progress_display.stop()
+
+            logger.info("\n" + "=" * 70)
+            logger.info("EXTRACTION INTERRUPTED BY USER (Ctrl+C)")
+            logger.info("=" * 70)
+
+            # Inform about checkpoint status
+            if (
+                orchestrator.checkpoint_store
+                and hasattr(config, "checkpoint")
+                and config.checkpoint.enabled
+            ):
+                logger.info(
+                    f"Progress saved in checkpoint: {orchestrator.checkpoint_store.checkpoint_dir}"
+                )
+                logger.info(
+                    "Resume with: --resume (checkpoint will be automatically detected)"
+                )
+            else:
+                logger.info("No checkpoint enabled - progress was not saved")
+
+            logger.info("=" * 70)
+            return 130  # Standard exit code for Ctrl+C (128 + SIGINT)
 
         except Exception as e:
             if progress_display:

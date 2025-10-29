@@ -701,12 +701,10 @@ export default defineEventHandler(async (event) => {
           // Track assistant's response text for database persistence
           let assistantResponseText = "";
           let assistantThinkingSteps: ThinkingStep[] = [];
-          let currentToolCallStep: ThinkingStep | null = null;
 
           // Conversation history (messages back and forth with Claude)
           // Include previous conversation context + new prompt
           // Keep track of initial history length for context truncation on 413 errors
-          let currentHistoryTrimLevel = 0; // 0 = full history, increases on 413 errors
           const initialHistoryLength = sanitizedHistory.length;
 
           const messages: Anthropic.MessageParam[] = [
@@ -758,7 +756,7 @@ export default defineEventHandler(async (event) => {
                   () =>
                     (anthropic as any).messages.create({
                       model,
-                      max_tokens: 8000,
+                      max_tokens: 18000,
                       system: fullSystemPrompt,
                       messages,
                       tools: dgraphTools,
@@ -792,7 +790,6 @@ export default defineEventHandler(async (event) => {
                   contextTruncationAttempt < maxContextTruncationAttempts - 1
                 ) {
                   contextTruncationAttempt++;
-                  currentHistoryTrimLevel = contextTruncationAttempt;
 
                   // Get trimmed history
                   const trimmedHistory = getProgressivelyTrimmedHistory(
@@ -915,7 +912,7 @@ export default defineEventHandler(async (event) => {
               () =>
                 (anthropic as any).messages.create({
                   model,
-                  max_tokens: 8000,
+                  max_tokens: 18000,
                   system: fullSystemPrompt,
                   messages,
                   tools: dgraphTools,

@@ -55,3 +55,5 @@ venv/
 extraction/working/
 *.jsonld
 !extraction/working/README.md
+
+.checkpoints

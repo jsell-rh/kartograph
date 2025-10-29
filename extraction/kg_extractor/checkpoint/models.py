@@ -24,6 +24,10 @@ class Checkpoint(BaseModel):
         ge=0,
         description="Number of chunks processed so far",
     )
+    completed_chunk_ids: set[str] = Field(
+        default_factory=set,
+        description="Set of chunk IDs that have been successfully processed (for parallel resume)",
+    )
     entities_extracted: int = Field(
         ge=0,
         description="Total number of entities extracted so far",

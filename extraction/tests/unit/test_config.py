@@ -14,7 +14,7 @@ def test_auth_config_defaults():
     # Default auth_method is vertex_ai, so we need to provide project_id
     config = AuthConfig(vertex_project_id="test-project")
     assert config.auth_method == "vertex_ai"
-    assert config.vertex_region == "us-central1"
+    assert config.vertex_region == "us-east5"
     assert config.vertex_project_id == "test-project"
     assert config.api_key is None
 
@@ -91,7 +91,7 @@ def test_deduplication_config_defaults():
     from kg_extractor.config import DeduplicationConfig
 
     config = DeduplicationConfig()
-    assert config.strategy == "urn"
+    assert config.strategy == "agent"
     assert config.urn_merge_strategy == "merge_predicates"
     assert config.agent_similarity_threshold == 0.85
 

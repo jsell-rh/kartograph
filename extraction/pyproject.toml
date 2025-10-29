@@ -18,6 +18,7 @@ dependencies = [
     "pyyaml>=6.0.0",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
+    "google-cloud-aiplatform>=1.122.0",
 ]
 
 [project.optional-dependencies]
