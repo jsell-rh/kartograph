@@ -104,3 +104,16 @@ repos:
         exclude: '^extraction/(\.venv|\.pytest_cache)/.*'
         pass_filenames: false
         stages: [pre-push]
+
+  - repo: https://github.com/openshift-hyperfleet/rh-hooks-ai
+    rev: v1.0.3
+    hooks:
+      - id: check-rh-precommit
+      - id: validate-agents-md
+      - id: ai-attribution-reminder
+      - id: check-version
+
+  - repo: https://gitlab.cee.redhat.com/infosec-public/developer-workbench/tools
+    rev: rh-pre-commit-2.3.2
+    hooks:
+      - id: rh-pre-commit

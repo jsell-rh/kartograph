@@ -58,3 +58,4 @@ extraction/working/
 
 .checkpoints
 output/
+.gitmessage
