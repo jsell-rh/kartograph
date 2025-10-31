@@ -351,6 +351,7 @@ dev-setup: ## Setup local development environment
 # Data loading
 DGRAPH_PORT ?= 8080
 GRAPH_FILE ?= working/knowledge_graph.jsonld
+DROP_ALL ?= false
 
 # Helper function to find a free port
 find-free-port:
@@ -361,8 +362,11 @@ find-free-port:
 	done; \
 	echo $$PORT
 
-load-data: ## Load graph data into remote dgraph (use GRAPH_FILE=path/to/file.jsonld)
+load-data: ## Load graph data into remote dgraph (use GRAPH_FILE=path/to/file.jsonld DROP_ALL=true)
 	@echo "This will port-forward dgraph-alpha and load data from $(GRAPH_FILE)"
+	@if [ "$(DROP_ALL)" = "true" ]; then \
+		echo "⚠️  WARNING: DROP_ALL=true - This will DELETE all existing data in Dgraph!"; \
+	fi
 	@echo "Make sure the graph data file exists before continuing."
 	@echo ""
 	@if [ ! -f $(GRAPH_FILE) ]; then \
@@ -416,8 +420,24 @@ load-data: ## Load graph data into remote dgraph (use GRAPH_FILE=path/to/file.js
 		rm -f $$PF_LOG; \
 		echo ""; \
 		echo "Loading data with dgraph live..."; \
-		cd .. && python extraction/load_dgraph.py --input $(GRAPH_FILE) --dgraph-url http://localhost:$$HTTP_PORT; \
+		DROP_FLAG=""; \
+		if [ "$(DROP_ALL)" = "true" ]; then \
+			DROP_FLAG="--drop-all"; \
+		fi; \
+		cd .. && python extraction/load_dgraph.py --input $(GRAPH_FILE) --dgraph-url http://localhost:$$HTTP_PORT --grpc-port $$GRPC_PORT --zero-port $$ZERO_PORT $$DROP_FLAG; \
 		LOAD_EXIT=$$?; \
+		if [ $$LOAD_EXIT -ne 0 ]; then \
+			echo ""; \
+			echo "❌ Data load failed!"; \
+			echo ""; \
+			echo "💡 Common issues:"; \
+			echo "  - Schema conflict: If you see 'Schema change not allowed', the new data has"; \
+			echo "    a different schema than existing data. Solutions:"; \
+			echo "      1. Drop existing data: make load-data GRAPH_FILE=$(GRAPH_FILE) DROP_ALL=true"; \
+			echo "      2. Or manually alter the schema to match"; \
+			echo "  - Connection timeout: Dgraph may be slow to respond, try again"; \
+			echo "  - Port conflicts: Check that port-forwards are still running"; \
+		fi; \
 		echo ""; \
 		echo "Stopping port-forwards..."; \
 		kill $$PF_PID $$ZERO_PID 2>/dev/null || true; \

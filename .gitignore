@@ -57,3 +57,4 @@ extraction/working/
 !extraction/working/README.md
 
 .checkpoints
+output/
