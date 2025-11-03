@@ -56,6 +56,7 @@ deploy-ephemeral: push-local ## Deploy to ephemeral environment
 		oc delete deployment kartograph-app -n $$NAMESPACE --wait=false || true; \
 		sleep 5; \
 	fi; \
+	cp deploy/overlays/ephemeral/kustomization.yaml.template deploy/overlays/ephemeral/kustomization.yaml && \
 	cd deploy/overlays/ephemeral && \
 	kustomize edit set image ghcr.io/jsell-rh/kartograph=$(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG) && \
 	kustomize edit set namespace $$NAMESPACE && \
