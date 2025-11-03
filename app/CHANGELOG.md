@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.5](https://github.com/jsell-rh/kartograph/compare/v0.2.4...v0.2.5) (2025-11-03)
+
+
+### Features
+
+* Add verbose tool call display ([#22](https://github.com/jsell-rh/kartograph/issues/22)) ([7fd15a0](https://github.com/jsell-rh/kartograph/commit/7fd15a0da2aa7ed233823116b5e5db9a9babdc2d)), closes [#21](https://github.com/jsell-rh/kartograph/issues/21) [#21](https://github.com/jsell-rh/kartograph/issues/21) [#21](https://github.com/jsell-rh/kartograph/issues/21) [#21](https://github.com/jsell-rh/kartograph/issues/21) [#21](https://github.com/jsell-rh/kartograph/issues/21) [#21](https://github.com/jsell-rh/kartograph/issues/21)
+
+
+### Chores
+
+* **release:** 0.2.4 ([d69fabd](https://github.com/jsell-rh/kartograph/commit/d69fabda74867815bdf991fad025ef648d1ef040))
+
 ### [0.2.4](https://github.com/jsell-rh/kartograph/compare/v0.2.3...v0.2.4) (2025-11-03)
 
 

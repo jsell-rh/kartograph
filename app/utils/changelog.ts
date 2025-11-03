@@ -11,11 +11,11 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [],
+  "features": [
+    "Add verbose tool call display (#22)"
+  ],
   "improvements": [],
-  "bugFixes": [
-    "Add DROP_ALL parameter to Makefile"
-  ]
+  "bugFixes": []
 };
 
 export default changelog;
