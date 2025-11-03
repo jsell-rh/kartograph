@@ -458,6 +458,7 @@ export class QueryAgent extends EventEmitter {
         id: toolCall.id,
         name: toolCall.name,
         description,
+        input: toolCall.input,
       });
 
       try {
@@ -481,6 +482,7 @@ export class QueryAgent extends EventEmitter {
         this.emit("tool_complete", {
           toolId: toolCall.id,
           elapsedMs: toolElapsedMs,
+          result: typeof result === "string" ? result : JSON.stringify(result, null, 2),
         });
 
         toolResults.push({
@@ -508,6 +510,7 @@ export class QueryAgent extends EventEmitter {
           toolId: toolCall.id,
           elapsedMs: toolElapsedMs,
           error: true,
+          result: undefined,
         });
 
         toolResults.push({

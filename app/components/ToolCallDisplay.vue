@@ -1,5 +1,6 @@
 <template>
   <div class="tool-call-display space-y-2">
+    <!-- Header with tool name and timing -->
     <div class="flex items-center gap-2 text-muted-foreground">
       <svg
         class="w-4 h-4"
@@ -41,9 +42,164 @@
         {{ timing }}
       </span>
     </div>
+
+    <!-- Description -->
     <div class="text-sm text-muted-foreground/80 pl-6">
       {{ description }}
     </div>
+
+    <!-- Input Parameters Section -->
+    <div v-if="input" class="pl-6">
+      <button
+        @click="toggleInput"
+        class="group flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        <svg
+          class="w-3 h-3 transition-transform duration-200"
+          :class="{ 'rotate-90': showInput }"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+        <span>Input Parameters</span>
+      </button>
+
+      <Transition name="expand-code">
+        <div v-if="showInput" class="mt-2 relative group/code">
+          <!-- Copy button -->
+          <button
+            @click="copyToClipboard(formattedInput, 'input')"
+            class="absolute top-2 right-2 p-1.5 rounded bg-background/80 hover:bg-background border border-border/50 opacity-0 group-hover/code:opacity-100 transition-opacity z-10"
+            :title="copiedInput ? 'Copied!' : 'Copy input'"
+          >
+            <svg
+              v-if="copiedInput"
+              class="w-3.5 h-3.5 text-green-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <svg
+              v-else
+              class="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+          </button>
+
+          <!-- Syntax-highlighted code -->
+          <div
+            class="rounded-lg bg-muted/60 backdrop-blur-sm border border-border/40 p-3 font-mono text-xs overflow-x-auto max-h-64 overflow-y-auto"
+          >
+            <pre v-html="highlightedInput" class="whitespace-pre-wrap break-words"></pre>
+          </div>
+        </div>
+      </Transition>
+    </div>
+
+    <!-- Output Section -->
+    <div v-if="result" class="pl-6">
+      <button
+        @click="toggleOutput"
+        class="group flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors py-1"
+      >
+        <svg
+          class="w-3 h-3 transition-transform duration-200"
+          :class="{ 'rotate-90': showOutput }"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+        <span>Output</span>
+        <span class="text-[10px] text-primary/70 bg-primary/10 px-1.5 py-0.5 rounded-full font-normal">
+          {{ formatSize(result) }}
+        </span>
+      </button>
+
+      <Transition name="expand-code">
+        <div v-if="showOutput" class="mt-2 relative group/code">
+          <!-- Copy button -->
+          <button
+            @click="copyToClipboard(result, 'output')"
+            class="absolute top-2 right-2 p-1.5 rounded bg-background/80 hover:bg-background border border-border/50 opacity-0 group-hover/code:opacity-100 transition-opacity z-10"
+            :title="copiedOutput ? 'Copied!' : 'Copy output'"
+          >
+            <svg
+              v-if="copiedOutput"
+              class="w-3.5 h-3.5 text-green-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5 13l4 4L19 7"
+              />
+            </svg>
+            <svg
+              v-else
+              class="w-3.5 h-3.5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
+            </svg>
+          </button>
+
+          <!-- Syntax-highlighted code with truncation -->
+          <div
+            class="rounded-lg bg-muted/60 backdrop-blur-sm border border-border/40 p-3 font-mono text-xs overflow-x-auto max-h-80 overflow-y-auto"
+          >
+            <pre v-html="highlightedOutput" class="whitespace-pre-wrap break-words"></pre>
+            <div
+              v-if="isTruncated"
+              class="mt-3 pt-3 border-t border-border/30 text-center text-muted-foreground italic"
+            >
+              ... output truncated (showing first {{ maxOutputLength.toLocaleString() }} characters)
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </div>
+
+    <!-- Error display -->
     <div
       v-if="error"
       class="text-sm text-destructive pl-6 flex items-center gap-2"
@@ -67,12 +223,252 @@
 </template>
 
 <script setup lang="ts">
+import { ref, computed, watch } from 'vue';
+import { codeToHtml } from 'shiki';
+
 interface Props {
   toolName: string;
   description: string;
   error?: string;
   timing?: string;
+  input?: any;
+  result?: string;
 }
 
-defineProps<Props>();
+const props = defineProps<Props>();
+
+// State
+const showInput = ref(false);
+const showOutput = ref(false);
+const copiedInput = ref(false);
+const copiedOutput = ref(false);
+const maxOutputLength = 5000;
+
+// Computed
+const formattedInput = computed(() => {
+  if (!props.input) return '';
+  try {
+    // First, stringify normally
+    let formatted = JSON.stringify(props.input, null, 2);
+
+    // Post-process: Replace escaped newlines with actual newlines in string values
+    // This makes multi-line strings (like DQL queries) much more readable
+    // We use a regex to find string values and un-escape their newlines
+    formatted = formatted.replace(/"([^"]*(?:\\.[^"]*)*)"/g, (match, content) => {
+      // Only process if it contains escaped newlines
+      if (content.includes('\\n')) {
+        // Un-escape newlines and tabs for better readability
+        const unescaped = content
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t');
+        return `"${unescaped}"`;
+      }
+      return match;
+    });
+
+    return formatted;
+  } catch {
+    return String(props.input);
+  }
+});
+
+const isTruncated = computed(() => {
+  return props.result && props.result.length > maxOutputLength;
+});
+
+const truncatedResult = computed(() => {
+  if (!props.result) return '';
+  if (props.result.length <= maxOutputLength) return props.result;
+  return props.result.substring(0, maxOutputLength);
+});
+
+const highlightedInput = ref('');
+const highlightedOutput = ref('');
+
+// Syntax highlighting using shiki
+async function highlightCode(code: string, language: string = 'json'): Promise<string> {
+  try {
+    const highlighted = await codeToHtml(code, {
+      lang: language,
+      theme: 'github-light',
+    });
+
+    // Add line numbers manually
+    const lines = code.split('\n');
+    const lineNumbersHtml = lines
+      .map((_, i) => `<span class="line-number">${i + 1}</span>`)
+      .join('\n');
+
+    // Wrap the highlighted code with line numbers
+    return `<div class="code-with-numbers">
+      <div class="line-numbers">${lineNumbersHtml}</div>
+      <div class="code-content">${highlighted}</div>
+    </div>`;
+  } catch (e) {
+    // Fallback to plain text if highlighting fails
+    return `<code>${escapeHtml(code)}</code>`;
+  }
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Watch for input changes and highlight
+watch(() => props.input, async (newInput) => {
+  if (newInput) {
+    highlightedInput.value = await highlightCode(formattedInput.value);
+  }
+}, { immediate: true });
+
+// Watch for result changes and highlight
+watch(() => props.result, async (newResult) => {
+  if (newResult) {
+    // Try to detect if it's JSON and highlight accordingly
+    const isJson = newResult.trim().startsWith('{') || newResult.trim().startsWith('[');
+    highlightedOutput.value = await highlightCode(
+      truncatedResult.value,
+      isJson ? 'json' : 'text'
+    );
+  }
+}, { immediate: true });
+
+// Methods
+function toggleInput() {
+  showInput.value = !showInput.value;
+}
+
+function toggleOutput() {
+  showOutput.value = !showOutput.value;
+}
+
+async function copyToClipboard(text: string, type: 'input' | 'output') {
+  try {
+    await navigator.clipboard.writeText(text);
+    if (type === 'input') {
+      copiedInput.value = true;
+      setTimeout(() => (copiedInput.value = false), 2000);
+    } else {
+      copiedOutput.value = true;
+      setTimeout(() => (copiedOutput.value = false), 2000);
+    }
+  } catch (err) {
+    console.error('Failed to copy:', err);
+  }
+}
+
+function formatSize(text: string): string {
+  const len = text.length;
+  if (len < 1024) return `${len} chars`;
+  if (len < 1024 * 1024) return `${(len / 1024).toFixed(1)} KB`;
+  return `${(len / (1024 * 1024)).toFixed(1)} MB`;
+}
 </script>
+
+<style scoped>
+/* Expand/collapse animation for code blocks */
+.expand-code-enter-active,
+.expand-code-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.expand-code-enter-from,
+.expand-code-leave-to {
+  opacity: 0;
+  max-height: 0;
+  margin-top: 0;
+}
+
+.expand-code-enter-to,
+.expand-code-leave-from {
+  opacity: 1;
+  max-height: 500px;
+  margin-top: 0.5rem;
+}
+
+/* Line numbers and code display */
+:deep(.code-with-numbers) {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+}
+
+:deep(.line-numbers) {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground) / 0.4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-align: right;
+  min-width: 2rem;
+  padding-top: 0;
+}
+
+:deep(.line-number) {
+  display: block;
+  height: 1.5em;
+}
+
+:deep(.code-content) {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* Syntax highlighting overrides for theme consistency and better contrast */
+:deep(pre) {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  overflow-x: visible;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+:deep(code) {
+  background: transparent !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Increase contrast for syntax highlighting */
+:deep(.shiki) {
+  background: transparent !important;
+}
+
+/* Custom scrollbar for code blocks */
+:deep(.overflow-x-auto)::-webkit-scrollbar {
+  height: 8px;
+}
+
+:deep(.overflow-y-auto)::-webkit-scrollbar {
+  width: 8px;
+}
+
+:deep(.overflow-x-auto)::-webkit-scrollbar-track,
+:deep(.overflow-y-auto)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:deep(.overflow-x-auto)::-webkit-scrollbar-thumb,
+:deep(.overflow-y-auto)::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+:deep(.overflow-x-auto)::-webkit-scrollbar-thumb:hover,
+:deep(.overflow-y-auto)::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+</style>
