@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.4](https://github.com/jsell-rh/kartograph/compare/v0.2.3...v0.2.4) (2025-11-03)
+
+
+### Bug Fixes
+
+* **extraction:** Add DROP_ALL parameter to Makefile ([015a867](https://github.com/jsell-rh/kartograph/commit/015a867494dc9a526457c657c97f09fda49faa4b))
+
+
+### Chores
+
+* Add rh-hooks-ai ([768d9a2](https://github.com/jsell-rh/kartograph/commit/768d9a28fa652af9934c5e96daec9a6d03ebfdc7))
+* **release:** 0.2.3 ([afcff3f](https://github.com/jsell-rh/kartograph/commit/afcff3f3c4ca6152fad02fbc29b9e6834e0ee34a))
+
 ### [0.2.3](https://github.com/jsell-rh/kartograph/compare/v0.2.2...v0.2.3) (2025-11-03)
 
 

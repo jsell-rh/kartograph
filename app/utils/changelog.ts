@@ -12,10 +12,10 @@ export interface ChangelogData {
 
 export const changelog: ChangelogData = {
   "features": [],
-  "improvements": [
-    "Refactor query API into testable services with dependency injection (#20)"
-  ],
-  "bugFixes": []
+  "improvements": [],
+  "bugFixes": [
+    "Add DROP_ALL parameter to Makefile"
+  ]
 };
 
 export default changelog;
