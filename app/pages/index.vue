@@ -680,6 +680,11 @@ async function handleSubmit(query: string) {
                 thinkingSteps: thinkingForError,
               });
             }
+
+            // Clear current thinking steps immediately to prevent duplicate thinking viewer
+            // This must happen AFTER we've used currentThinkingSteps to populate the message
+            // but BEFORE Vue re-renders (which would show both the message's thinking AND the live viewer)
+            currentThinkingSteps.value = [];
             break;
         }
       }
