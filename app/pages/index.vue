@@ -484,6 +484,7 @@ async function handleSubmit(query: string) {
     const decoder = new TextDecoder();
     let buffer = "";
     let assistantMessage = "";
+    let streamComplete = false; // Track when we receive 'done' event
 
     while (true) {
       const { done, value } = await reader.read();
@@ -689,9 +690,15 @@ async function handleSubmit(query: string) {
             // Also clear loading state immediately to hide the live thinking viewer
             // Don't wait for the finally block - that creates a gap where Vue shows the loading indicator
             isLoading.value = false;
+
+            // Signal that stream is complete to exit the reading loop
+            streamComplete = true;
             break;
         }
       }
+
+      // Exit the reading loop if we received the 'done' event
+      if (streamComplete) break;
     }
   } catch (error) {
     // Check if it was an abort
