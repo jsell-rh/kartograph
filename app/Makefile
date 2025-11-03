@@ -44,6 +44,18 @@ deploy-ephemeral: push-local ## Deploy to ephemeral environment
 		exit 1; \
 	fi
 	@NAMESPACE=$$(oc project -q); \
+	echo "==> Checking for existing ClowdApp deployment..."; \
+	if oc get clowdapp kartograph -n $$NAMESPACE &>/dev/null; then \
+		echo "==> Found old ClowdApp deployment, removing..."; \
+		oc delete clowdapp kartograph -n $$NAMESPACE --wait=false || true; \
+		echo "==> Waiting for old deployment to terminate..."; \
+		sleep 5; \
+	fi; \
+	if oc get deployment kartograph-app -n $$NAMESPACE &>/dev/null; then \
+		echo "==> Found old deployment with incompatible selector, removing..."; \
+		oc delete deployment kartograph-app -n $$NAMESPACE --wait=false || true; \
+		sleep 5; \
+	fi; \
 	cd deploy/overlays/ephemeral && \
 	kustomize edit set image ghcr.io/jsell-rh/kartograph=$(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG) && \
 	kustomize edit set namespace $$NAMESPACE && \
