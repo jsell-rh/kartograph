@@ -130,6 +130,8 @@
                         ? `${(step.metadata.timing / 1000).toFixed(2)}s`
                         : undefined
                     "
+                    :input="step.metadata?.input"
+                    :result="step.metadata?.result"
                   />
                   <!-- Retry message -->
                   <div
