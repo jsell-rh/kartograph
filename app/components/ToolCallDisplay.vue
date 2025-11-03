@@ -111,7 +111,7 @@
 
           <!-- Syntax-highlighted code -->
           <div
-            class="rounded-lg bg-muted/30 backdrop-blur-sm border border-border/40 p-3 font-mono text-xs overflow-x-auto max-h-64 overflow-y-auto"
+            class="rounded-lg bg-muted/60 backdrop-blur-sm border border-border/40 p-3 font-mono text-xs overflow-x-auto max-h-64 overflow-y-auto"
           >
             <pre v-html="highlightedInput" class="whitespace-pre-wrap break-words"></pre>
           </div>
@@ -185,7 +185,7 @@
 
           <!-- Syntax-highlighted code with truncation -->
           <div
-            class="rounded-lg bg-muted/30 backdrop-blur-sm border border-border/40 p-3 font-mono text-xs overflow-x-auto max-h-80 overflow-y-auto"
+            class="rounded-lg bg-muted/60 backdrop-blur-sm border border-border/40 p-3 font-mono text-xs overflow-x-auto max-h-80 overflow-y-auto"
           >
             <pre v-html="highlightedOutput" class="whitespace-pre-wrap break-words"></pre>
             <div
@@ -248,7 +248,25 @@ const maxOutputLength = 5000;
 const formattedInput = computed(() => {
   if (!props.input) return '';
   try {
-    return JSON.stringify(props.input, null, 2);
+    // First, stringify normally
+    let formatted = JSON.stringify(props.input, null, 2);
+
+    // Post-process: Replace escaped newlines with actual newlines in string values
+    // This makes multi-line strings (like DQL queries) much more readable
+    // We use a regex to find string values and un-escape their newlines
+    formatted = formatted.replace(/"([^"]*(?:\\.[^"]*)*)"/g, (match, content) => {
+      // Only process if it contains escaped newlines
+      if (content.includes('\\n')) {
+        // Un-escape newlines and tabs for better readability
+        const unescaped = content
+          .replace(/\\n/g, '\n')
+          .replace(/\\t/g, '\t');
+        return `"${unescaped}"`;
+      }
+      return match;
+    });
+
+    return formatted;
   } catch {
     return String(props.input);
   }
@@ -270,10 +288,22 @@ const highlightedOutput = ref('');
 // Syntax highlighting using shiki
 async function highlightCode(code: string, language: string = 'json'): Promise<string> {
   try {
-    return await codeToHtml(code, {
+    const highlighted = await codeToHtml(code, {
       lang: language,
-      theme: 'github-dark-dimmed',
+      theme: 'github-light',
     });
+
+    // Add line numbers manually
+    const lines = code.split('\n');
+    const lineNumbersHtml = lines
+      .map((_, i) => `<span class="line-number">${i + 1}</span>`)
+      .join('\n');
+
+    // Wrap the highlighted code with line numbers
+    return `<div class="code-with-numbers">
+      <div class="line-numbers">${lineNumbersHtml}</div>
+      <div class="code-content">${highlighted}</div>
+    </div>`;
   } catch (e) {
     // Fallback to plain text if highlighting fails
     return `<code>${escapeHtml(code)}</code>`;
@@ -359,11 +389,47 @@ function formatSize(text: string): string {
   margin-top: 0.5rem;
 }
 
-/* Syntax highlighting overrides for theme consistency */
+/* Line numbers and code display */
+:deep(.code-with-numbers) {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+}
+
+:deep(.line-numbers) {
+  display: flex;
+  flex-direction: column;
+  user-select: none;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground) / 0.4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  text-align: right;
+  min-width: 2rem;
+  padding-top: 0;
+}
+
+:deep(.line-number) {
+  display: block;
+  height: 1.5em;
+}
+
+:deep(.code-content) {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* Syntax highlighting overrides for theme consistency and better contrast */
 :deep(pre) {
   margin: 0;
   padding: 0;
   background: transparent !important;
+  overflow-x: visible;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 :deep(code) {
@@ -371,6 +437,14 @@ function formatSize(text: string): string {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.75rem;
   line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Increase contrast for syntax highlighting */
+:deep(.shiki) {
+  background: transparent !important;
 }
 
 /* Custom scrollbar for code blocks */
@@ -378,16 +452,23 @@ function formatSize(text: string): string {
   height: 8px;
 }
 
-:deep(.overflow-x-auto)::-webkit-scrollbar-track {
+:deep(.overflow-y-auto)::-webkit-scrollbar {
+  width: 8px;
+}
+
+:deep(.overflow-x-auto)::-webkit-scrollbar-track,
+:deep(.overflow-y-auto)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:deep(.overflow-x-auto)::-webkit-scrollbar-thumb {
+:deep(.overflow-x-auto)::-webkit-scrollbar-thumb,
+:deep(.overflow-y-auto)::-webkit-scrollbar-thumb {
   background: hsl(var(--muted-foreground) / 0.3);
   border-radius: 4px;
 }
 
-:deep(.overflow-x-auto)::-webkit-scrollbar-thumb:hover {
+:deep(.overflow-x-auto)::-webkit-scrollbar-thumb:hover,
+:deep(.overflow-y-auto)::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground) / 0.5);
 }
 </style>
