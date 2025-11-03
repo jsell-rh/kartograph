@@ -5,7 +5,7 @@ metadata:
   annotations:
     haproxy.router.openshift.io/timeout: 60s
 spec:
-  host: PLACEHOLDER
+  # host is omitted - OpenShift will auto-generate it
   path: /api/kartograph
   to:
     kind: Service
