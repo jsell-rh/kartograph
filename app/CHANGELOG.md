@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.3](https://github.com/jsell-rh/kartograph/compare/v0.2.2...v0.2.3) (2025-11-03)
+
+
+### Chores
+
+* **release:** 0.2.2 ([1f8a374](https://github.com/jsell-rh/kartograph/commit/1f8a37473a5dae65cded5c8a2d2c7e31fad72c81))
+
+
+### Code Refactoring
+
+* Refactor query API into testable services with dependency injection ([#20](https://github.com/jsell-rh/kartograph/issues/20)) ([3bcc286](https://github.com/jsell-rh/kartograph/commit/3bcc28695623238b8d0bb3414718d4dcbda8dae2)), closes [#18](https://github.com/jsell-rh/kartograph/issues/18) [#18](https://github.com/jsell-rh/kartograph/issues/18) [#18](https://github.com/jsell-rh/kartograph/issues/18) [#18](https://github.com/jsell-rh/kartograph/issues/18) [#18](https://github.com/jsell-rh/kartograph/issues/18)
+
 ### [0.2.2](https://github.com/jsell-rh/kartograph/compare/v0.2.1...v0.2.2) (2025-10-29)
 
 

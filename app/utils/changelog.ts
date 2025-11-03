@@ -11,10 +11,10 @@ export interface ChangelogData {
 }
 
 export const changelog: ChangelogData = {
-  "features": [
-    "Parallel chunk processing with production-ready improvements (#19)"
+  "features": [],
+  "improvements": [
+    "Refactor query API into testable services with dependency injection (#20)"
   ],
-  "improvements": [],
   "bugFixes": []
 };
 
