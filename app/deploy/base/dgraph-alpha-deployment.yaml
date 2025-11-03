@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kartograph-dgraph-alpha
+  labels:
+    component: dgraph-alpha
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: dgraph-alpha
+  template:
+    metadata:
+      labels:
+        component: dgraph-alpha
+        pod: kartograph-dgraph-alpha
+    spec:
+      containers:
+        - name: dgraph-alpha
+          image: dgraph/dgraph:v23.1.1
+          command:
+            - dgraph
+          args:
+            - alpha
+            - --my=kartograph-dgraph-alpha:7080
+            - --zero=kartograph-dgraph-zero:5080
+          env:
+            - name: DGRAPH_ALPHA_WHITELIST
+              value: "0.0.0.0/0"
+          ports:
+            - name: grpc
+              containerPort: 7080
+              protocol: TCP
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+            - name: grpc-internal
+              containerPort: 9080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health?live=1
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+            requests:
+              cpu: 200m
+              memory: 1Gi
+          volumeMounts:
+            - name: dgraph-alpha-data
+              mountPath: /dgraph
+      volumes:
+        - name: dgraph-alpha-data
+          persistentVolumeClaim:
+            claimName: dgraph-alpha-pvc

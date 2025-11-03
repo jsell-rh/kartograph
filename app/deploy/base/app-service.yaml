@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kartograph-app
+  labels:
+    component: app
+spec:
+  selector:
+    component: app
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP

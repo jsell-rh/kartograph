@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - app-deployment.yaml
+  - app-service.yaml
+  - dgraph-zero-deployment.yaml
+  - dgraph-alpha-deployment.yaml
+  - dgraph-services.yaml
+  - pvcs.yaml
+  - configmap.yaml
+
+commonLabels:
+  app: kartograph

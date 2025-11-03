@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kartograph-app
+  labels:
+    component: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: app
+  template:
+    metadata:
+      labels:
+        component: app
+    spec:
+      containers:
+        - name: app
+          image: ghcr.io/jsell-rh/kartograph:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: PORT
+              value: "8000"
+            - name: NUXT_APP_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_APP_BASE_URL
+            - name: NUXT_DGRAPH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_DGRAPH_URL
+            - name: DATABASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: DATABASE_URL
+            - name: CLAUDE_CODE_USE_VERTEX
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: CLAUDE_CODE_USE_VERTEX
+            - name: ENABLE_RH_IDENTITY_HEADER
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: ENABLE_RH_IDENTITY_HEADER
+            - name: NUXT_PUBLIC_ORIGIN
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_PUBLIC_ORIGIN
+            - name: BETTER_AUTH_TRUSTED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: BETTER_AUTH_TRUSTED_ORIGINS
+            - name: NUXT_PUBLIC_GITHUB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_PUBLIC_GITHUB_URL
+            - name: NUXT_API_TOKEN_RATE_LIMIT
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_API_TOKEN_RATE_LIMIT
+            - name: NUXT_API_TOKEN_MAX_EXPIRY_DAYS
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_API_TOKEN_MAX_EXPIRY_DAYS
+            - name: NUXT_API_TOKEN_DEFAULT_EXPIRY_DAYS
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_API_TOKEN_DEFAULT_EXPIRY_DAYS
+            - name: NUXT_AUDIT_LOG_RETENTION_DAYS
+              valueFrom:
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_AUDIT_LOG_RETENTION_DAYS
+            # Secrets - kartograph-secrets (required)
+            - name: NUXT_BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-secrets
+                  key: auth-secret
+            # Secrets - kartograph-vertex-ai (optional)
+            - name: NUXT_GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/vertex-ai/credentials.json"
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/etc/vertex-ai/credentials.json"
+            - name: NUXT_VERTEX_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-vertex-ai
+                  key: project-id
+                  optional: true
+            - name: NUXT_VERTEX_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-vertex-ai
+                  key: region
+                  optional: true
+            # Secrets - kartograph-github-oauth (optional)
+            - name: NUXT_GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-github-oauth
+                  key: client-id
+                  optional: true
+            - name: NUXT_GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-github-oauth
+                  key: client-secret
+                  optional: true
+            # Secrets - kartograph-auth-config (optional)
+            - name: NUXT_AUTH_PASSWORD_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-auth-config
+                  key: password-enabled
+                  optional: true
+            - name: NUXT_PUBLIC_AUTH_PASSWORD_ENABLED
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-auth-config
+                  key: password-enabled
+                  optional: true
+            - name: NUXT_AUTH_ALLOWED_EMAIL_DOMAINS
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-auth-config
+                  key: allowed-domains
+                  optional: true
+            - name: NUXT_ADMIN_EMAILS
+              valueFrom:
+                secretKeyRef:
+                  name: kartograph-auth-config
+                  key: admin-emails
+                  optional: true
+          volumeMounts:
+            - name: app-data
+              mountPath: /data
+            - name: vertex-ai-credentials
+              mountPath: /etc/vertex-ai
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /api/kartograph/api/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/kartograph/api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: app-data
+          persistentVolumeClaim:
+            claimName: app-pvc
+        - name: vertex-ai-credentials
+          secret:  # pragma: allowlist secret  # noqa: E501
+            secretName: kartograph-vertex-ai  # pragma: allowlist secret
+            optional: true

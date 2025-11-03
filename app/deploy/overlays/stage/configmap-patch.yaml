@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kartograph-config
+data:
+  NUXT_PUBLIC_ORIGIN: "https://kartograph-stage.apps.YOUR_CLUSTER.com"
+  BETTER_AUTH_TRUSTED_ORIGINS: "https://kartograph-stage.apps.YOUR_CLUSTER.com"
