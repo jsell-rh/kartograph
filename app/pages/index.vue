@@ -484,6 +484,7 @@ async function handleSubmit(query: string) {
     const decoder = new TextDecoder();
     let buffer = "";
     let assistantMessage = "";
+    let streamComplete = false; // Track when we receive 'done' event
 
     while (true) {
       const { done, value } = await reader.read();
@@ -680,9 +681,24 @@ async function handleSubmit(query: string) {
                 thinkingSteps: thinkingForError,
               });
             }
+
+            // Clear current thinking steps immediately to prevent duplicate thinking viewer
+            // This must happen AFTER we've used currentThinkingSteps to populate the message
+            // but BEFORE Vue re-renders (which would show both the message's thinking AND the live viewer)
+            currentThinkingSteps.value = [];
+
+            // Also clear loading state immediately to hide the live thinking viewer
+            // Don't wait for the finally block - that creates a gap where Vue shows the loading indicator
+            isLoading.value = false;
+
+            // Signal that stream is complete to exit the reading loop
+            streamComplete = true;
             break;
         }
       }
+
+      // Exit the reading loop if we received the 'done' event
+      if (streamComplete) break;
     }
   } catch (error) {
     // Check if it was an abort
@@ -702,8 +718,12 @@ async function handleSubmit(query: string) {
         timestamp: new Date(),
       });
     }
+
+    // Clear state immediately after adding error message
+    currentThinkingSteps.value = [];
+    isLoading.value = false;
   } finally {
-    // Clean up
+    // Ensure cleanup happens regardless (idempotent if already cleared in done/catch)
     isLoading.value = false;
     currentThinkingSteps.value = [];
     abortController = null;
