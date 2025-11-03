@@ -34,7 +34,7 @@ class AuthConfig(BaseModel):
         description="Google Cloud project ID for Vertex AI",
     )
     vertex_region: str = Field(
-        default="us-central1",
+        default="us-east5",
         description="Google Cloud region for Vertex AI",
     )
     vertex_credentials_file: Optional[Path] = Field(
@@ -88,7 +88,7 @@ class DeduplicationConfig(BaseModel):
     """Deduplication configuration."""
 
     strategy: Literal["urn", "agent", "hybrid"] = Field(
-        default="urn",
+        default="agent",
         description="Deduplication strategy to use",
     )
     urn_merge_strategy: Literal["first", "last", "merge_predicates"] = Field(
@@ -100,6 +100,12 @@ class DeduplicationConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Similarity threshold for agent-based dedup",
+    )
+    batch_size: int = Field(
+        default=10,  # Reduced from 50 to avoid huge dedup batches
+        ge=1,
+        le=500,
+        description="Run deduplication every N chunks (incremental batching)",
     )
 
 
@@ -281,6 +287,14 @@ class ExtractionConfig(BaseSettings):
     resume: bool = Field(
         default=False,
         description="Resume from latest checkpoint",
+    )
+
+    # Parallel execution
+    workers: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Number of concurrent workers for parallel chunk processing",
     )
 
     # Pydantic settings config

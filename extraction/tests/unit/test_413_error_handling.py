@@ -159,6 +159,13 @@ async def test_orchestrator_splits_chunk_on_413():
             )
 
         mock_agent.extract.side_effect = extract_side_effect
+        # Add llm_client mock for parallel execution
+        mock_agent.llm_client = MagicMock()
+        mock_agent.llm_client.last_usage = {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_cost_usd": 0.01,
+        }
 
         # Create orchestrator
         with patch("kg_extractor.orchestrator.DiskFileSystem") as mock_fs_class:
@@ -233,6 +240,13 @@ async def test_orchestrator_skips_unsplittable_chunk():
         mock_agent.extract.side_effect = PromptTooLongError(
             "Prompt exceeds model context window"
         )
+        # Add llm_client mock for parallel execution
+        mock_agent.llm_client = MagicMock()
+        mock_agent.llm_client.last_usage = {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_cost_usd": 0.01,
+        }
 
         # Create orchestrator
         with patch("kg_extractor.orchestrator.DiskFileSystem") as mock_fs_class:

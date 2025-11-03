@@ -51,7 +51,12 @@ class ProgressDisplay:
     """
 
     def __init__(
-        self, total_chunks: int, verbose: bool = False, data_dir: Path | None = None
+        self,
+        total_chunks: int,
+        verbose: bool = False,
+        data_dir: Path | None = None,
+        orchestrator: Any = None,
+        num_workers: int = 1,
     ):
         """
         Initialize progress display.
@@ -60,11 +65,15 @@ class ProgressDisplay:
             total_chunks: Total number of chunks to process
             verbose: Show verbose agent activity
             data_dir: Optional data directory being processed (for display)
+            orchestrator: Optional orchestrator reference for worker state tracking
+            num_workers: Number of parallel workers (for accurate ETA calculation)
         """
         self.console = Console()
         self.verbose = verbose
         self.total_chunks = total_chunks
         self.data_dir = data_dir
+        self.orchestrator = orchestrator
+        self.num_workers = num_workers
 
         # Create progress bars
         self.progress = Progress(
@@ -311,6 +320,8 @@ class ProgressDisplay:
         """
         Calculate estimated time remaining based on completed chunks.
 
+        Accounts for parallel execution by dividing remaining work by number of workers.
+
         Returns:
             Formatted ETA string (e.g., "~0:02:30") or None if not enough data
         """
@@ -326,8 +337,12 @@ class ProgressDisplay:
         if remaining_chunks <= 0:
             return None
 
-        # Estimate remaining time
-        estimated_seconds = avg_duration * remaining_chunks
+        # Estimate remaining time accounting for parallel workers
+        # Calculate number of batches remaining (ceil division)
+        import math
+
+        remaining_batches = math.ceil(remaining_chunks / self.num_workers)
+        estimated_seconds = avg_duration * remaining_batches
 
         # Format as HH:MM:SS
         hours = int(estimated_seconds // 3600)
@@ -397,61 +412,188 @@ class ProgressDisplay:
         else:
             self.stats["graph_density"] = 0.0
 
+    def _check_rate_limit_status(self) -> dict[str, Any]:
+        """
+        Check if globally rate limited.
+
+        Returns:
+            Dictionary with {"limited": bool, "remaining": float}
+        """
+        try:
+            from kg_extractor.llm.agent_client import AgentClient
+
+            if AgentClient._rate_limited_until:
+                remaining = AgentClient._rate_limited_until - time.time()
+                if remaining > 0:
+                    return {"limited": True, "remaining": remaining}
+        except Exception:
+            pass
+
+        return {"limited": False, "remaining": 0}
+
+    def _build_worker_panel(self) -> Panel | None:
+        """
+        Build worker panel showing current worker activity.
+
+        Returns:
+            Rich Panel with worker status, or None if no orchestrator
+        """
+        if not self.orchestrator:
+            return None
+
+        # Get rate limit status
+        rate_limit_status = self._check_rate_limit_status()
+
+        # Get worker states from orchestrator
+        worker_states = self.orchestrator.get_worker_states()
+
+        if not worker_states and not rate_limit_status["limited"]:
+            # No workers active and not rate limited
+            return None
+
+        # Build panel content
+        if rate_limit_status["limited"]:
+            # Show rate limit warning
+            remaining = rate_limit_status["remaining"]
+            panel_content = (
+                f"[bold yellow]⚠ RATE LIMITED[/bold yellow] - "
+                f"All workers paused (resuming in [bold]{remaining:.1f}s[/bold])\n"
+            )
+
+            # Show waiting workers
+            for wid in sorted(worker_states.keys()):
+                panel_content += f"  [dim]⊗ Worker {wid+1}[/dim]: Waiting for rate limit clearance...\n"
+
+        else:
+            # Show normal worker activity
+            # Count active vs completed workers
+            active_count = sum(
+                1
+                for state in worker_states.values()
+                if state.get("status", "active") == "active"
+            )
+            completed_count = sum(
+                1
+                for state in worker_states.values()
+                if state.get("status", "active") == "completed"
+            )
+
+            # Build header with worker summary
+            total_workers = len(worker_states)
+            if completed_count > 0:
+                panel_content = (
+                    f"[bold]Workers:[/bold] {active_count}/{total_workers} active, "
+                    f"{completed_count} completed this cycle\n\n"
+                )
+            else:
+                panel_content = (
+                    f"[bold]Workers:[/bold] {active_count}/{total_workers} active\n\n"
+                )
+
+            for wid in sorted(worker_states.keys()):
+                state = worker_states.get(wid, {})
+                status = state.get("status", "active")
+                chunk_id = state.get("chunk_id", "?")
+                files_count = state.get("files_count", 0)
+                size_mb = state.get("size_mb", 0)
+                activity = state.get("activity", "Processing...")
+                detail = state.get("detail", "")
+
+                # Build worker line with status indicator
+                if status == "completed":
+                    # Completed worker - show checkmark
+                    line = f"  [bold green]✓[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
+                    line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
+                    line += " → [green]Completed[/green]"
+
+                    # Show entity and relationship counts if available
+                    entity_count = state.get("entity_count", 0)
+                    relationship_count = state.get("relationship_count", 0)
+                    if entity_count > 0 or relationship_count > 0:
+                        line += f" [dim]({entity_count} entities, {relationship_count} relationships)[/dim]"
+                else:
+                    # Active worker - show green dot
+                    line = f"  [bold green]●[/bold green] Worker {wid+1}: [cyan]{chunk_id}[/cyan] "
+                    line += f"[dim]({files_count} files, {size_mb:.1f} MB)[/dim]"
+
+                    # Add activity
+                    if activity:
+                        # Truncate long activities
+                        if len(activity) > 50:
+                            activity = activity[:47] + "..."
+                        line += f" → {activity}"
+
+                panel_content += line + "\n"
+
+        return Panel(
+            panel_content.rstrip(),
+            title="[bold magenta]Parallel Execution[/bold magenta]",
+            border_style="magenta",
+        )
+
     def _build_display(self) -> Panel:
         """Build the complete display panel."""
         # Main progress bar
         components = [self.progress]
 
-        # Current chunk info
-        # Always show chunk table to maintain consistent panel height (prevents visual glitches)
-        chunk_table = Table.grid(padding=(0, 2))
-        chunk_table.add_column(style="bold cyan")
-        chunk_table.add_column()
+        # Current chunk info - ONLY for non-parallel mode
+        # In parallel mode, this info doesn't make sense (20 workers = 20 chunks)
+        # The worker panel shows per-worker chunk info instead
+        # Determine if we're in parallel mode by checking for active workers
+        worker_states = (
+            self.orchestrator.get_worker_states() if self.orchestrator else {}
+        )
 
-        if self.current_chunk_info:
-            files = self.current_chunk_info.get("files", [])
-            file_count = len(files)
+        if not worker_states:
+            # Sequential mode - show current chunk info
+            chunk_table = Table.grid(padding=(0, 2))
+            chunk_table.add_column(style="bold cyan")
+            chunk_table.add_column()
 
-            chunk_table.add_row("Chunk:", self.current_chunk_info.get("id", ""))
-            chunk_table.add_row("Files/Chunk:", str(file_count))
-            chunk_table.add_row(
-                "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
-            )
+            if self.current_chunk_info:
+                files = self.current_chunk_info.get("files", [])
+                file_count = len(files)
 
-            # In verbose mode, always reserve space for optional rows (consistent height)
-            if self.verbose:
-                # Current file row (always present in verbose, may be empty)
-                current_file_display = (
-                    Text(self.current_file, style="bold yellow")
-                    if self.current_file
-                    else ""
+                chunk_table.add_row("Chunk:", self.current_chunk_info.get("id", ""))
+                chunk_table.add_row("Files/Chunk:", str(file_count))
+                chunk_table.add_row(
+                    "Size:", f"{self.current_chunk_info.get('size_mb', 0):.2f} MB"
                 )
-                chunk_table.add_row("Current File:", current_file_display)
 
-                # Files list row (always present in verbose, may be empty)
-                if files:
-                    filenames = [f.name for f in files]
-                    # Show first 5 filenames, then "... and N more" if needed
-                    if len(filenames) <= 5:
-                        files_display = ", ".join(filenames)
+                # In verbose mode, always reserve space for optional rows (consistent height)
+                if self.verbose:
+                    # Current file row (always present in verbose, may be empty)
+                    current_file_display = (
+                        Text(self.current_file, style="bold yellow")
+                        if self.current_file
+                        else ""
+                    )
+                    chunk_table.add_row("Current File:", current_file_display)
+
+                    # Files list row (always present in verbose, may be empty)
+                    if files:
+                        filenames = [f.name for f in files]
+                        # Show first 5 filenames, then "... and N more" if needed
+                        if len(filenames) <= 5:
+                            files_display = ", ".join(filenames)
+                        else:
+                            files_display = (
+                                ", ".join(filenames[:5])
+                                + f" ... and {len(filenames) - 5} more"
+                            )
+                        chunk_table.add_row("Files:", Text(files_display, style="dim"))
                     else:
-                        files_display = (
-                            ", ".join(filenames[:5])
-                            + f" ... and {len(filenames) - 5} more"
-                        )
-                    chunk_table.add_row("Files:", Text(files_display, style="dim"))
-                else:
+                        chunk_table.add_row("Files:", "")
+            else:
+                # Placeholder rows to maintain height even when no chunk info
+                chunk_table.add_row("Chunk:", "")
+                chunk_table.add_row("Files/Chunk:", "")
+                chunk_table.add_row("Size:", "")
+                if self.verbose:
+                    chunk_table.add_row("Current File:", "")
                     chunk_table.add_row("Files:", "")
-        else:
-            # Placeholder rows to maintain height even when no chunk info
-            chunk_table.add_row("Chunk:", "")
-            chunk_table.add_row("Files/Chunk:", "")
-            chunk_table.add_row("Size:", "")
-            if self.verbose:
-                chunk_table.add_row("Current File:", "")
-                chunk_table.add_row("Files:", "")
 
-        components.append(chunk_table)
+            components.append(chunk_table)
 
         # Statistics - Two column layout
         # Left column: Entity/Graph stats
@@ -508,6 +650,11 @@ class ProgressDisplay:
         stats_container.add_row(left_stats, right_stats)
 
         components.append(stats_container)
+
+        # Worker panel (multi-worker mode)
+        worker_panel = self._build_worker_panel()
+        if worker_panel:
+            components.append(worker_panel)
 
         # Agent activity (verbose mode only)
         # Always show in verbose mode to maintain consistent panel height

@@ -1,0 +1,30 @@
+{
+  "extraction": {
+    "total_chunks": 3,
+    "chunks_processed": 3,
+    "entities_extracted": 191,
+    "validation_errors": 0,
+    "duration_seconds": 95.13725185394287
+  },
+  "performance": {
+    "chunks_per_second": 0.031533389303757445,
+    "entities_per_second": 2.0076257856725572
+  },
+  "quality": {
+    "validation_pass_rate": 1.0,
+    "relationships_per_entity": 1.968586387434555
+  },
+  "entities_by_type": {
+    "ProxyConfiguration": 1,
+    "DisplayName": 37,
+    "ProxySettings": 1,
+    "IgnoreHostRule": 3,
+    "DataSource": 3,
+    "Localization": 80,
+    "CalendarConfiguration": 2,
+    "OfflineConfiguration": 2,
+    "RefreshConfiguration": 2,
+    "LocalizedStringSet": 1,
+    "LocalizedString": 59
+  }
+}
