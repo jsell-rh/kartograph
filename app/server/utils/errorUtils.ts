@@ -36,7 +36,7 @@ export function extractErrorMessage(error: any): string {
  * @returns True if the error is a context length error
  */
 export function isContextLengthError(error: any): boolean {
-  return (
+  return Boolean(
     error?.status === 413 ||
     error?.error?.message?.toLowerCase().includes("prompt is too long") ||
     error?.message?.toLowerCase().includes("prompt is too long")
