@@ -1,7 +1,8 @@
 .PHONY: help build-local push-local deploy-ephemeral deploy-stage test-local lint format dev-setup load-data find-free-port
 
 # Local development image (using OpenShift internal registry)
-LOCAL_IMAGE ?= image-registry.openshift-image-registry.svc:5000/$(shell oc project -q 2>/dev/null || echo "default")/kartograph-app
+INTERNAL_REGISTRY ?= default-route-openshift-image-registry.apps.crc-eph.r9lp.p1.openshiftapps.com
+LOCAL_IMAGE ?= $(INTERNAL_REGISTRY)/$(shell oc project -q 2>/dev/null || echo "default")/kartograph-app
 LOCAL_IMAGE_TAG ?= $(APP_VERSION)-$(GIT_COMMIT)
 
 # Version info for Docker builds
@@ -29,6 +30,8 @@ build-local: ## Build local container image
 		-f Dockerfile .
 
 push-local: build-local ## Push image to OpenShift internal registry
+	@echo "==> Logging into internal registry..."
+	@docker login -u $(shell oc whoami) -p $(shell oc whoami -t) $(INTERNAL_REGISTRY)
 	@echo "==> Pushing image to OpenShift registry"
 	docker push $(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG)
 
