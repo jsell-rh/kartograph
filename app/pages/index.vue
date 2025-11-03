@@ -279,6 +279,8 @@ interface ThinkingStep {
     description?: string;
     timing?: number;
     error?: string;
+    input?: any;
+    result?: string;
   };
 }
 
@@ -545,6 +547,7 @@ async function handleSubmit(query: string) {
               metadata: {
                 toolName: data.name,
                 description: data.description,
+                input: data.input,
               },
             });
             break;
@@ -559,6 +562,7 @@ async function handleSubmit(query: string) {
                 lastStep.metadata = {
                   ...lastStep.metadata,
                   timing: data.elapsedMs,
+                  result: data.result,
                 };
               }
             }
