@@ -61,8 +61,8 @@ deploy-ephemeral: push-local ## Deploy to ephemeral environment
 	kustomize edit set namespace $$NAMESPACE && \
 	cd ../../.. && \
 	./deploy/scripts/create-ephemeral-secrets.sh $$NAMESPACE && \
+	echo "==> Creating placeholder patch and deploying base resources (without route)..."; \
 	if [ ! -f deploy/overlays/ephemeral/patch-url.yaml ]; then \
-		echo "==> Creating initial placeholder patch file..."; \
 		echo "apiVersion: v1" > deploy/overlays/ephemeral/patch-url.yaml; \
 		echo "kind: ConfigMap" >> deploy/overlays/ephemeral/patch-url.yaml; \
 		echo "metadata:" >> deploy/overlays/ephemeral/patch-url.yaml; \
@@ -71,7 +71,9 @@ deploy-ephemeral: push-local ## Deploy to ephemeral environment
 		echo "  NUXT_PUBLIC_ORIGIN: \"https://PLACEHOLDER\"" >> deploy/overlays/ephemeral/patch-url.yaml; \
 		echo "  BETTER_AUTH_TRUSTED_ORIGINS: \"https://PLACEHOLDER\"" >> deploy/overlays/ephemeral/patch-url.yaml; \
 	fi && \
-	kubectl apply -k deploy/overlays/ephemeral && \
+	kubectl apply -k deploy/base --namespace=$$NAMESPACE && \
+	kubectl apply -f deploy/overlays/ephemeral/route.yaml --namespace=$$NAMESPACE && \
+	echo "==> Detecting route URL and patching configuration..."; \
 	./deploy/scripts/generate-ephemeral-patch.sh $$NAMESPACE && \
 	kubectl apply -k deploy/overlays/ephemeral
 	@echo "==> Deployment complete! Route URL detected and patched."
