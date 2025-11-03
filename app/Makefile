@@ -49,6 +49,16 @@ deploy-ephemeral: push-local ## Deploy to ephemeral environment
 	kustomize edit set namespace $$NAMESPACE && \
 	cd ../../.. && \
 	./deploy/scripts/create-ephemeral-secrets.sh $$NAMESPACE && \
+	if [ ! -f deploy/overlays/ephemeral/patch-url.yaml ]; then \
+		echo "==> Creating initial placeholder patch file..."; \
+		echo "apiVersion: v1" > deploy/overlays/ephemeral/patch-url.yaml; \
+		echo "kind: ConfigMap" >> deploy/overlays/ephemeral/patch-url.yaml; \
+		echo "metadata:" >> deploy/overlays/ephemeral/patch-url.yaml; \
+		echo "  name: kartograph-config" >> deploy/overlays/ephemeral/patch-url.yaml; \
+		echo "data:" >> deploy/overlays/ephemeral/patch-url.yaml; \
+		echo "  NUXT_PUBLIC_ORIGIN: \"https://PLACEHOLDER\"" >> deploy/overlays/ephemeral/patch-url.yaml; \
+		echo "  BETTER_AUTH_TRUSTED_ORIGINS: \"https://PLACEHOLDER\"" >> deploy/overlays/ephemeral/patch-url.yaml; \
+	fi && \
 	kubectl apply -k deploy/overlays/ephemeral && \
 	./deploy/scripts/generate-ephemeral-patch.sh $$NAMESPACE && \
 	kubectl apply -k deploy/overlays/ephemeral
