@@ -119,30 +119,30 @@ spec:
                   name: kartograph-github-oauth
                   key: client-secret
                   optional: true
-            # Secrets - kartograph-auth-config (optional)
+            # Auth config from ConfigMap (non-secret values)
             - name: NUXT_AUTH_PASSWORD_ENABLED
               valueFrom:
-                secretKeyRef:
-                  name: kartograph-auth-config
-                  key: password-enabled
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_AUTH_PASSWORD_ENABLED
                   optional: true
             - name: NUXT_PUBLIC_AUTH_PASSWORD_ENABLED
               valueFrom:
-                secretKeyRef:
-                  name: kartograph-auth-config
-                  key: password-enabled
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_AUTH_PASSWORD_ENABLED
                   optional: true
             - name: NUXT_AUTH_ALLOWED_EMAIL_DOMAINS
               valueFrom:
-                secretKeyRef:
-                  name: kartograph-auth-config
-                  key: allowed-domains
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_AUTH_ALLOWED_EMAIL_DOMAINS
                   optional: true
             - name: NUXT_ADMIN_EMAILS
               valueFrom:
-                secretKeyRef:
-                  name: kartograph-auth-config
-                  key: admin-emails
+                configMapKeyRef:
+                  name: kartograph-config
+                  key: NUXT_ADMIN_EMAILS
                   optional: true
           volumeMounts:
             - name: app-data

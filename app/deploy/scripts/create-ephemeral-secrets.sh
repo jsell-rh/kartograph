@@ -52,13 +52,4 @@ else
   echo "Skipping kartograph-github-oauth (GITHUB_CLIENT_ID not set)"
 fi
 
-# kartograph-auth-config (optional but recommended)
-echo "Creating kartograph-auth-config..."
-oc create secret generic kartograph-auth-config \
-  --namespace="$NAMESPACE" \
-  --from-literal=password-enabled="${AUTH_PASSWORD_ENABLED:-true}" \
-  --from-literal=allowed-domains="${AUTH_ALLOWED_EMAIL_DOMAINS:-}" \
-  --from-literal=admin-emails="${ADMIN_EMAILS:-}" \
-  --dry-run=client -o yaml | oc apply -f -
-
 echo "==> All secrets created successfully"

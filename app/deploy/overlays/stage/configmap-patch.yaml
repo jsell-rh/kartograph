@@ -5,3 +5,7 @@ metadata:
 data:
   NUXT_PUBLIC_ORIGIN: "https://kartograph-stage.apps.YOUR_CLUSTER.com"
   BETTER_AUTH_TRUSTED_ORIGINS: "https://kartograph-stage.apps.YOUR_CLUSTER.com"
+  # Auth configuration (override base values if needed)
+  NUXT_AUTH_PASSWORD_ENABLED: "false"  # pragma: allowlist secret
+  NUXT_AUTH_ALLOWED_EMAIL_DOMAINS: "redhat.com,ibm.com"
+  NUXT_ADMIN_EMAILS: "jsell@redhat.com"

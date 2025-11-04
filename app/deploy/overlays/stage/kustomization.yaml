@@ -6,6 +6,7 @@ namespace: kartograph-stage
 resources:
   - ../../base
   - route.yaml
+  - secrets.yaml
 
 patches:
   - path: configmap-patch.yaml
