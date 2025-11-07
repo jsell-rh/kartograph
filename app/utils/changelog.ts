@@ -12,7 +12,7 @@ export interface ChangelogData {
 
 export const changelog: ChangelogData = {
   "features": [
-    "Add verbose tool call display (#22)"
+    "Support multiple GitHub email addresses for domain validation (#26)"
   ],
   "improvements": [],
   "bugFixes": []
