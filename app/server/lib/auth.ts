@@ -60,6 +60,71 @@ export const auth = betterAuth({
           github: {
             clientId: githubClientId,
             clientSecret: githubClientSecret,
+            getUserInfo: async (token) => {
+              if (!token.accessToken) {
+                throw new Error("No access token available");
+              }
+
+              // Fetch basic user info
+              const userResponse = await fetch("https://api.github.com/user", {
+                headers: {
+                  Authorization: `Bearer ${token.accessToken}`,
+                },
+              });
+              const userProfile = await userResponse.json();
+
+              // Fetch ALL user emails (requires 'user:email' scope)
+              const emailsResponse = await fetch("https://api.github.com/user/emails", {
+                headers: {
+                  Authorization: `Bearer ${token.accessToken}`,
+                },
+              });
+              const emails = await emailsResponse.json();
+
+              // Find the best email to use based on allowed domains
+              let selectedEmail = userProfile.email;
+              let emailVerified = false;
+
+              if (hasEmailDomainRestrictions && Array.isArray(emails)) {
+                log.debug({ emails }, "Fetched all GitHub emails");
+
+                // Filter for verified emails
+                const verifiedEmails = emails.filter((e: any) => e.verified);
+
+                // Check if any verified email matches allowed domains
+                for (const emailObj of verifiedEmails) {
+                  const validationError = validateEmailDomain(emailObj.email);
+                  if (!validationError) {
+                    // This email is allowed!
+                    selectedEmail = emailObj.email;
+                    emailVerified = true;
+                    log.info({ selectedEmail }, "Found allowed email in GitHub account");
+                    break;
+                  }
+                }
+              } else if (Array.isArray(emails)) {
+                // No domain restrictions - use primary verified email if available
+                const primaryEmail = emails.find((e: any) => e.primary && e.verified);
+                if (primaryEmail) {
+                  selectedEmail = primaryEmail.email;
+                  emailVerified = true;
+                }
+              }
+
+              return {
+                user: {
+                  id: userProfile.id.toString(),
+                  name: userProfile.name || userProfile.login,
+                  email: selectedEmail,
+                  image: userProfile.avatar_url,
+                  emailVerified,
+                },
+                data: {
+                  ...userProfile,
+                  allEmails: emails,
+                },
+              };
+            },
           },
         }
       : {}),
@@ -82,12 +147,6 @@ export const auth = betterAuth({
   secret:
     process.env.BETTER_AUTH_SECRET || "your-secret-key-change-in-production",
   trustedOrigins: [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://localhost:3002",
-    "http://localhost:3003",
-    "http://localhost:3010",
-    "http://localhost:3020",
     ...envTrustedOrigins,
   ],
   hooks: {
