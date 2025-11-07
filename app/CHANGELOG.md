@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.2.6](https://github.com/jsell-rh/kartograph/compare/v0.2.5...v0.2.6) (2025-11-07)
+
+
+### Features
+
+* Support multiple GitHub email addresses for domain validation ([#26](https://github.com/jsell-rh/kartograph/issues/26)) ([04896f8](https://github.com/jsell-rh/kartograph/commit/04896f84bfd32473bed88fd5eb7665979ba637dd)), closes [#25](https://github.com/jsell-rh/kartograph/issues/25)
+
+
+### Chores
+
+* **release:** 0.2.5 ([a92a5b4](https://github.com/jsell-rh/kartograph/commit/a92a5b4bbbc3b267313401273b25c1ef0af1dba1))
+
 ### [0.2.5](https://github.com/jsell-rh/kartograph/compare/v0.2.4...v0.2.5) (2025-11-03)
 
 
