@@ -79,8 +79,23 @@ export BETTER_AUTH_SECRET="<same-value-from-first-deployment>"
 
 ### Stage
 
-- Initial: Manual secret creation (until Vault integration)
-- Future: External Secrets Operator + Vault
+Secrets are managed using the **Secrets Store CSI Driver** with HashiCorp Vault provider.
+
+**How it works:**
+
+1. `SecretProviderClass` resources define which secrets to retrieve from Vault
+2. CSI volumes mount secrets from Vault at pod startup
+3. Secrets are automatically synced to Kubernetes Secret objects for use as environment variables
+
+**Vault paths:**
+
+- `hcm-ai/data/kartograph/stage/better-auth` → `BETTER_AUTH_SECRET`
+- `hcm-ai/data/kartograph/stage/github-oidc` → `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`
+- `hcm-ai/data/kartograph/stage/vertex-ai` → `credentials.json`, `VERTEX_PROJECT_ID`, `VERTEX_REGION`
+
+**Service account:** The pod's service account must be bound to the Vault role `kartograph-stage` with appropriate policies.
+
+See: `overlays/stage/secret-provider-class.yaml`
 
 ## Image Tagging
 

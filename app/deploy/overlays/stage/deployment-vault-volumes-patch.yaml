@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kartograph-app
+spec:
+  template:
+    spec:
+      # Add volume mounts for CSI driver secrets
+      containers:
+        - name: app
+          volumeMounts:
+            # Mount all vault secrets as CSI volumes
+            # These will be synced to Kubernetes Secrets automatically
+            - name: vault-auth-secrets
+              mountPath: /mnt/secrets-store/auth
+              readOnly: true
+            - name: vault-github-oauth
+              mountPath: /mnt/secrets-store/github
+              readOnly: true
+            - name: vault-vertex-ai
+              mountPath: /mnt/secrets-store/vertex
+              readOnly: true
+      volumes:
+        # CSI volumes using SecretProviderClass
+        - name: vault-auth-secrets  # pragma: allowlist secret
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kartograph-auth-vault  # pragma: allowlist secret
+        - name: vault-github-oauth  # pragma: allowlist secret
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kartograph-github-oauth-vault  # pragma: allowlist secret
+        - name: vault-vertex-ai  # pragma: allowlist secret
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: kartograph-vertex-ai-vault  # pragma: allowlist secret

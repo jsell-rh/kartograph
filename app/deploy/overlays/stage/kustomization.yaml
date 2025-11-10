@@ -6,12 +6,13 @@ namespace: kartograph-stage
 resources:
   - ../../base
   - route.yaml
-  - secrets.yaml
+  - secret-provider-class.yaml
 
 patches:
   - path: configmap-patch.yaml
   - path: resources-patch.yaml
+  - path: deployment-vault-volumes-patch.yaml
 
 images:
   - name: ghcr.io/jsell-rh/kartograph
-    newTag: v0.2.5 # Updated by GitHub Action
+    newTag: v0.2.5  # Updated by GitHub Action
