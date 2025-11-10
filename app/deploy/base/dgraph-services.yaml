@@ -1,12 +1,8 @@
----
-# Standalone Services for Dgraph (not managed by Clowder)
-# These must be created separately from the ClowdApp to avoid Clowder reconciliation
 apiVersion: v1
 kind: Service
 metadata:
   name: kartograph-dgraph-zero
   labels:
-    app: kartograph
     component: dgraph-zero
 spec:
   selector:
@@ -26,7 +22,6 @@ kind: Service
 metadata:
   name: kartograph-dgraph-alpha
   labels:
-    app: kartograph
     component: dgraph-alpha
 spec:
   selector:

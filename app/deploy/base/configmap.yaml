@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kartograph-config
+data:
+  NUXT_APP_BASE_URL: "/api/kartograph/"
+  NUXT_DGRAPH_URL: "http://kartograph-dgraph-alpha:8080"
+  DATABASE_URL: "/data/kartograph.db"
+  CLAUDE_CODE_USE_VERTEX: "1"
+  ENABLE_RH_IDENTITY_HEADER: "false"
+  NUXT_PUBLIC_ORIGIN: "https://PLACEHOLDER"
+  BETTER_AUTH_TRUSTED_ORIGINS: "https://PLACEHOLDER"
+  NUXT_PUBLIC_GITHUB_URL: "https://github.com/jsell-rh/kartograph"
+  NUXT_API_TOKEN_RATE_LIMIT: "100"
+  NUXT_API_TOKEN_MAX_EXPIRY_DAYS: "365"
+  NUXT_API_TOKEN_DEFAULT_EXPIRY_DAYS: "90"
+  NUXT_AUDIT_LOG_RETENTION_DAYS: "90"
+  NUXT_AUTH_PASSWORD_ENABLED: "true"  # pragma: allowlist secret
+  NUXT_AUTH_ALLOWED_EMAIL_DOMAINS: ""
+  NUXT_ADMIN_EMAILS: ""

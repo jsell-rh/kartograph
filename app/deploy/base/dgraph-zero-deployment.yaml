@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kartograph-dgraph-zero
+  labels:
+    component: dgraph-zero
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: dgraph-zero
+  template:
+    metadata:
+      labels:
+        component: dgraph-zero
+        pod: kartograph-dgraph-zero
+    spec:
+      containers:
+        - name: dgraph-zero
+          image: dgraph/dgraph:v23.1.1
+          command:
+            - dgraph
+          args:
+            - zero
+            - --my=kartograph-dgraph-zero:5080
+            - --replicas=1
+            - --raft=idx=1
+          ports:
+            - name: grpc
+              containerPort: 5080
+              protocol: TCP
+            - name: http
+              containerPort: 6080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 6080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 6080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+          volumeMounts:
+            - name: dgraph-zero-data
+              mountPath: /dgraph
+      volumes:
+        - name: dgraph-zero-data
+          emptyDir: {}

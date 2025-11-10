@@ -85,11 +85,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get git SHA
+        id: git_sha
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # yamllint disable rule:line-length
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -97,7 +104,9 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
             type=raw,value=${{ steps.app_version.outputs.version }}
+            type=raw,value=v${{ steps.app_version.outputs.version }}-${{ steps.git_sha.outputs.short_sha }},enable=${{ startsWith(github.ref, 'refs/tags/v') }}
             type=raw,value=latest,enable={{is_default_branch}}
+          # yamllint enable rule:line-length
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

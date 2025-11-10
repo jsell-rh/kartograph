@@ -1,378 +1,242 @@
 # Kartograph Deployment
 
-This directory contains deployment manifests for Kartograph using Clowder.
-These manifests were originally created to deploy to the Red Hat Rapid Innovation Platform's
-ephemeral environment and may not be suitable for direct use against another environment.
+Kubernetes deployment manifests using Kustomize.
 
-## Components
+## Structure
 
-- **App**: Nuxt.js application for querying the knowledge graph (UI + MCP server)
-- **Dgraph Zero**: Cluster coordinator for Dgraph
-- **Dgraph Alpha**: Graph database instance
-- **PostgreSQL**: Managed by Clowder for auth/sessions
+- `base/` - Common resources for all environments
+- `overlays/ephemeral/` - Development/testing overlay
+- `overlays/stage/` - Staging environment (ArgoCD-managed)
+- `scripts/` - Deployment automation scripts
 
 ## Prerequisites
 
-- `bonfire` CLI installed
-- `oc` CLI installed and logged in
-- Access to an OpenShift cluster with Clowder operator
-- Docker or Podman for building images
+### Environment Variables (Ephemeral)
 
-## Quick Start (Recommended)
-
-The Makefile provides convenient commands for common deployment workflows.
-
-### ⚠️ Important: Environment Variables
-
-**Before running any `make` commands**, you must export the required environment variables in your shell. These variables need to be in your shell environment, not just in a `.env` file:
+**Required:**
 
 ```bash
-# Required: Vertex AI credentials for Claude
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/gcloud-credentials.json
-export VERTEX_PROJECT_ID=your-gcp-project-id
-export VERTEX_REGION=us-central1
+export BETTER_AUTH_SECRET="your-secret-here"  # MUST persist across deployments! # pragma: allowlist secret
+```
 
-# Required: Auth secret (generate a random string)
+**Optional:**
+
+```bash
+export VERTEX_CREDENTIALS_FILE="/path/to/credentials.json"
+export VERTEX_PROJECT_ID="your-gcp-project"
+export VERTEX_REGION="us-east5"
+export GITHUB_CLIENT_ID="your-oauth-client-id"  # pragma: allowlist secret
+export GITHUB_CLIENT_SECRET="your-oauth-client-secret"  # pragma: allowlist secret  # noqa: E501
+export AUTH_PASSWORD_ENABLED="true"  # pragma: allowlist secret
+export AUTH_ALLOWED_EMAIL_DOMAINS="example.com,another.com"
+export ADMIN_EMAILS="admin@example.com"
+```
+
+## Deployment Workflows
+
+### Ephemeral Environment
+
+One-command deployment to your current OpenShift namespace:
+
+```bash
+cd app
+make deploy-ephemeral
+```
+
+This will:
+
+1. Build image from local code
+2. Push to OpenShift internal registry
+3. Create secrets from environment variables
+4. Deploy all resources via kustomize
+5. Auto-detect route URL and patch configuration
+6. Re-apply with correct URLs
+
+### Stage Environment
+
+ArgoCD manages stage automatically. For manual testing:
+
+```bash
+kubectl apply -k deploy/overlays/stage
+```
+
+## Secret Management
+
+### Ephemeral
+
+Secrets created from environment variables via `scripts/create-ephemeral-secrets.sh`
+
+**IMPORTANT:** The `BETTER_AUTH_SECRET` is used for JWT signing. If you change it, all existing user sessions will be invalidated. Always use the same value across deployments.
+
+```bash
+# First deployment
 export BETTER_AUTH_SECRET=$(openssl rand -base64 32)
+# Save this value somewhere safe!
 
-# (Optional) Configure GitHub OAuth
-# export GITHUB_CLIENT_ID=your_client_id
-# export GITHUB_CLIENT_SECRET=your_client_secret
-
-# (Optional) Configure authentication restrictions
-# export AUTH_PASSWORD_ENABLED=false  # Set to "false" to disable password auth (OAuth only)
-# export AUTH_ALLOWED_EMAIL_DOMAINS=redhat.com,ibm.com  # Restrict to specific domains
+# Subsequent deployments
+export BETTER_AUTH_SECRET="<same-value-from-first-deployment>"
 ```
 
-**Critical**: The Makefile and deployment scripts read these variables from your shell environment at runtime. If they're not exported in your current shell session, deployment will fail.
+### Stage
 
-**Recommended approach**: Create a `setenv.sh` file (don't commit it!) or add these exports to your `~/.bashrc` / `~/.zshrc`:
+Secrets are managed using the **Secrets Store CSI Driver** with HashiCorp Vault provider.
 
-```bash
-# Example setenv.sh
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/your/gcloud-credentials.json
-export VERTEX_PROJECT_ID=my-gcp-project
-export VERTEX_REGION=us-central1
-export BETTER_AUTH_SECRET=your-generated-secret
+**How it works:**
 
-# (Optional) Configure GitHub OAuth
-# export GITHUB_CLIENT_ID=your_client_id
-# export GITHUB_CLIENT_SECRET=your_client_secret
+1. `SecretProviderClass` resources define which secrets to retrieve from Vault
+2. CSI volumes mount secrets from Vault at pod startup
+3. Secrets are automatically synced to Kubernetes Secret objects for use as environment variables
 
-# (Optional) Configure authentication restrictions
-# export AUTH_PASSWORD_ENABLED=false  # Disable password auth (OAuth only)
-# export AUTH_ALLOWED_EMAIL_DOMAINS=redhat.com  # Restrict to specific domains
+**Vault paths:**
 
-# Then source it before running make:
-# source setenv.sh
-# make deploy-ephemeral-local
-```
+- `hcm-ai/data/kartograph/stage/better-auth` → `BETTER_AUTH_SECRET`
+- `hcm-ai/data/kartograph/stage/github-oidc` → `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`
+- `hcm-ai/data/kartograph/stage/vertex-ai` → `credentials.json`, `VERTEX_PROJECT_ID`, `VERTEX_REGION`
 
-### 1. Reserve an Ephemeral Namespace
+**Service account:** The pod's service account must be bound to the Vault role `kartograph-stage` with appropriate policies.
 
-```bash
-# Reserve a namespace for 96 hours (required for ephemeral deployments)
-bonfire namespace reserve --duration "96h"
+See: `overlays/stage/secret-provider-class.yaml`
 
-# Check your reserved namespace
-bonfire namespace list --mine
-```
+## Image Tagging
 
-### 2. Build and Deploy to Ephemeral Environment
-
-```bash
-cd app
-
-# Build local image, push to internal registry, and deploy
-make deploy-ephemeral-local
-```
-
-This command will:
-
-- Build the Docker image with current git commit and version
-- Push to OpenShift internal registry in your namespace
-- Process the local `deploy/clowdapp.yaml` template with your namespace's ClowdEnvironment
-- Apply all resources (PVCs, secrets, ClowdApp) to your namespace
-- Wait for deployment to be ready
-- Auto-detect the route URL and update environment variables
-- Restart the deployment with correct configuration
-
-**Note**: This uses `oc apply` with your local ClowdApp template, so any changes you make to `deploy/clowdapp.yaml` will be immediately deployed.
-
-### 3. Check Deployment Status
-
-```bash
-make status
-```
-
-### 4. View Logs
-
-```bash
-# App logs
-make logs
-
-# Dgraph Alpha logs
-make logs-dgraph
-
-# Dgraph Zero logs
-make logs-dgraph-zero
-```
-
-### 5. Access the Application
-
-```bash
-# Port forward to localhost:3003
-make port-forward
-
-# Then visit http://localhost:3003
-```
-
-### 6. Clean Up
-
-```bash
-# Delete the ClowdApp deployment
-make clean
-
-# Or delete directly with oc
-oc delete clowdapp kartograph
-
-# Release the namespace reservation
-make bonfire-clean
-```
-
-### 7. Complete Fresh Slate (Delete Everything)
-
-If you need to completely reset and start fresh:
-
-```bash
-# Delete the ClowdApp (this will delete all deployments, services, etc.)
-oc delete clowdapp kartograph
-
-# Delete PVCs to clear all data
-oc delete pvc dgraph-zero-pvc dgraph-alpha-pvc app-pvc
-
-# Optional: Delete secrets
-oc delete secret kartograph-secrets
-
-# Now you can redeploy from scratch
-make deploy-ephemeral-local
-```
-
-**Note**: Deleting the ClowdApp will automatically delete all related resources (deployments, pods, services created by Clowder), but manually created resources like PVCs and the custom Services need to be deleted separately.
-
-## Makefile Targets
-
-Run `make help` to see all available targets:
-
-```
-make help              # Show available targets
-make build             # Build container image
-make build-local       # Build and push to internal registry
-make deploy            # Deploy using oc apply (non-ephemeral)
-make deploy-ephemeral-local  # Build local + deploy to ephemeral (recommended)
-make status            # Show deployment status
-make logs              # Tail app logs
-make logs-dgraph       # Tail dgraph-alpha logs
-make port-forward      # Forward app to localhost:3003
-make clean             # Delete deployment
-make restart           # Restart all deployments
-```
-
-**Key differences**:
-
-- `make deploy-ephemeral-local` - For development in ephemeral namespaces. Uses local ClowdApp template and auto-configures URLs.
-- `make deploy` - For deploying to a standard (non-ephemeral) namespace with manual configuration.
-
-## Manual Deployment
-
-If you prefer not to use the Makefile, you can deploy manually.
-
-### Container Registry Configuration
-
-**⚠️ Important**: The examples below use `quay.io/cloudservices` as the container registry. You **must** update this to use a registry you have access to:
-
-- **GitHub Container Registry**: `ghcr.io/YOUR_USERNAME/kartograph-app`
-- **Docker Hub**: `docker.io/YOUR_USERNAME/kartograph-app`
-- **Quay.io**: `quay.io/YOUR_ORG/kartograph-app`
-- **Other registries**: `YOUR_REGISTRY/YOUR_ORG/kartograph-app`
-
-The Makefile variables you need to update are in `app/Makefile`:
-
-```makefile
-IMAGE_REGISTRY ?= quay.io          # Change to your registry
-IMAGE_ORG ?= cloudservices         # Change to your username/org
-IMAGE_NAME ?= kartograph-app       # Can keep this or rename
-```
-
-### Build and Push Image
-
-```bash
-cd app
-
-# Set your container registry (replace with your own!)
-export IMAGE_REGISTRY=ghcr.io
-export IMAGE_ORG=YOUR_USERNAME
-
-# Build the image
-docker build \
-  --build-arg GIT_COMMIT=$(git rev-parse --short HEAD) \
-  --build-arg APP_VERSION=$(node -p "require('./package.json').version") \
-  -t ${IMAGE_REGISTRY}/${IMAGE_ORG}/kartograph-app:latest .
-
-# Push to registry (ensure you're logged in first)
-docker push ${IMAGE_REGISTRY}/${IMAGE_ORG}/kartograph-app:latest
-```
-
-**Authentication**: Ensure you're logged into your container registry before pushing:
-
-```bash
-# GitHub Container Registry
-echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
-
-# Docker Hub
-docker login docker.io
-
-# Quay.io
-docker login quay.io
-```
-
-### Deploy with oc apply
-
-```bash
-# Set your container registry variables
-export IMAGE_REGISTRY=ghcr.io
-export IMAGE_ORG=YOUR_USERNAME
-export IMAGE_TAG=latest
-
-# Create namespace
-oc new-project kartograph-dev
-
-# Apply PVCs
-oc apply -f deploy/dgraph-pvcs.yaml
-
-# Create required secrets
-oc create secret generic kartograph-secrets \
-  --from-literal=auth-secret=$(openssl rand -base64 32)
-
-# Process and apply the template
-# IMPORTANT: Update the IMAGE parameter to use your registry!
-oc process -f deploy/clowdapp.yaml \
-  -p ENV_NAME=kartograph-dev \
-  -p IMAGE=${IMAGE_REGISTRY}/${IMAGE_ORG}/kartograph-app \
-  -p IMAGE_TAG=${IMAGE_TAG} \
-  -p APP_PUBLIC_URL=https://kartograph.apps.example.com \
-  | oc apply -f -
-```
+- **Ephemeral**: `{version}-{git-commit}` (e.g., `0.2.5-a92a5b4`)
+- **Stage**: Semver tags (e.g., `v0.2.5`) - updated by GitHub Actions
 
 ## Environment Variables
 
-The app requires these environment variables:
+All runtime configuration uses `NUXT_*` prefix:
 
-- `DGRAPH_URL`: URL to Dgraph Alpha (default: `http://kartograph-dgraph-alpha:8080`)
-- `DATABASE_URL`: SQLite database path (default: `/data/kartograph.db`)
-- `BETTER_AUTH_SECRET`: Secret key for auth (from secret)
-- `BETTER_AUTH_URL`: Public URL for the app (auto-configured by Makefile)
-- `NUXT_PUBLIC_SITE_URL`: Public URL for the app
-- `NUXT_APP_BASE_URL`: Base path for Nuxt app (default: `/api/kartograph`)
+- `NUXT_APP_BASE_URL` - Path prefix (`/api/kartograph/`)
+- `NUXT_DGRAPH_URL` - Dgraph connection
+- `NUXT_PUBLIC_ORIGIN` - Full origin URL
+- `NUXT_BETTER_AUTH_SECRET` - JWT signing key
+- `NUXT_VERTEX_PROJECT_ID` - GCP project
+- `NUXT_API_TOKEN_RATE_LIMIT` - MCP token rate limit
+- `NUXT_AUDIT_LOG_RETENTION_DAYS` - Audit log retention
 
-## Namespace Management
+**Exception:** `GOOGLE_APPLICATION_CREDENTIALS` (unprefixed, for Google SDK)
 
-### Reserving a Namespace
+## Components
 
-Ephemeral namespaces must be reserved before deployment:
+### Application (kartograph-app)
 
-```bash
-# Reserve for 96 hours
-bonfire namespace reserve --duration "96h"
+- **Image**: `ghcr.io/jsell-rh/kartograph`
+- **Port**: 8000
+- **Volumes**:
+  - `app-pvc` (1Gi) - SQLite database
+  - `vertex-ai-credentials` (secret) - GCP credentials
+- **Resources**: 100m-500m CPU, 256Mi-512Mi RAM
 
-# Check your reservations
-bonfire namespace list --mine
+### Dgraph Zero
 
-# Extend reservation
-bonfire namespace extend <namespace-name> --duration "48h"
+- **Image**: `dgraph/dgraph:v23.1.1`
+- **Ports**: 5080 (gRPC), 6080 (HTTP)
+- **Storage**: emptyDir (ephemeral)
+- **Resources**: 100m-500m CPU, 256Mi-512Mi RAM
 
-# Release reservation (cleans up resources)
-bonfire namespace release <namespace-name>
+### Dgraph Alpha
+
+- **Image**: `dgraph/dgraph:v23.1.1`
+- **Ports**: 7080 (gRPC), 8080 (HTTP), 9080 (internal)
+- **Storage**: `dgraph-alpha-pvc` (50Gi)
+- **Resources**: 200m-1000m CPU, 1Gi-2Gi RAM
+
+## Secrets Structure
+
+### kartograph-secrets (required)
+
+```yaml
+data:
+  auth-secret: <base64-encoded-secret>
 ```
 
-### Deleting a Deployment
+### kartograph-vertex-ai (optional)
 
-```bash
-# Delete just the ClowdApp (keeps namespace)
-oc delete clowdapp kartograph -n <namespace-name>
+```yaml
+data:
+  credentials.json: <base64-encoded-gcp-credentials>
+  project-id: <base64-encoded-project-id>
+  region: <base64-encoded-region>
+```
 
-# Delete with Makefile
-make clean
+### kartograph-github-oauth (optional)
 
-# Full cleanup including namespace release
-make bonfire-clean
+```yaml
+data:
+  client-id: <base64-encoded-client-id>
+  client-secret: <base64-encoded-client-secret>
+```
+
+### kartograph-auth-config (optional)
+
+```yaml
+data:
+  password-enabled: <base64-encoded-boolean>
+  allowed-domains: <base64-encoded-comma-separated-domains>
+  admin-emails: <base64-encoded-comma-separated-emails>
 ```
 
 ## Troubleshooting
 
-### Check Deployment Status
+### Route not detected
+
+If the automatic route detection fails:
 
 ```bash
-# Using Makefile
-make status
+# Manually check the route
+oc get route kartograph
 
-# Or manually
-oc get clowdapp kartograph
-oc get deployments -l app=kartograph
-oc get pods -l app=kartograph
+# Re-run the patch script
+./deploy/scripts/generate-ephemeral-patch.sh
+kubectl apply -k deploy/overlays/ephemeral
 ```
 
-### View Logs
+### Secrets not created
+
+Ensure all required environment variables are set:
 
 ```bash
-# Using Makefile
-make logs          # App
-make logs-dgraph   # Dgraph Alpha
-make logs-dgraph-zero  # Dgraph Zero
+# Check required variables
+echo $BETTER_AUTH_SECRET
 
-# Or manually
-oc logs -l deployment=kartograph-app -f
-oc logs -l deployment=kartograph-dgraph-alpha -f
-oc logs -l deployment=kartograph-dgraph-zero -f
+# Check optional variables
+echo $VERTEX_CREDENTIALS_FILE
+echo $VERTEX_PROJECT_ID
 ```
 
-### Common Issues
+### Deployment fails
 
-**Dgraph pods in CrashLoopBackOff**
-
-- Check service names match pod arguments
-- Verify ports are correctly configured (5080/6080 for zero, 7080/8080/9080 for alpha)
+Check kustomize build output:
 
 ```bash
-oc get svc -l app=kartograph
-oc logs -l deployment=kartograph-dgraph-alpha --tail=50
+kubectl kustomize deploy/overlays/ephemeral
 ```
 
-**Auth endpoints returning 404**
+### Pod errors
 
-- Verify BETTER_AUTH_URL includes the full path
-- Should be: `https://<route-url>/api/kartograph`
+Check logs:
 
 ```bash
-oc get deployment kartograph-app -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="BETTER_AUTH_URL")].value}'
+# App logs
+kubectl logs -l component=app -f
+
+# Dgraph logs
+kubectl logs -l component=dgraph-alpha -f
+kubectl logs -l component=dgraph-zero -f
 ```
 
-**Can't access application**
+## Migration from ClowdApp
 
-- Check route was created
-- Verify crcauth whitelist is configured
+This deployment replaces the previous ClowdApp-based setup. Key changes:
 
-```bash
-oc get route -l app=kartograph
-oc get clowdapp kartograph -o yaml | grep -A 5 whitelistPaths
-```
+- **No ClowdApp**: Pure Kubernetes Deployment resources
+- **Kustomize**: Overlay-based configuration management
+- **Dynamic URLs**: Automatic route detection for ephemeral
+- **ArgoCD ready**: Stage overlay designed for GitOps
 
-**Database errors**
+Legacy manifests have been removed:
 
-- Verify PVC is bound
-- Check SQLite file permissions
-
-```bash
-oc get pvc app-pvc
-oc exec -it deployment/kartograph-app -- ls -la /data
-```
+- `clowdapp.yaml`
+- `dgraph-standalone.yaml`
+- `dgraph-services.yaml`
+- `dgraph-pvcs.yaml`

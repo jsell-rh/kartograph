@@ -59,3 +59,7 @@ extraction/working/
 .checkpoints
 output/
 .gitmessage
+
+# Kustomize generated patches and modified files
+app/deploy/overlays/*/patch-url.yaml
+app/deploy/overlays/ephemeral/kustomization.yaml
