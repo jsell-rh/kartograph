@@ -55,8 +55,19 @@ jobs:
         id: version
         run: |
           VERSION=$(node -p "require('./app/package.json').version")
+          SHORT_SHA=$(git rev-parse --short HEAD)
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "version_sha=v${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Update stage kustomization image tag
+        run: |
+          sed -i 's/newTag: .*/newTag: ${{ steps.version.outputs.version_sha }}  # Updated by GitHub Action/' \
+            app/deploy/overlays/stage/kustomization.yaml
+          git add app/deploy/overlays/stage/kustomization.yaml
+          git commit -m "chore(deploy): Update stage image to ${{ steps.version.outputs.version_sha }} [skip-release]" \
+            || echo "No kustomization changes to commit"
 
       - name: Push changes and tags
         run: |

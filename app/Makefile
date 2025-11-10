@@ -1,9 +1,19 @@
 .PHONY: help build-local push-local deploy-ephemeral deploy-stage test-local lint format dev-setup load-data find-free-port
 
-# Local development image (using OpenShift internal registry)
+# GitHub Container Registry image (pre-built)
+USE_GHCR ?= false
+GHCR_IMAGE ?= ghcr.io/jsell-rh/kartograph
+GHCR_TAG ?= $(APP_VERSION)
+
+# Local development image (using OpenShift internal registry or GHCR)
 INTERNAL_REGISTRY ?= default-route-openshift-image-registry.apps.crc-eph.r9lp.p1.openshiftapps.com
+ifeq ($(USE_GHCR),true)
+LOCAL_IMAGE ?= $(GHCR_IMAGE)
+LOCAL_IMAGE_TAG ?= $(GHCR_TAG)
+else
 LOCAL_IMAGE ?= $(INTERNAL_REGISTRY)/$(shell oc project -q 2>/dev/null || echo "default")/kartograph-app
 LOCAL_IMAGE_TAG ?= $(APP_VERSION)-$(GIT_COMMIT)
+endif
 
 # Version info for Docker builds
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -20,7 +30,12 @@ help: ## Show this help message
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-build-local: ## Build local container image
+build-local: ## Build local container image (or pull from GHCR if USE_GHCR=true)
+ifeq ($(USE_GHCR),true)
+	@echo "==> Using pre-built image from GHCR: $(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG)"
+	@echo "Pulling image..."
+	docker pull $(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG)
+else
 	@echo "==> Building image: $(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG)"
 	@echo "Version: $(APP_VERSION)+$(GIT_COMMIT)"
 	docker build \
@@ -28,12 +43,17 @@ build-local: ## Build local container image
 		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t $(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG) \
 		-f Dockerfile .
+endif
 
-push-local: build-local ## Push image to OpenShift internal registry
+push-local: build-local ## Push image to OpenShift internal registry (skipped if USE_GHCR=true)
+ifneq ($(USE_GHCR),true)
 	@echo "==> Logging into internal registry..."
 	@docker login -u $(shell oc whoami) -p $(shell oc whoami -t) $(INTERNAL_REGISTRY)
 	@echo "==> Pushing image to OpenShift registry"
 	docker push $(LOCAL_IMAGE):$(LOCAL_IMAGE_TAG)
+else
+	@echo "==> Skipping push (using GHCR image)"
+endif
 
 deploy-ephemeral: push-local ## Deploy to ephemeral environment
 	@echo "==> Deploying to ephemeral environment"
